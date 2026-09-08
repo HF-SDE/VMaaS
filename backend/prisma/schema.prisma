@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "rbac", "public"]
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  userRoles UserRole[]
+  sessions  Session[]
+  accounts  Account[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("sessions")
+  @@schema("auth")
+}
+
+model Account {
+  id                    String    @id @default(uuid()) @db.Uuid
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+  @@schema("auth")
+}
+
+model Verification {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+  @@schema("auth")
+}
+
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @unique
+  description    String?
+  isPlatformRole Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+  @@schema("rbac")
+}
+
+// A single grantable capability, e.g. "machine:read", "machine:write",
+// "sale:refund", "user:manage". Namespaced by convention as "resource:action".
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+  @@schema("rbac")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+  @@schema("rbac")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String   @db.Uuid
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenantId  String?  @db.Uuid
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("user_roles")
+  @@schema("rbac")
+}
+
+enum machine_status {
+  online
+  offline
+  error
+
+  @@schema("public")
+}
+
+enum sale_status {
+  pending
+  completed
+  failed
+  refunded
+
+  @@schema("public")
+}
+
+enum alert_type {
+  tamper
+  offline
+  dispenseFail
+
+  @@schema("public")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+
+  userRoles UserRole[]
+  products  Product[]
+  machines  Machine[]
+  sales     Sale[]
+
+  @@map("tenants")
+  @@schema("public")
+}
+
+model Product {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  price     Decimal
+  createdAt DateTime @default(now())
+
+  slots Slot[]
+
+  @@index([tenantId])
+  @@map("products")
+  @@schema("public")
+}
+
+model Machine {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @db.Uuid
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  location  String?
+  status    machine_status @default(online)
+  createdAt DateTime       @default(now())
+
+  slots          Slot[]
+  sales          Sale[]
+  securityAlerts SecurityAlert[]
+
+  @@index([tenantId])
+  @@map("machines")
+  @@schema("public")
+}
+
+model Slot {
+  id         String  @id @default(uuid()) @db.Uuid
+  machineId  String  @db.Uuid
+  machine    Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  productId  String  @db.Uuid
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  slotNumber Int
+  quantity   Int     @default(0)
+  capacity   Int
+
+  sales Sale[]
+
+  @@unique([machineId, slotNumber])
+  @@index([productId])
+  @@map("slots")
+  @@schema("public")
+}
+
+model Sale {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @db.Uuid
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  machineId   String      @db.Uuid
+  machine     Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  slotId      String      @db.Uuid
+  slot        Slot        @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  status      sale_status @default(pending)
+  price       Decimal
+  createdAt   DateTime    @default(now())
+  completedAt DateTime?
+
+  @@index([tenantId])
+  @@index([machineId])
+  @@index([slotId])
+  @@map("sales")
+  @@schema("public")
+}
+
+model SecurityAlert {
+  id         String     @id @default(uuid()) @db.Uuid
+  machineId  String     @db.Uuid
+  machine    Machine    @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  type       alert_type
+  message    String
+  createdAt  DateTime   @default(now())
+  resolvedAt DateTime?
+
+  @@index([machineId])
+  @@map("security_alerts")
+  @@schema("public")
+}
