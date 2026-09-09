@@ -59,6 +59,7 @@ import {
 } from "./ui/dropdown-menu"
 import Image from "next/image"
 import { UserAvatarProps, UserAvatar } from "./nav-user copy"
+import { useUser } from "@/hooks/use-user"
 
 interface NavItem {
   title: string
@@ -232,7 +233,7 @@ function SidebarNavigationSkeleton() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
-  const { data: session } = authClient.useSession()
+  const user = useUser()
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -256,9 +257,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
     []
   )
-
-  if (!session) return null
-  const { user } = session
 
   return (
     <Sidebar {...props}>
