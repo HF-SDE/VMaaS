@@ -41,6 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 /generated/prisma
+.agents/**/*
+.claude/**/*
+skills-lock.json
 
 config/environment-variables/.env.*.dev*
 config/environment-variables/.env.*.prod*

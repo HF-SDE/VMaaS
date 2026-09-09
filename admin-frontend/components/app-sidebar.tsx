@@ -1,0 +1,421 @@
+"use client"
+
+import * as React from "react"
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar"
+
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible"
+import {
+  ArrowRightLeft,
+  Beer,
+  BottleWine,
+  CalendarRange,
+  ChevronRight,
+  Cog,
+  FileText,
+  Key,
+  LayoutDashboard,
+  LogOut,
+  MoreHorizontal,
+  Package,
+  Plus,
+  ScanBarcode,
+  ScrollText,
+  ShelvingUnit,
+  ShieldUser,
+  TableProperties,
+  Trash,
+  User,
+  UserKey,
+  Users,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu"
+import Image from "next/image"
+import { UserAvatarProps, UserAvatar } from "./nav-user copy"
+
+interface NavItem {
+  title: string
+  url?: string
+  icon?: React.ReactNode
+  requiredPermission?: Permissions[]
+  feature?: "brew-log"
+  items?: {
+    title: string
+    url: string
+    icon?: React.ReactNode
+    requiredPermission?: Permissions[]
+    feature?: "brew-log"
+  }[]
+}
+
+interface AppSidebarProps {
+  versions: string[]
+  navMain: NavItem[]
+}
+
+const data: AppSidebarProps = {
+  versions: ["1.0.1", "1.1.0-alpha", "2.0.0-beta1"],
+  navMain: [
+    {
+      title: "Dashboard",
+      url: "/",
+      icon: <LayoutDashboard />,
+    },
+    {
+      title: "Kiosk",
+      url: "/kiosk",
+      icon: <ScanBarcode />,
+    },
+    {
+      title: "Lager",
+      icon: <ShelvingUnit />,
+
+      items: [
+        {
+          title: "Oversigt",
+          url: "/lager",
+
+          icon: <TableProperties />,
+        },
+        {
+          title: "Flyt vare",
+          url: "/lager/bevaegelse",
+
+          icon: <ArrowRightLeft />,
+        },
+        {
+          title: "Opret ny",
+          url: "/lager/opret",
+          icon: <Plus />,
+        },
+        {
+          title: "Registrer spild",
+          url: "/lager/spild",
+          icon: <Trash />,
+        },
+        {
+          title: "Historik",
+          url: "/lager/logs",
+          icon: <ScrollText />,
+        },
+        {
+          title: "Optælling",
+          url: "/lager/optaelling",
+          icon: <TableProperties />,
+        },
+      ],
+    },
+  ],
+}
+
+const SIDEBAR_OPEN_GROUPS_STORAGE_KEY = "app-sidebar:open-groups"
+const EMPTY_PERMISSIONS: string[] = []
+
+function readSidebarOpenGroups(): Record<string, boolean> {
+  if (typeof window === "undefined") return {}
+
+  try {
+    const raw = localStorage.getItem(SIDEBAR_OPEN_GROUPS_STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {}
+    }
+
+    return Object.entries(parsed).reduce<Record<string, boolean>>(
+      (state, [title, isOpen]) => {
+        if (typeof isOpen === "boolean") {
+          state[title] = isOpen
+        }
+
+        return state
+      },
+      {}
+    )
+  } catch {
+    return {}
+  }
+}
+
+function writeSidebarOpenGroups(state: Record<string, boolean>) {
+  try {
+    localStorage.setItem(SIDEBAR_OPEN_GROUPS_STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    // Ignore quota and browser storage errors.
+  }
+}
+
+function buildSidebarOpenGroupsState(
+  groupTitles: string[],
+  currentState: Record<string, boolean>,
+  storedState: Record<string, boolean>
+) {
+  return groupTitles.reduce<Record<string, boolean>>((state, title) => {
+    state[title] = currentState[title] ?? storedState[title] ?? true
+    return state
+  }, {})
+}
+
+function SidebarNavigationSkeleton() {
+  return (
+    <div className="flex flex-col gap-1">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+      </SidebarMenu>
+
+      <SidebarMenu className="gap-1">
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton className="ml-6 h-7" />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton className="ml-6 h-7" />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton className="ml-6 h-7" />
+        </SidebarMenuItem>
+      </SidebarMenu>
+
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+      </SidebarMenu>
+
+      <SidebarMenu className="gap-1">
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton showIcon />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton className="ml-6 h-7" />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuSkeleton className="ml-6 h-7" />
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </div>
+  )
+}
+
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname()
+  const currentPath = pathname || "/"
+  const [hasMounted, setHasMounted] = React.useState(false)
+  React.useEffect(() => setHasMounted(true), [])
+
+  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(
+    {}
+  )
+  const shouldShowNavSkeleton = !hasMounted
+
+  const handleOpenGroupChange = React.useCallback(
+    (title: string, isOpen: boolean) => {
+      setOpenGroups((current) => {
+        const nextState = {
+          ...current,
+          [title]: isOpen,
+        }
+
+        writeSidebarOpenGroups(nextState)
+
+        return nextState
+      })
+    },
+    []
+  )
+
+  return (
+    <Sidebar {...props}>
+      <SidebarHeader className="flex flex-row justify-between">
+        <Link href="/" className="h-max">
+          <h1 className="text-lg font-bold">VMaaS</h1>
+        </Link>
+        {process.env["NEXT_PUBLIC_APP_VERSION"] && (
+          <Link href="/release-notes" className="text-xs text-muted-foreground">
+            {process.env["NEXT_PUBLIC_APP_VERSION"]}
+          </Link>
+        )}
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        {/* We create a collapsible SidebarGroup for each parent. */}
+        {shouldShowNavSkeleton ? (
+          <SidebarNavigationSkeleton />
+        ) : (
+          data.navMain.map((item) => (
+            <div key={item.title}>
+              {item.items === undefined || item.items?.length === 0 ? (
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      className={cn(
+                        currentPath === item.url
+                          ? "bg-primary! text-primary-foreground!"
+                          : "",
+                        "text-sm"
+                      )}
+                      isActive={currentPath === item.url}
+                      render={<Link href={item.url || "#"} />}
+                    >
+                      {item.icon}
+                      {item.title}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              ) : null}
+              {item.items !== undefined && item.items.length === 1 ? (
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      className={cn(
+                        currentPath === item.items[0]?.url
+                          ? "bg-primary! text-primary-foreground!"
+                          : "",
+                        "text-sm"
+                      )}
+                      isActive={currentPath === item.items[0]?.url}
+                      render={<Link href={item.items[0]?.url || "#"} />}
+                    >
+                      {item.icon}
+                      {item.title}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              ) : null}
+              {item.items !== undefined && item.items.length > 1 ? (
+                <Collapsible
+                  open={openGroups[item.title] ?? true}
+                  onOpenChange={(isOpen) =>
+                    handleOpenGroupChange(item.title, isOpen)
+                  }
+                  className="group/collapsible"
+                >
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger
+                        render={<SidebarMenuButton className="text-sm" />}
+                      >
+                        {item.icon}
+                        {item.title}
+                        <ChevronRight className="ml-auto transition-transform group-data-open/collapsible:rotate-90" />
+                      </CollapsibleTrigger>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                  <CollapsibleContent>
+                    <SidebarMenu>
+                      {item.items?.map((subItem) => (
+                        <SidebarMenuItem key={subItem.title} className="pl-4">
+                          <SidebarMenuButton
+                            className={cn(
+                              currentPath === subItem.url
+                                ? "bg-primary! text-primary-foreground!"
+                                : "",
+                              "text-sm"
+                            )}
+                            isActive={currentPath === subItem.url}
+                            render={<Link href={subItem.url} />}
+                          >
+                            {subItem.icon && (
+                              <span className="mr-2">{subItem.icon}</span>
+                            )}
+                            {subItem.title}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : null}
+            </div>
+          ))
+        )}
+      </SidebarContent>
+      <SidebarFooter>
+        <NavBarFooter
+          data={{ name: "jeff", email: "jeff@example.com", image: null }}
+        />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  )
+}
+
+export function NavBarFooter({ data }: { data: UserAvatarProps }) {
+  const router = useRouter()
+
+  const { isMobile } = useSidebar()
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <SidebarMenuButton
+                size="lg"
+                className="data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground"
+              />
+            }
+          >
+            <UserAvatar data={data} />
+
+            <MoreHorizontal className="" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--anchor-width) min-w-56 rounded-lg"
+            side={isMobile ? "bottom" : "right"}
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel>Min konto</DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuItem render={<Link href="/profil" />}>
+                <User className="size-4" />
+                Profil
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={async () => {
+                // handle signout
+              }}
+            >
+              <LogOut className="size-4" />
+              Log ud
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
