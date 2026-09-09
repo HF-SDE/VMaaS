@@ -9,13 +9,13 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid()) @db.Uuid
-  email         String    @unique
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
   name          String
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean  @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   userRoles UserRole[]
   sessions  Session[]
@@ -36,8 +36,12 @@ model Session {
   userId    String   @db.Uuid
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  activeTenantId String? @db.Uuid
+  activeTenant   Tenant? @relation(fields: [activeTenantId], references: [id], onDelete: SetNull)
+
   @@unique([token])
   @@index([userId])
+  @@index([activeTenantId])
   @@map("sessions")
   @@schema("auth")
 }
@@ -164,10 +168,11 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  userRoles UserRole[]
-  products  Product[]
-  machines  Machine[]
-  sales     Sale[]
+  userRoles      UserRole[]
+  products       Product[]
+  machines       Machine[]
+  sales          Sale[]
+  activeSessions Session[]
 
   @@map("tenants")
   @@schema("public")
@@ -207,14 +212,15 @@ model Machine {
 }
 
 model Slot {
-  id         String  @id @default(uuid()) @db.Uuid
-  machineId  String  @db.Uuid
-  machine    Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
-  productId  String  @db.Uuid
-  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id         String   @id @default(uuid()) @db.Uuid
+  machineId  String   @db.Uuid
+  machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  productId  String   @db.Uuid
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   slotNumber Int
-  quantity   Int     @default(0)
+  quantity   Int      @default(0)
   capacity   Int
+  price      Decimal?
 
   sales Sale[]
 
