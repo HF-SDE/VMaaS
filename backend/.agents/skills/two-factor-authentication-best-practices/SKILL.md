@@ -103,6 +103,7 @@ twoFactor({
 ```ts
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
+
 import { sendEmail } from "./email";
 
 export const auth = betterAuth({
@@ -233,7 +234,7 @@ const signIn = async (email: string, password: string) => {
           window.location.href = "/2fa";
         }
       },
-    }
+    },
   );
 };
 ```
@@ -291,6 +292,7 @@ const disable2FA = async (password: string) => {
 ```ts
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
+
 import { sendEmail } from "./email";
 
 export const auth = betterAuth({

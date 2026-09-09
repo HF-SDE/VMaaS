@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+
 import { createMachineService, getMachinesService } from "../services/machines.service";
 
 export async function getMachinesController(req: Request, res: Response) {

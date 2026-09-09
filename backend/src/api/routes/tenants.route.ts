@@ -1,7 +1,8 @@
-import { Router } from "express";
-import { prisma } from "@/lib/prisma";
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { prisma } from "@/lib/prisma";
 import { PERMISSIONS, ROLE_PERMISSIONS, TENANT_ROLES, listTenantsForUser } from "@/lib/rbac";
+
+import { Router } from "express";
 
 export const tenantsRouter = Router();
 
@@ -41,57 +42,74 @@ tenantsRouter.post("/tenants", async (req, res) => {
   res.status(201).json({ tenant });
 });
 
-tenantsRouter.get("/tenants/:tenantId/members", requireTenant, requirePermission(PERMISSIONS.USER_VIEW), async (req, res) => {
-  const members = await prisma.userRole.findMany({
-    where: { tenantId: req.tenantId },
-    include: { user: { select: { id: true, name: true, email: true } }, role: true },
-  });
-  res.json({ members });
-});
-
-tenantsRouter.post("/tenants/:tenantId/members", requireTenant, requirePermission(PERMISSIONS.USER_MANAGE), async (req, res) => {
-  const { userId, role } = req.body as { userId?: string; role?: string };
-  if (!userId || !role || !ASSIGNABLE_ROLES.includes(role)) {
-    res.status(400).json({ error: `userId and role are required (role must be one of: ${ASSIGNABLE_ROLES.join(", ")})` });
-    return;
-  }
-
-  const roleRecord = await prisma.role.findUnique({ where: { name: role } });
-  if (!roleRecord) {
-    res.status(400).json({ error: `Unknown role: ${role}` });
-    return;
-  }
-
-  const membership = await prisma.userRole.upsert({
-    where: { userId_roleId_tenantId: { userId, roleId: roleRecord.id, tenantId: req.tenantId! } },
-    update: {},
-    create: { userId, roleId: roleRecord.id, tenantId: req.tenantId! },
-  });
-
-  res.status(201).json({ membership });
-});
-
-tenantsRouter.delete("/tenants/:tenantId/members/:userId", requireTenant, requirePermission(PERMISSIONS.USER_MANAGE), async (req, res) => {
-  const userId = req.params.userId as string;
-  const tenantId = req.params.tenantId as string;
-
-  const ownerRole = await prisma.role.findUnique({ where: { name: TENANT_ROLES.OWNER } });
-  if (ownerRole) {
-    const isOwner = await prisma.userRole.findUnique({
-      where: { userId_roleId_tenantId: { userId, roleId: ownerRole.id, tenantId } },
+tenantsRouter.get(
+  "/tenants/:tenantId/members",
+  requireTenant,
+  requirePermission(PERMISSIONS.USER_VIEW),
+  async (req, res) => {
+    const members = await prisma.userRole.findMany({
+      where: { tenantId: req.tenantId },
+      include: { user: { select: { id: true, name: true, email: true } }, role: true },
     });
-    if (isOwner) {
-      const ownerCount = await prisma.userRole.count({ where: { tenantId, roleId: ownerRole.id } });
-      if (ownerCount <= 1) {
-        res.status(409).json({ error: "Cannot remove the last owner of a tenant" });
-        return;
+    res.json({ members });
+  },
+);
+
+tenantsRouter.post(
+  "/tenants/:tenantId/members",
+  requireTenant,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  async (req, res) => {
+    const { userId, role } = req.body as { userId?: string; role?: string };
+    if (!userId || !role || !ASSIGNABLE_ROLES.includes(role)) {
+      res
+        .status(400)
+        .json({ error: `userId and role are required (role must be one of: ${ASSIGNABLE_ROLES.join(", ")})` });
+      return;
+    }
+
+    const roleRecord = await prisma.role.findUnique({ where: { name: role } });
+    if (!roleRecord) {
+      res.status(400).json({ error: `Unknown role: ${role}` });
+      return;
+    }
+
+    const membership = await prisma.userRole.upsert({
+      where: { userId_roleId_tenantId: { userId, roleId: roleRecord.id, tenantId: req.tenantId! } },
+      update: {},
+      create: { userId, roleId: roleRecord.id, tenantId: req.tenantId! },
+    });
+
+    res.status(201).json({ membership });
+  },
+);
+
+tenantsRouter.delete(
+  "/tenants/:tenantId/members/:userId",
+  requireTenant,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  async (req, res) => {
+    const userId = req.params.userId as string;
+    const tenantId = req.params.tenantId as string;
+
+    const ownerRole = await prisma.role.findUnique({ where: { name: TENANT_ROLES.OWNER } });
+    if (ownerRole) {
+      const isOwner = await prisma.userRole.findUnique({
+        where: { userId_roleId_tenantId: { userId, roleId: ownerRole.id, tenantId } },
+      });
+      if (isOwner) {
+        const ownerCount = await prisma.userRole.count({ where: { tenantId, roleId: ownerRole.id } });
+        if (ownerCount <= 1) {
+          res.status(409).json({ error: "Cannot remove the last owner of a tenant" });
+          return;
+        }
       }
     }
-  }
 
-  await prisma.userRole.deleteMany({ where: { userId, tenantId } });
-  res.status(204).send();
-});
+    await prisma.userRole.deleteMany({ where: { userId, tenantId } });
+    res.status(204).send();
+  },
+);
 
 tenantsRouter.get("/roles", async (_req, res) => {
   res.json({

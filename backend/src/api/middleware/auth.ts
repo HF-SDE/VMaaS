@@ -1,7 +1,8 @@
-import type { NextFunction, Request, Response } from "express";
-import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "@/lib/auth";
-import { hasPermission, isTenantMember, type PermissionKey } from "@/lib/rbac";
+import { type PermissionKey, hasPermission, isTenantMember } from "@/lib/rbac";
+
+import { fromNodeHeaders } from "better-auth/node";
+import type { NextFunction, Request, Response } from "express";
 
 type AuthSession = Awaited<ReturnType<typeof auth.api.getSession>>;
 
