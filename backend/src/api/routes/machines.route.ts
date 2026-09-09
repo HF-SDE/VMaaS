@@ -15,10 +15,10 @@ export const machinesRouter = Router();
 
 machinesRouter.use(requireAuth, requireTenant);
 
-machinesRouter.get("/tenants/:tenantId/machines", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
+machinesRouter.get("/:tenantId/machines", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
 
 machinesRouter.post(
-  "/tenants/:tenantId/machines",
+  "/:tenantId/machines",
   requirePermission(PERMISSIONS.MACHINE_WRITE),
   createMachineController,
 );

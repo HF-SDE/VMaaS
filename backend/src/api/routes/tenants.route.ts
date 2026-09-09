@@ -12,12 +12,12 @@ tenantsRouter.use(requireAuth);
 // are only ever assigned out-of-band (e.g. a seed script or DB migration).
 const ASSIGNABLE_ROLES = Object.values(TENANT_ROLES) as string[];
 
-tenantsRouter.get("/tenants", async (req, res) => {
+tenantsRouter.get("/", async (req, res) => {
   const tenants = await listTenantsForUser(req.session!.user.id);
   res.json({ tenants });
 });
 
-tenantsRouter.post("/tenants", async (req, res) => {
+tenantsRouter.post("/", async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) {
     res.status(400).json({ error: "name is required" });
@@ -43,7 +43,7 @@ tenantsRouter.post("/tenants", async (req, res) => {
 });
 
 tenantsRouter.get(
-  "/tenants/:tenantId/members",
+  "/:tenantId/members",
   requireTenant,
   requirePermission(PERMISSIONS.USER_VIEW),
   async (req, res) => {
@@ -56,7 +56,7 @@ tenantsRouter.get(
 );
 
 tenantsRouter.post(
-  "/tenants/:tenantId/members",
+  "/:tenantId/members",
   requireTenant,
   requirePermission(PERMISSIONS.USER_MANAGE),
   async (req, res) => {
@@ -85,7 +85,7 @@ tenantsRouter.post(
 );
 
 tenantsRouter.delete(
-  "/tenants/:tenantId/members/:userId",
+  "/:tenantId/members/:userId",
   requireTenant,
   requirePermission(PERMISSIONS.USER_MANAGE),
   async (req, res) => {
