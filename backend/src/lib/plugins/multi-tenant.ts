@@ -1,7 +1,8 @@
+import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import type { BetterAuthPlugin } from "better-auth";
 import { z } from "zod";
+
 import { isTenantMember, listTenantsForUser } from "../rbac";
 
 /**
@@ -43,10 +44,9 @@ export const multiTenant = () =>
             });
           }
 
-          const session = await ctx.context.internalAdapter.updateSession(
-            ctx.context.session.session.token,
-            { activeTenantId: tenantId },
-          );
+          const session = await ctx.context.internalAdapter.updateSession(ctx.context.session.session.token, {
+            activeTenantId: tenantId,
+          });
           if (!session) {
             throw new APIError("INTERNAL_SERVER_ERROR", { message: "Failed to update session" });
           }

@@ -1,9 +1,10 @@
-import express from "express";
-import dotenv from "dotenv";
-import { toNodeHandler } from "better-auth/node";
-import { auth } from "@/lib/auth";
-import { tenantsRouter } from "@/api/routes/tenants.route";
 import { machinesRouter } from "@/api/routes/machines.route";
+import { tenantsRouter } from "@/api/routes/tenants.route";
+import { auth } from "@/lib/auth";
+
+import { toNodeHandler } from "better-auth/node";
+import dotenv from "dotenv";
+import express from "express";
 
 dotenv.config();
 

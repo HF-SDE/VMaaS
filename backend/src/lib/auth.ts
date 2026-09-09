@@ -1,7 +1,8 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { prisma } from "./prisma";
+
 import { multiTenant } from "./plugins/multi-tenant";
+import { prisma } from "./prisma";
 import { listTenantsForUser } from "./rbac";
 
 export const auth = betterAuth({

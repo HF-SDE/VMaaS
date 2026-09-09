@@ -83,7 +83,6 @@ await auth.api.createOrganization({
 
 **Note**: The `userId` parameter cannot be used alongside session headers.
 
-
 ## Active Organizations
 
 Stored in the session and scopes subsequent API calls. Set after user selects one.
@@ -156,6 +155,7 @@ organization({
 ```ts
 import { betterAuth } from "better-auth";
 import { organization } from "better-auth/plugins";
+
 import { sendEmail } from "./email";
 
 export const auth = betterAuth({
@@ -241,9 +241,9 @@ import { organization } from "better-auth/plugins";
 export const auth = betterAuth({
   plugins: [
     organization({
-        teams: {
-            enabled: true
-        }
+      teams: {
+        enabled: true,
+      },
     }),
   ],
 });
@@ -268,10 +268,10 @@ Set active team with `setActiveTeam({ teamId })`.
 ```ts
 organization({
   teams: {
-      maximumTeams: 20, // Max teams per org
-      maximumMembersPerTeam: 50, // Max members per team
-      allowRemovingAllTeams: false, // Prevent removing last team
-  }
+    maximumTeams: 20, // Max teams per org
+    maximumMembersPerTeam: 50, // Max members per team
+    allowRemovingAllTeams: false, // Prevent removing last team
+  },
 });
 ```
 
@@ -280,15 +280,15 @@ organization({
 ### Enabling Dynamic Access Control
 
 ```ts
-import { organization } from "better-auth/plugins";
 import { dynamicAccessControl } from "@better-auth/organization/addons";
+import { organization } from "better-auth/plugins";
 
 export const auth = betterAuth({
   plugins: [
     organization({
-        dynamicAccessControl: {
-            enabled: true
-        }
+      dynamicAccessControl: {
+        enabled: true,
+      },
     }),
   ],
 });
@@ -440,6 +440,7 @@ organization({
 ```ts
 import { betterAuth } from "better-auth";
 import { organization } from "better-auth/plugins";
+
 import { sendEmail } from "./email";
 
 export const auth = betterAuth({

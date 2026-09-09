@@ -1,5 +1,5 @@
-import { prisma } from "./prisma";
 import type { TenantModel } from "../generated/prisma/models";
+import { prisma } from "./prisma";
 
 /**
  * Grantable capabilities, namespaced as "resource:action".
@@ -37,9 +37,7 @@ export const TENANT_ROLES = {
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   [PLATFORM_ROLE]: Object.values(PERMISSIONS),
   [TENANT_ROLES.OWNER]: Object.values(PERMISSIONS),
-  [TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter(
-    (key) => key !== PERMISSIONS.TENANT_MANAGE,
-  ),
+  [TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter((key) => key !== PERMISSIONS.TENANT_MANAGE),
   [TENANT_ROLES.OPERATOR]: [
     PERMISSIONS.TENANT_VIEW,
     PERMISSIONS.MACHINE_READ,
@@ -60,10 +58,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
 };
 
 /** All permission keys granted to `userId`, scoped to `tenantId` plus any platform-wide roles. */
-export async function getUserPermissions(
-  userId: string,
-  tenantId: string | null,
-): Promise<Set<PermissionKey>> {
+export async function getUserPermissions(userId: string, tenantId: string | null): Promise<Set<PermissionKey>> {
   const userRoles = await prisma.userRole.findMany({
     where: tenantId
       ? { userId, OR: [{ role: { isPlatformRole: true } }, { tenantId }] }

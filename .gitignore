@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules
 /.pnp
 .pnp.js
 
@@ -14,10 +15,12 @@
 
 # production
 /build
+*/dist
 
 # misc
 .DS_Store
 *.pem
+.vs
 
 # debug
 npm-debug.log*
@@ -27,6 +30,8 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+*/.env
+*/.env.local
 
 # vercel
 .vercel
@@ -36,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 /generated/prisma
+
+config/environment-variables/.env.*.dev*
+config/environment-variables/.env.*.prod*
