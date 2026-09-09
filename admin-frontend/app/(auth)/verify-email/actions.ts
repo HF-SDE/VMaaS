@@ -1,14 +1,18 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { authClient } from "@/lib/auth-client";
 
 export async function resendVerificationEmail(
   email: string,
 ): Promise<string | null> {
   try {
-    await auth.api.sendVerificationEmail({
-      body: { email, callbackURL: "/" },
+    const { error } = await authClient.sendVerificationEmail({
+      email,
+      callbackURL: "/",
     });
+    if (error) {
+      return error.message ?? "Noget gik galt. Prøv igen.";
+    }
     return null;
   } catch (err: unknown) {
     const message =
