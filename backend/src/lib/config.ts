@@ -8,6 +8,8 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   DATABASE_URL: z.url(),
   BETTER_AUTH_URL: z.url(),
+  BETTER_AUTH_SECRET: z.string().min(1, { message: "BETTER_AUTH_SECRET is required" }),
+  FRONTEND_URL: z.url().default("http://localhost:3000"),
   RATE_LIMIT_RESET_MINUTES: z.coerce.number().int().positive().default(15),
   RATE_LIMIT_COUNT: z.coerce.number().int().positive().default(100),
 });

@@ -22,18 +22,22 @@ app.set("trust proxy", 1);
 app.set("json spaces", 4);
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({ origin: config.FRONTEND_URL, credentials: true }));
 app.use(limiter);
+
+const api = express.Router();
 
 // Mounted before express.json(): Better Auth reads the raw request itself.
 // Also exposes the multi-tenant plugin's endpoints: POST /api/auth/tenant/switch, GET /api/auth/tenant/mine.
-app.all("/auth/*splat", toNodeHandler(auth));
+api.all("/auth/*splat", toNodeHandler(auth));
 
-app.use(express.json());
+api.use(express.json());
 
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+api.get("/health", (_req, res) => res.json({ status: "ok" }));
 
-app.use("/tenants", tenantsRouter);
-app.use("/machines", machinesRouter);
+api.use("/tenants", tenantsRouter);
+api.use("/machines", machinesRouter);
+
+app.use("/api", api);
 
 app.listen(config.PORT, () => console.log(`Server listening on port ${config.PORT}`));

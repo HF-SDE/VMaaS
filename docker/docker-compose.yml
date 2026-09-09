@@ -9,6 +9,8 @@ services:
       target: base
     expose:
       - "5000"
+    ports:
+      - 5000:5000
     command: ["npm", "run", "dev"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -41,39 +43,39 @@ services:
       - public
       - internal
 
-  admin-frontend:
-    container_name: admin-frontend
-    build:
-      context: ../admin-frontend/
-      dockerfile: Dockerfile
-    expose:
-      - "3000"
-    depends_on:
-      - backend
-    env_file:
-      - ../config/environment-variables/.env.admin-frontend.dev
-    volumes:
-      - ../admin-frontend:/usr/src/app
-      - admin-frontend_node_modules:/usr/src/app/node_modules
-    networks:
-      - internal
-      - public
+  # admin-frontend:
+  #   container_name: admin-frontend
+  #   build:
+  #     context: ../admin-frontend/
+  #     dockerfile: Dockerfile
+  #   expose:
+  #     - "3000"
+  #   depends_on:
+  #     - backend
+  #   env_file:
+  #     - ../config/environment-variables/.env.admin-frontend.dev
+  #   volumes:
+  #     - ../admin-frontend:/usr/src/app
+  #     - admin-frontend_node_modules:/usr/src/app/node_modules
+  #   networks:
+  #     - internal
+  #     - public
 
-  reverse-proxy:
-    container_name: reverse-proxy
-    image: nginx:alpine
-    ports:
-      - 80:80
-    expose:
-      - "80"
-    depends_on:
-      - backend
-    configs:
-      - source: nginx_config
-        target: /etc/nginx/nginx.conf
-    networks:
-      - internal
-      - public
+  # reverse-proxy:
+  #   container_name: reverse-proxy
+  #   image: nginx:alpine
+  #   ports:
+  #     - 80:80
+  #   expose:
+  #     - "80"
+  #   depends_on:
+  #     - backend
+  #   configs:
+  #     - source: nginx_config
+  #       target: /etc/nginx/nginx.conf
+  #   networks:
+  #     - internal
+  #     - public
 
 networks:
   public:

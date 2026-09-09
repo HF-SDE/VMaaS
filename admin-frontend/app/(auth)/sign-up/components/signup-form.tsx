@@ -1,4 +1,11 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { z } from "zod"
+
 import { cn } from "cn"
+import { authClient } from "@/lib/auth-client"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -10,12 +17,68 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
+const signupSchema = z
+  .object({
+    name: z.string().min(1, { message: "Name is required" }),
+    email: z.email({ message: "Invalid email address" }),
+    password: z
+      .string()
+      .min(8, { message: "Password must be at least 8 characters" }),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
+
 export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"form">) {
+  const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setError(null)
+
+    const formData = new FormData(e.currentTarget)
+    const parsed = signupSchema.safeParse({
+      name: formData.get("name"),
+      email: formData.get("email"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirm-password"),
+    })
+
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Invalid input")
+      return
+    }
+
+    setLoading(true)
+    const { error } = await authClient.signUp.email({
+      name: parsed.data.name,
+      email: parsed.data.email,
+      password: parsed.data.password,
+    })
+    setLoading(false)
+
+    if (error) {
+      setError(error.message ?? "Could not create account")
+      return
+    }
+
+    router.push("/")
+    router.refresh()
+  }
+
   return (
-    <form className={cn("flex flex-col gap-6", className)} {...props}>
+    <form
+      className={cn("flex flex-col gap-6", className)}
+      onSubmit={handleSubmit}
+      {...props}
+    >
       <FieldGroup>
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">Create your account</h1>
@@ -25,11 +88,17 @@ export function SignupForm({
         </div>
         <Field>
           <FieldLabel htmlFor="name">Full Name</FieldLabel>
-          <Input id="name" type="text" placeholder="John Doe" required />
+          <Input id="name" name="name" type="text" placeholder="John Doe" required />
         </Field>
         <Field>
           <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input id="email" type="email" placeholder="m@example.com" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="m@example.com"
+            required
+          />
           <FieldDescription>
             We&apos;ll use this to contact you. We will not share your email
             with anyone else.
@@ -37,18 +106,28 @@ export function SignupForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="password">Password</FieldLabel>
-          <Input id="password" type="password" required />
+          <Input id="password" name="password" type="password" required />
           <FieldDescription>
             Must be at least 8 characters long.
           </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="confirm-password">Confirm Password</FieldLabel>
-          <Input id="confirm-password" type="password" required />
+          <Input
+            id="confirm-password"
+            name="confirm-password"
+            type="password"
+            required
+          />
           <FieldDescription>Please confirm your password.</FieldDescription>
         </Field>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
         <Field>
-          <Button type="submit">Create Account</Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? "Creating account..." : "Create Account"}
+          </Button>
         </Field>
         <FieldSeparator>Or continue with</FieldSeparator>
         <Field>

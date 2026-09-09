@@ -44,8 +44,9 @@ import {
   UserKey,
   Users,
 } from "lucide-react"
+import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
-import { usePathname, useRouter } from "next/navigation"
+import { redirect, usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   DropdownMenu,
@@ -231,6 +232,7 @@ function SidebarNavigationSkeleton() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
+  const { data: session } = authClient.useSession()
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -254,6 +256,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
     []
   )
+
+  if (!session) return null
+  const { user } = session
 
   return (
     <Sidebar {...props}>
@@ -361,9 +366,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <NavBarFooter
-          data={{ name: "jeff", email: "jeff@example.com", image: null }}
-        />
+        <NavBarFooter data={user} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
@@ -407,7 +410,9 @@ export function NavBarFooter({ data }: { data: UserAvatarProps }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={async () => {
-                // handle signout
+                await authClient.signOut()
+                router.push("/login")
+                router.refresh()
               }}
             >
               <LogOut className="size-4" />
