@@ -1,5 +1,4 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
-import { prisma } from "@/lib/prisma";
 import { PERMISSIONS } from "@/lib/rbac";
 
 import { Router } from "express";
@@ -15,10 +14,5 @@ export const machinesRouter = Router();
 
 machinesRouter.use(requireAuth, requireTenant);
 
-machinesRouter.get("/:tenantId/machines", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
-
-machinesRouter.post(
-  "/:tenantId/machines",
-  requirePermission(PERMISSIONS.MACHINE_WRITE),
-  createMachineController,
-);
+machinesRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
+machinesRouter.post("/", requirePermission(PERMISSIONS.MACHINE_WRITE), createMachineController);

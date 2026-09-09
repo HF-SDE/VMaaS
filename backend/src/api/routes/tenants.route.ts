@@ -14,7 +14,7 @@ const ASSIGNABLE_ROLES = Object.values(TENANT_ROLES) as string[];
 
 tenantsRouter.get("/", async (req, res) => {
   const tenants = await listTenantsForUser(req.session!.user.id);
-  res.json({ tenants });
+  res.json(tenants);
 });
 
 tenantsRouter.post("/", async (req, res) => {
@@ -39,21 +39,16 @@ tenantsRouter.post("/", async (req, res) => {
     },
   });
 
-  res.status(201).json({ tenant });
+  res.status(201).json(tenant);
 });
 
-tenantsRouter.get(
-  "/:tenantId/members",
-  requireTenant,
-  requirePermission(PERMISSIONS.USER_VIEW),
-  async (req, res) => {
-    const members = await prisma.userRole.findMany({
-      where: { tenantId: req.tenantId },
-      include: { user: { select: { id: true, name: true, email: true } }, role: true },
-    });
-    res.json({ members });
-  },
-);
+tenantsRouter.get("/:tenantId/members", requireTenant, requirePermission(PERMISSIONS.USER_VIEW), async (req, res) => {
+  const members = await prisma.userRole.findMany({
+    where: { tenantId: req.tenantId },
+    include: { user: { select: { id: true, name: true, email: true } }, role: true },
+  });
+  res.json(members);
+});
 
 tenantsRouter.post(
   "/:tenantId/members",
@@ -80,7 +75,7 @@ tenantsRouter.post(
       create: { userId, roleId: roleRecord.id, tenantId: req.tenantId! },
     });
 
-    res.status(201).json({ membership });
+    res.status(201).json(membership);
   },
 );
 
@@ -112,7 +107,5 @@ tenantsRouter.delete(
 );
 
 tenantsRouter.get("/roles", async (_req, res) => {
-  res.json({
-    roles: ASSIGNABLE_ROLES.map((name) => ({ name, permissions: ROLE_PERMISSIONS[name] ?? [] })),
-  });
+  res.json(ASSIGNABLE_ROLES.map((name) => ({ name, permissions: ROLE_PERMISSIONS[name] ?? [] })));
 });

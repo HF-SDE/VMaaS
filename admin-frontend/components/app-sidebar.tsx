@@ -60,6 +60,7 @@ import {
 import Image from "next/image"
 import { UserAvatarProps, UserAvatar } from "./nav-user copy"
 import { useUser } from "@/hooks/use-user"
+import { TeamSwitcher } from "./team-switcher"
 
 interface NavItem {
   title: string
@@ -260,10 +261,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader className="flex flex-row justify-between">
+      <SidebarHeader className="flex justify-between">
         <Link href="/" className="h-max">
           <h1 className="text-lg font-bold">VMaaS</h1>
         </Link>
+        <TeamSwitcher />
         {process.env["NEXT_PUBLIC_APP_VERSION"] && (
           <Link href="/release-notes" className="text-xs text-muted-foreground">
             {process.env["NEXT_PUBLIC_APP_VERSION"]}
