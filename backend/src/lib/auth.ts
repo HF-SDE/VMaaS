@@ -6,6 +6,7 @@ import { prisma } from "./prisma";
 import { listTenantsForUser } from "./rbac";
 
 export const auth = betterAuth({
+  basePath: "/auth",
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   advanced: { database: { generateId: "uuid" } },
   emailAndPassword: { enabled: true },
