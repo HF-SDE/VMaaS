@@ -1,4 +1,5 @@
 import { machinesRouter } from "@/api/routes/machines.route";
+import productsRouter from "@/api/routes/products.route";
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
@@ -37,6 +38,7 @@ api.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 api.use("/tenants", tenantsRouter);
 api.use("/machines", machinesRouter);
+api.use("/products", productsRouter);
 
 app.use("/api", api);
 
