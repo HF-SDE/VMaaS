@@ -44,6 +44,7 @@ next-env.d.ts
 .agents/**/*
 .claude/**/*
 skills-lock.json
+docs/superpowers/**/*
 
 config/environment-variables/.env.*.dev*
 config/environment-variables/.env.*.prod*
