@@ -1,28 +1,15 @@
+import { PERMISSIONS, type PermissionKey } from "@vmaas/shared";
+
 import type { TenantModel } from "../generated/prisma/models";
 import { prisma } from "./prisma";
 
 /**
  * Grantable capabilities, namespaced as "resource:action".
- * Kept as the single source of truth for both the seed script and
- * runtime permission checks.
+ * Defined once in @vmaas/schemas and re-exported here so this module
+ * stays the single import site for the seed script and runtime checks.
  */
-export const PERMISSIONS = {
-  TENANT_MANAGE: "tenant:manage",
-  TENANT_VIEW: "tenant:view",
-  USER_MANAGE: "user:manage",
-  USER_VIEW: "user:view",
-  MACHINE_READ: "machine:read",
-  MACHINE_WRITE: "machine:write",
-  PRODUCT_READ: "product:read",
-  PRODUCT_WRITE: "product:write",
-  SLOT_MANAGE: "slot:manage",
-  SALE_READ: "sale:read",
-  SALE_REFUND: "sale:refund",
-  ALERT_READ: "alert:read",
-  ALERT_RESOLVE: "alert:resolve",
-} as const;
-
-export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+export { PERMISSIONS };
+export type { PermissionKey };
 
 export const PLATFORM_ROLE = "superadmin";
 
