@@ -58,8 +58,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
 import Image from "next/image"
-import { UserAvatarProps, UserAvatar } from "./nav-user copy"
-import { useUser } from "@/hooks/use-user"
+import { UserAvatarProps, UserAvatar } from "./user-avatar"
+import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
 
 interface NavItem {
@@ -231,10 +231,30 @@ function SidebarNavigationSkeleton() {
   )
 }
 
+export function AppSidebarSkeleton() {
+  return (
+    <Sidebar variant="inset">
+      <SidebarHeader className="flex justify-between">
+        <h1 className="text-lg font-bold">VMaaS</h1>
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        <SidebarNavigationSkeleton />
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuSkeleton showIcon />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  )
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
-  const user = useUser()
+  const { user } = useSession()
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -400,24 +420,26 @@ export function NavBarFooter({ data }: { data: UserAvatarProps }) {
             align="end"
             sideOffset={4}
           >
-            <DropdownMenuLabel>Min konto</DropdownMenuLabel>
             <DropdownMenuGroup>
+              <DropdownMenuLabel>Min konto</DropdownMenuLabel>
               <DropdownMenuItem render={<Link href="/profil" />}>
                 <User className="size-4" />
                 Profil
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await authClient.signOut()
-                router.push("/login")
-                router.refresh()
-              }}
-            >
-              <LogOut className="size-4" />
-              Log ud
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                onClick={async () => {
+                  await authClient.signOut()
+                  router.push("/login")
+                  router.refresh()
+                }}
+              >
+                <LogOut className="size-4" />
+                Log ud
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
