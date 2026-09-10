@@ -5,11 +5,9 @@ import { Router } from "express";
 
 import { createProductsController, getProductsController } from "../controllers/products.controller";
 
-const router = Router();
+export const productsRouter = Router();
 
-router.use(requireAuth, requireTenant);
+productsRouter.use(requireAuth, requireTenant);
 
-router.get("/", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsController);
-router.post("/", requirePermission(PERMISSIONS.PRODUCT_WRITE), createProductsController);
-
-export default router;
+productsRouter.get("/", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsController);
+productsRouter.post("/", requirePermission(PERMISSIONS.PRODUCT_WRITE), createProductsController);

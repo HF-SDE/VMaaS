@@ -1,5 +1,5 @@
 import { machinesRouter } from "@/api/routes/machines.route";
-import productsRouter from "@/api/routes/products.route";
+import {productsRouter} from "@/api/routes/products.route";
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
