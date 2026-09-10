@@ -1,0 +1,45 @@
+"use client"
+
+import { createContext, useContext, useMemo, type ReactNode } from "react"
+import type { PermissionKey } from "../../shared/types/permissions"
+
+import { hasPermission } from "./permissions"
+import type { Session } from "./session-fetch"
+
+type SessionContextValue = {
+  user: Session["user"]
+  activeTenantId: string | null
+  tenants: Session["tenants"]
+  hasPermission: (key: PermissionKey) => boolean
+}
+
+const SessionContext = createContext<SessionContextValue | undefined>(undefined)
+
+export function SessionProvider({
+  session,
+  children,
+}: {
+  session: Session
+  children: ReactNode
+}) {
+  const value = useMemo<SessionContextValue>(
+    () => ({
+      user: session.user,
+      activeTenantId: session.activeTenantId,
+      tenants: session.tenants,
+      hasPermission: (key) => hasPermission(session, key),
+    }),
+    [session]
+  )
+
+  return (
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+  )
+}
+
+export function useSession() {
+  const session = useContext(SessionContext)
+  if (!session)
+    throw new Error("useSession must be used inside SessionProvider")
+  return session
+}
