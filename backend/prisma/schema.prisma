@@ -8,6 +8,8 @@ datasource db {
   schemas  = ["auth", "rbac", "public"]
 }
 
+
+#Der skal være en tabel til auditlog
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -193,6 +195,10 @@ model Product {
   @@schema("public")
 }
 
+# Tenant skal være optional da en ny maskine ikke har nogle tenant til at starte med.
+# Det skal være muligt at give en grund til at man har disbaled maskinen fx for ikke at betale til os. Eller det skal ihvertfald være tydliget hvad det er disabled.
+# Der mangler en tabel med machine event
+# Der mangler en engangs aktiverings kode
 model Machine {
   id        String         @id @default(uuid()) @db.Uuid
   tenantId  String         @db.Uuid
@@ -244,6 +250,7 @@ model Slot {
   @@schema("public")
 }
 
+# Der skal være en tabel til sales events og inventory movements.
 model Sale {
   id          String      @id @default(uuid()) @db.Uuid
   tenantId    String      @db.Uuid
