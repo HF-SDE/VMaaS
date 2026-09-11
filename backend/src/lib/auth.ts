@@ -1,4 +1,4 @@
-import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { customSession } from "better-auth/plugins";
 
@@ -14,6 +14,12 @@ const options = {
   advanced: { database: { generateId: "uuid" } },
   emailAndPassword: { enabled: true },
   plugins: [multiTenant()],
+  socialProviders: {
+    github: {
+      clientId: config.GITHUB_CLIENT_ID,
+      clientSecret: config.GITHUB_CLIENT_SECRET,
+    },
+  },
   databaseHooks: {
     session: {
       create: {
