@@ -5,6 +5,7 @@
   "main": "./types/permissions.ts",
   "types": "./types/permissions.ts",
   "exports": {
-    ".": "./types/permissions.ts"
+    ".": "./types/permissions.ts",
+    "./types/*": "./types/*.ts"
   }
 }

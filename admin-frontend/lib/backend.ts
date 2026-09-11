@@ -30,11 +30,35 @@ export class BackendError extends Error {
   }
 }
 
+type QueryValue = string | number | boolean | null | undefined
+
 type BackendRequestOptions = Omit<RequestInit, "body" | "cache"> & {
   cookieHeader: string
   /** Sent as X-Tenant-Id. Must come from a lib/dal.ts gate, never from user input. */
   tenantId?: string
   json?: unknown
+  /** Appended to `path` as a query string. */
+  query?: Record<string, QueryValue>
+}
+
+/**
+ * Nullish and empty values are dropped rather than serialised, so an untouched
+ * optional param never reaches the backend as `?search=` — which would read as
+ * a deliberate empty filter instead of "not set".
+ */
+function queryString(query: Record<string, QueryValue> | undefined): string {
+  if (!query) return ""
+
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue
+    params.set(key, String(value))
+  }
+
+  const serialised = params.toString()
+
+  return serialised ? `?${serialised}` : ""
 }
 
 /**
@@ -43,13 +67,13 @@ type BackendRequestOptions = Omit<RequestInit, "body" | "cache"> & {
  */
 export async function backendRequest<T>(
   path: string,
-  { cookieHeader, tenantId, json, headers, ...init }: BackendRequestOptions
+  { cookieHeader, tenantId, json, query, headers, ...init }: BackendRequestOptions
 ): Promise<T> {
   // An anonymous request would 401 at best and silently read as "no data" at
   // worst, so treat a missing cookie as the programming error it is.
   if (!cookieHeader) throw new BackendError(401, path)
 
-  const response = await fetch(`${config.BACKEND_URL}${path}`, {
+  const response = await fetch(`${config.BACKEND_URL}${path}${queryString(query)}`, {
     ...init,
     // The response is scoped to one user's cookie, so it must never be cached.
     cache: "no-store",

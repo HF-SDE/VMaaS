@@ -115,6 +115,60 @@ describe("backendRequest", () => {
     )
   })
 
+  it("appends query params to the path", async () => {
+    const spy = mockFetch(200)
+    vi.stubGlobal("fetch", spy)
+
+    await backendRequest("/api/products/paginated", {
+      cookieHeader,
+      query: { page: 2, pageSize: 25, sortOrder: "asc" },
+    })
+
+    expect(spy.mock.calls[0]![0]).toBe(
+      "http://localhost:5000/api/products/paginated?page=2&pageSize=25&sortOrder=asc"
+    )
+  })
+
+  it("drops nullish and empty params so an unset filter is not sent as an empty one", async () => {
+    const spy = mockFetch(200)
+    vi.stubGlobal("fetch", spy)
+
+    await backendRequest("/api/products/paginated", {
+      cookieHeader,
+      query: { page: 0, search: "", sortBy: undefined, sortOrder: null },
+    })
+
+    expect(spy.mock.calls[0]![0]).toBe(
+      "http://localhost:5000/api/products/paginated?page=0"
+    )
+  })
+
+  it("leaves the path untouched when every param is dropped", async () => {
+    const spy = mockFetch(200)
+    vi.stubGlobal("fetch", spy)
+
+    await backendRequest("/api/products", {
+      cookieHeader,
+      query: { search: undefined },
+    })
+
+    expect(spy.mock.calls[0]![0]).toBe("http://localhost:5000/api/products")
+  })
+
+  it("escapes query values rather than splicing them into the URL raw", async () => {
+    const spy = mockFetch(200)
+    vi.stubGlobal("fetch", spy)
+
+    await backendRequest("/api/products/paginated", {
+      cookieHeader,
+      query: { search: "kaffe & te" },
+    })
+
+    expect(spy.mock.calls[0]![0]).toBe(
+      "http://localhost:5000/api/products/paginated?search=kaffe+%26+te"
+    )
+  })
+
   it("refuses to call the backend without a cookie rather than sending an anonymous request", async () => {
     const spy = mockFetch(200)
     vi.stubGlobal("fetch", spy)
