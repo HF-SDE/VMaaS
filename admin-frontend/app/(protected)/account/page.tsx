@@ -23,7 +23,7 @@ async function AccountSection() {
 
   return (
     <>
-      <p>Velkommen, {session.user.name}</p>
+      <p>Welcome, {session.user.name}</p>
       {hasPermission(session, PERMISSIONS.TENANT_MANAGE) && (
         <p>Administrator</p>
       )}
