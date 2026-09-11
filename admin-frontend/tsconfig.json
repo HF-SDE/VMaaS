@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@prisma": ["../backend/src/generated/prisma/browser"]
     }
   },
   "include": [
