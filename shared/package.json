@@ -2,11 +2,13 @@
   "name": "@vmaas/shared",
   "version": "1.0.0",
   "private": true,
-  "main": "./index.ts",
-  "types": "./types/permissions.ts",
   "exports": {
-    ".": "./*",
+    "./types": "./types/index.ts",
     "./types/*": "./types/*.ts",
-    "./schemas": "./schemas/index.ts"
+    "./schemas": "./schemas/index.ts",
+    "./schemas/*": "./schemas/*.ts"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
   }
 }
