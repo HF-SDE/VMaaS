@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { listTenantsForUser, ROLE_PERMISSIONS, TENANT_ROLES } from "@/lib/rbac";
+import { ROLE_PERMISSIONS, TENANT_ROLES, listTenantsForUser } from "@/lib/rbac";
+
+import { APIError } from "better-auth";
 
 export const ASSIGNABLE_ROLES = Object.values(TENANT_ROLES) as string[];
 
@@ -35,7 +37,7 @@ export async function createTenantService(userId: string, name: string) {
 export async function addMemberService(tenantId: string, userId: string, role: string) {
   const roleRecord = await prisma.role.findUnique({ where: { name: role } });
   if (!roleRecord) {
-    return { ok: false as const, error: `Unknown role: ${role}`, status: 400 };
+    throw new APIError("BAD_REQUEST", { message: `Unknown role: ${role}` });
   }
 
   const membership = await prisma.userRole.upsert({
