@@ -20,6 +20,7 @@ import { createTenant } from "@/app/(protected)/actions"
 import { createTenantSchema } from "@vmaas/shared/schemas"
 import { Tenant } from "@prisma"
 import { config } from "@/lib/config"
+import { redirect } from "next/navigation"
 
 export type CreateTenantFormData = z.infer<typeof createTenantSchema>
 
@@ -30,7 +31,7 @@ export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ tenantId }),
-    })
+    }).then((res) => res.ok && redirect("/machines"))
   }
 
   return (
