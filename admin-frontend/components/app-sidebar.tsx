@@ -91,46 +91,61 @@ const data: AppSidebarProps = {
       icon: <LayoutDashboard />,
     },
     {
-      title: "Kiosk",
-      url: "/kiosk",
+      title: "Sales",
+      url: "/sales",
       icon: <ScanBarcode />,
     },
     {
-      title: "Lager",
+      title: "Management",
       icon: <ShelvingUnit />,
 
       items: [
         {
-          title: "Oversigt",
-          url: "/lager",
+          title: "Machines",
+          url: "/machines",
 
           icon: <TableProperties />,
         },
         {
-          title: "Flyt vare",
-          url: "/lager/bevaegelse",
+          title: "Products",
+          url: "/products",
 
           icon: <ArrowRightLeft />,
         },
         {
-          title: "Opret ny",
-          url: "/lager/opret",
-          icon: <Plus />,
+          title: "Sites",
+          url: "/sites",
+
+          icon: <ArrowRightLeft />,
         },
         {
-          title: "Registrer spild",
-          url: "/lager/spild",
-          icon: <Trash />,
-        },
-        {
-          title: "Historik",
-          url: "/lager/logs",
+          title: "History",
+          url: "/history",
           icon: <ScrollText />,
         },
+      ],
+    },
+    {
+      title: "Access",
+      icon: <ShelvingUnit />,
+
+      items: [
         {
-          title: "Optælling",
-          url: "/lager/optaelling",
+          title: "Users",
+          url: "/users",
+
           icon: <TableProperties />,
+        },
+        {
+          title: "Permissions",
+          url: "/permissions",
+
+          icon: <ArrowRightLeft />,
+        },
+        {
+          title: "Roles",
+          url: "/roles",
+          icon: <ScrollText />,
         },
       ],
     },
@@ -422,9 +437,9 @@ export function NavBarFooter({ data }: { data: UserAvatarProps }) {
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel>Min konto</DropdownMenuLabel>
-              <DropdownMenuItem render={<Link href="/profil" />}>
+              <DropdownMenuItem render={<Link href="/account" />}>
                 <User className="size-4" />
-                Profil
+                Konto
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
