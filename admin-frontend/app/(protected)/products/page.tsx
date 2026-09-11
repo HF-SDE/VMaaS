@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { PERMISSIONS } from "../../../../shared/types/permissions"
+import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { requirePermission } from "@/lib/dal"
 import { getProductsPaginated } from "@/lib/data/products"

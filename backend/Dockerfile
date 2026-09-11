@@ -10,6 +10,7 @@ WORKDIR /usr/src/app
 # The file:../shared dependency resolves at install time, so the shared
 # package must land at /usr/src/shared before npm install runs.
 COPY shared/ /usr/src/shared/
+RUN npm install --prefix /usr/src/shared --omit=dev --no-package-lock
 
 # Copy package.json and install dependencies
 COPY backend/package.json ./

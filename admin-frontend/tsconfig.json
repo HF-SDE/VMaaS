@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@prisma": ["../backend/src/generated/prisma/browser"]
     }
   },
   "include": [
@@ -29,7 +30,8 @@
     "**/*.tsx",
     "**/*.mts",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "../backend/src/generated/prisma/browser.ts"
   ],
   "exclude": ["node_modules"]
 }

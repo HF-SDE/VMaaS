@@ -46,8 +46,8 @@ services:
   # admin-frontend:
   #   container_name: admin-frontend
   #   build:
-  #     context: ../admin-frontend/
-  #     dockerfile: Dockerfile
+  #     context: ..
+  #     dockerfile: admin-frontend/Dockerfile
   #   expose:
   #     - "3000"
   #   depends_on:
@@ -56,6 +56,7 @@ services:
   #     - ../config/environment-variables/.env.admin-frontend.dev
   #   volumes:
   #     - ../admin-frontend:/usr/src/app
+  #     - ../shared:/usr/src/shared
   #     - admin-frontend_node_modules:/usr/src/app/node_modules
   #   networks:
   #     - internal

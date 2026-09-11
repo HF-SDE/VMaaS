@@ -1,11 +1,11 @@
-import { PERMISSIONS, type PermissionKey } from "@vmaas/shared";
+import { PERMISSIONS, type PermissionKey } from "@vmaas/shared/types";
 
 import type { TenantModel } from "../generated/prisma/models";
 import { prisma } from "./prisma";
 
 /**
  * Grantable capabilities, namespaced as "resource:action".
- * Defined once in @vmaas/schemas and re-exported here so this module
+ * Defined once in @vmaas/shared/types/permissions and re-exported here so this module
  * stays the single import site for the seed script and runtime checks.
  */
 export { PERMISSIONS };

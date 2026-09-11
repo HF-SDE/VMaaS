@@ -56,11 +56,6 @@ export async function addMemberController(req: Request, res: Response) {
 
   const result = await addMemberService(req.tenantId!, userId, role);
 
-  if (!result.ok) {
-    res.status(result.status).json({ error: result.error });
-    return;
-  }
-
   res.status(201).json(result.membership);
 }
 
