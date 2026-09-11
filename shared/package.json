@@ -1,0 +1,11 @@
+{
+  "name": "@vmaas/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./types/permissions.ts",
+  "types": "./types/permissions.ts",
+  "exports": {
+    ".": "./types/permissions.ts",
+    "./types/*": "./types/*.ts"
+  }
+}

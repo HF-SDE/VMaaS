@@ -5,7 +5,11 @@ import { PERMISSIONS } from "@/lib/rbac";
 import { Router } from "express";
 import { z } from "zod/v4";
 
-import { createProductsController, getProductsController } from "../controllers/products.controller";
+import {
+  createProductsController,
+  getProductsController,
+  getProductsPageController,
+} from "../controllers/products.controller";
 
 export const productsRouter = Router();
 
@@ -19,6 +23,11 @@ const createProductSchema = z.object({
 });
 
 productsRouter.get("/", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsController);
+productsRouter.get(
+  "/paginated",
+  requirePermission(PERMISSIONS.PRODUCT_READ),
+  getProductsPageController,
+);
 productsRouter.post(
   "/",
   requirePermission(PERMISSIONS.PRODUCT_WRITE),
