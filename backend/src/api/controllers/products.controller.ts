@@ -1,10 +1,6 @@
 import { Request, Response } from "express";
 
-import {
-  createProductService,
-  getProductsPageService,
-  getProductsService,
-} from "../services/products.service";
+import { createProductService, getProductsPageService, getProductsService } from "../services/products.service";
 
 /** Query strings arrive as `string | string[] | undefined`; keep only usable scalars. */
 function parseNumberParam(value: unknown): number | undefined {

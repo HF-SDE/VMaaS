@@ -12,6 +12,6 @@ export const PERMISSIONS = {
   SALE_REFUND: "sale:refund",
   ALERT_READ: "alert:read",
   ALERT_RESOLVE: "alert:resolve",
-} as const
+} as const;
 
-export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
+export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

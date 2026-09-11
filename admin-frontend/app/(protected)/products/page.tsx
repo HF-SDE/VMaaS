@@ -6,6 +6,7 @@ import { getProductsPaginated } from "@/lib/data/products"
 
 import { productsErrorMessage } from "./messages"
 import { ProductsDataTable } from "./products-table"
+import Loader from "@/components/loader/loader"
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
@@ -24,15 +25,11 @@ export default function ProductsPage({
       <h1 className="text-2xl font-bold">Produkter</h1>
 
       {/* Reads the session and the backend, so it streams in behind the boundary. */}
-      <Suspense fallback={<ProductsTableFallback />}>
+      <Suspense fallback={<Loader text="Indlæser produkter…" />}>
         <ProductsSection searchParams={searchParams} />
       </Suspense>
     </div>
   )
-}
-
-function ProductsTableFallback() {
-  return <p className="text-muted-foreground">Indlæser produkter…</p>
 }
 
 /**
@@ -40,7 +37,11 @@ function ProductsTableFallback() {
  * every later page/sort/search goes through the `getProductsAction` server
  * action from the client component.
  */
-async function ProductsSection({ searchParams }: { searchParams: SearchParams }) {
+async function ProductsSection({
+  searchParams,
+}: {
+  searchParams: SearchParams
+}) {
   const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_READ)
   const params = await searchParams
 
