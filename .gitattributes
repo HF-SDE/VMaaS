@@ -1,0 +1,5 @@
+# Scripts that run inside Linux containers must keep LF endings,
+# otherwise the shebang resolves to "/bin/sh\r" and exec fails.
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
