@@ -21,6 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.9.1",
     "@shadcn/react": "^0.3.1",
+    "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-table": "^9.2.4",
     "@vmaas/shared": "file:../shared",
     "better-auth": "^1.7.3",

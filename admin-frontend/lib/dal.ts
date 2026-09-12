@@ -3,7 +3,7 @@ import "server-only"
 import { cacheLife } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import type { PermissionKey } from "../../shared/types/permissions"
+import type { PermissionKey } from "@vmaas/shared/types/permissions"
 
 import { authCookieHeader } from "./backend"
 import { forbiddenPath } from "./forbidden"

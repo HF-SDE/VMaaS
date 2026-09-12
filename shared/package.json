@@ -6,7 +6,8 @@
     "./types": "./types/index.ts",
     "./types/*": "./types/*.ts",
     "./schemas": "./schemas/index.ts",
-    "./schemas/*": "./schemas/*.ts"
+    "./schemas/*": "./schemas/*.ts",
+    "./lib/*": "./lib/*.ts"
   },
   "dependencies": {
     "zod": "^4.5.4"

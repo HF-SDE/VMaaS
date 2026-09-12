@@ -45,6 +45,7 @@ next-env.d.ts
 .claude/**/*
 skills-lock.json
 docs/superpowers/**/*
+CLAUDE.md
 
 config/environment-variables/.env.*.dev*
 config/environment-variables/.env.*.prod*

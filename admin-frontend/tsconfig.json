@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@prisma": ["../backend/src/generated/prisma/browser"]
+      "@prisma": ["../backend/src/generated/prisma/browser"],
+      "@shared": ["../shared"]
     }
   },
   "include": [
@@ -31,7 +32,8 @@
     "**/*.mts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "../backend/src/generated/prisma/browser.ts"
+    "../backend/src/generated/prisma/browser.ts",
+    "../shared/lib/error-handling.ts"
   ],
   "exclude": ["node_modules"]
 }
