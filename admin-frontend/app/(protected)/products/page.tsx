@@ -1,67 +1,79 @@
+import { ProductsDataTable } from "./products-table"
 import { Suspense } from "react"
+import Loader from "@/components/loader/loader"
+import Link from "next/link"
+import { RoleGate } from "@/components/role-gate"
+import { Button } from "@/components/ui/button"
+import { getProductsPaginated } from "@/lib/data/products"
+import { requirePermission } from "@/lib/dal"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
-import { requirePermission } from "@/lib/dal"
-import { getProductsPaginated } from "@/lib/data/products"
+const NO_READ_ACCESS = "Du har ikke adgang til produkter."
 
-import { productsErrorMessage } from "./messages"
-import { ProductsDataTable } from "./products-table"
-import Loader from "@/components/loader/loader"
-
-type SearchParams = Promise<Record<string, string | string[] | undefined>>
-
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value
-}
-
-export default function ProductsPage({
+// TODO: this was edited on 21/03/2026 to add server-side data fetching for the initial table render.
+// I'm not sure if this even helps with performance so maybe we should remove it again?
+async function ProductsTableLoader({
   searchParams,
 }: {
-  searchParams: SearchParams
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const page = Number(params?.["page"] ?? "0")
+  const pageSize = Number(params?.["size"] ?? "10")
+  const sortBy = (params?.["orderBy"] as string | undefined) ?? "createdAt"
+  const sortOrder = ((params?.["orderDir"] as string | undefined) ?? "asc") as
+    "asc" | "desc"
+  const search = (params?.["q"] as string | undefined) ?? ""
+  // Re-checked here, not just in the <RoleGate> above: the gate decides what to
+  // render, this is what actually guards the data.
+  const session = await requirePermission(
+    PERMISSIONS.PRODUCT_READ,
+    NO_READ_ACCESS
+  )
+  const { activeTenantId } = session
+  const [, initialData] = await getProductsPaginated(activeTenantId, {
+    page,
+    pageSize,
+    sortBy,
+    sortOrder,
+    search,
+  })
+
+  return <ProductsDataTable initialData={initialData ?? undefined} />
+}
+
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      {/* Static: prerendered into the shell. */}
-      <h1 className="text-2xl font-bold">Produkter</h1>
-
-      {/* Reads the session and the backend, so it streams in behind the boundary. */}
-      <Suspense fallback={<Loader text="Indlæser produkter…" />}>
-        <ProductsSection searchParams={searchParams} />
+    <div className="container mx-auto py-10">
+      <div className="flex w-full justify-between">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">Produkter</h1>
+          <p className="text-muted-foreground">
+            Oversigt over alle produkter i systemet.
+          </p>
+        </div>
+        {/* Hiding one button must not redirect the whole page away. */}
+        <Suspense>
+          <RoleGate perms={[PERMISSIONS.PRODUCT_WRITE]} performRedirect={false}>
+            <Button
+              nativeButton={false}
+              size="lg"
+              render={<Link href="/produkter/opret" />}
+            >
+              Opret produkt
+            </Button>
+          </RoleGate>
+        </Suspense>
+      </div>
+      <Suspense fallback={<Loader />}>
+        <RoleGate perms={[PERMISSIONS.PRODUCT_READ]} reason={NO_READ_ACCESS}>
+          <ProductsTableLoader searchParams={searchParams} />
+        </RoleGate>
       </Suspense>
     </div>
   )
-}
-
-/**
- * Renders the first page server-side so the table has rows on first paint;
- * every later page/sort/search goes through the `getProductsAction` server
- * action from the client component.
- */
-async function ProductsSection({
-  searchParams,
-}: {
-  searchParams: SearchParams
-}) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_READ)
-  const params = await searchParams
-
-  const page = Number(first(params.page) ?? 0)
-  const pageSize = Number(first(params.size) ?? 10)
-
-  const [error, initialData] = await getProductsPaginated(activeTenantId, {
-    // The backend clamps out-of-range values, so a junk URL still renders.
-    page: Number.isFinite(page) ? page : 0,
-    pageSize: Number.isFinite(pageSize) ? pageSize : 10,
-    sortBy: first(params.orderBy) ?? "createdAt",
-    sortOrder: first(params.orderDir) === "asc" ? "asc" : "desc",
-    search: first(params.q),
-  })
-
-  // A failed first page renders the message in place rather than throwing to
-  // the error boundary — the rest of the page is still perfectly usable.
-  if (error) {
-    return <p className="text-destructive">{productsErrorMessage(error)}</p>
-  }
-
-  return <ProductsDataTable initialData={initialData} />
 }

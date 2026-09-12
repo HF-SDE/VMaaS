@@ -2,10 +2,11 @@ import "server-only"
 
 import { cacheLife } from "next/cache"
 import { cookies } from "next/headers"
-import { notFound, redirect } from "next/navigation"
+import { redirect } from "next/navigation"
 import type { PermissionKey } from "../../shared/types/permissions"
 
 import { authCookieHeader } from "./backend"
+import { forbiddenPath } from "./forbidden"
 import { hasPermission } from "./permissions"
 import { fetchSession, type Session } from "./session-fetch"
 
@@ -37,12 +38,19 @@ export async function requireTenant(): Promise<
   return session as Session & { activeTenantId: string }
 }
 
-/** Uses notFound() rather than forbidden(), which needs experimental
- *  `authInterrupts`. Use hasPermission() for conditional UI instead. */
+/**
+ * Sends a denied user to /forbidden, the same place <RoleGate> sends them, so
+ * a page-level and a component-level denial look alike. `reason` is plain
+ * Danish copy for that page; omit it for the generic wording.
+ *
+ * Use hasPermission() instead for conditional UI, where hiding one control
+ * should not take the whole page away.
+ */
 export async function requirePermission(
-  key: PermissionKey
+  key: PermissionKey,
+  reason?: string
 ): Promise<Session & { activeTenantId: string }> {
   const session = await requireTenant()
-  if (!hasPermission(session, key)) notFound()
+  if (!hasPermission(session, key)) redirect(forbiddenPath(reason))
   return session
 }
