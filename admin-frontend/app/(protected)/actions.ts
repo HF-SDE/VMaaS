@@ -1,11 +1,13 @@
 "use server"
 
 import { revalidateTag } from "next/cache"
-import { PERMISSIONS } from "../../../shared/types/permissions"
+import { PERMISSIONS } from "@vmaas/shared/types"
 
 import { backendFetch } from "@/lib/backend"
 import { tenantTags } from "@/lib/cache-tags"
 import { requirePermission, requireTenant } from "@/lib/dal"
+import { CreateTenantFormData } from "../(auth)/welcome/client"
+import { Tenant } from "@prisma"
 
 // Next 16 requires a cache-life profile as revalidateTag's second argument.
 // These are explicit, user-triggered mutations, so expire the entry immediately
@@ -43,4 +45,15 @@ export async function createMachine(formData: FormData): Promise<void> {
   })
 
   revalidateTag(`machines:${activeTenantId}`, IMMEDIATE)
+}
+
+export async function createTenant(data: CreateTenantFormData): Promise<void> {
+  const result: Tenant = await backendFetch("/api/tenants", {
+    method: "POST",
+    json: data,
+  })
+
+  await switchTenant(result.id)
+
+  revalidateTag("tenants", IMMEDIATE)
 }

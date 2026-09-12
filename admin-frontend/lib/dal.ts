@@ -34,7 +34,7 @@ export async function requireTenant(): Promise<
   Session & { activeTenantId: string }
 > {
   const session = await requireUser()
-  if (!session.activeTenantId) redirect("/velkommen")
+  if (!session.activeTenantId) redirect("/welcome")
   return session as Session & { activeTenantId: string }
 }
 
