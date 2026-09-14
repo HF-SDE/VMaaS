@@ -1,13 +1,16 @@
 import { Tenant } from "@prisma"
 import WelcomePageClient from "./client"
-import { backendFetch } from "@/lib/backend"
+import { fetchData } from "@/lib/data/data-fetch"
 
 export const instant = false
 
 export default async function WelcomePage() {
-  const tenants = await backendFetch<Tenant[]>("/api/tenants", {
-    method: "GET",
-  })
+  const [err, tenants] = await fetchData<Tenant[]>("/api/tenants")
+
+  if (err) {
+    console.error(err)
+    return <div>Error loading tenants</div>
+  }
 
   return <WelcomePageClient tenants={tenants} />
 }
