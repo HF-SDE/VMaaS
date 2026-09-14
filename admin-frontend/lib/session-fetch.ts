@@ -5,6 +5,7 @@ export type Session = {
   user: { id: string; name: string; email: string }
   activeTenantId: string | null
   tenants: { id: string; name: string }[]
+  tenantInvites: TenantInvite[]
   permissions: PermissionKey[]
 }
 
@@ -12,8 +13,17 @@ type SessionResponse = {
   user: { id: string; name: string; email: string }
   session: { activeTenantId?: string | null }
   tenants?: { id: string; name: string }[]
+  tenantInvites?: TenantInvite[]
   permissions?: PermissionKey[]
 } | null
+
+type TenantInvite = {
+  tenantId: string
+  tenantName: string
+  token: string
+  roleName?: string
+  expiresAt: Date
+}
 
 /** Long enough for a restarting backend or a just-rolled rate-limit window to
  *  come back, short enough that a blocked server render still feels immediate. */
@@ -76,6 +86,7 @@ export async function fetchSession(
     user: body.user,
     activeTenantId: body.session?.activeTenantId ?? null,
     tenants: body.tenants ?? [],
+    tenantInvites: body.tenantInvites ?? [],
     permissions: body.permissions ?? [],
   }
 }

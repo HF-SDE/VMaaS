@@ -19,9 +19,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  userRoles UserRole[]
-  sessions  Session[]
-  accounts  Account[]
+  userRoles       UserRole[]
+  sessions        Session[]
+  accounts        Account[]
+  sentInvites     TenantInvite[] @relation("TenantInviteSender")
+  receivedInvites TenantInvite[] @relation("TenantInviteRecipient")
 
   @@map("users")
   @@schema("auth")
@@ -92,6 +94,7 @@ model Role {
 
   rolePermissions RolePermission[]
   userRoles       UserRole[]
+  tenantInvites   TenantInvite[]
 
   @@map("roles")
   @@schema("rbac")
@@ -141,6 +144,40 @@ model UserRole {
   @@schema("rbac")
 }
 
+enum invitation_status {
+  pending
+  accepted
+  expired
+  revoked
+  rejected
+
+  @@schema("rbac")
+}
+
+model TenantInvite {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  user        User              @relation("TenantInviteRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  tenantId    String            @db.Uuid
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleId      String            @db.Uuid
+  role        Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  invitedById String            @db.Uuid
+  invitedBy   User              @relation("TenantInviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  status      invitation_status @default(pending)
+  token       String            @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([userId, tenantId, status])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_invites")
+  @@schema("rbac")
+}
+
 enum machine_status {
   online
   offline
@@ -177,6 +214,7 @@ model Tenant {
   sales          Sale[]
   activeSessions Session[]
   roles          Role[]
+  invites        TenantInvite[]
   sites          Site[]
 
   @@map("tenants")

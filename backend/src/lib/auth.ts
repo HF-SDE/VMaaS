@@ -5,7 +5,21 @@ import { customSession } from "better-auth/plugins";
 import { config } from "./config";
 import { multiTenant } from "./plugins/multi-tenant";
 import { prisma } from "./prisma";
-import { getUserPermissions, listTenantsForUser } from "./rbac";
+import { getUserInvites, getUserPermissions, listTenantsForUser } from "./rbac";
+
+const github = {
+  clientId: config.GITHUB_CLIENT_ID,
+  clientSecret: config.GITHUB_CLIENT_SECRET,
+};
+
+const socialProviders: BetterAuthOptions["socialProviders"] = {};
+
+if (github.clientId && github.clientSecret) {
+  socialProviders.github = {
+    clientId: github.clientId,
+    clientSecret: github.clientSecret,
+  };
+}
 
 const options = {
   secret: config.BETTER_AUTH_SECRET,
@@ -14,12 +28,7 @@ const options = {
   advanced: { database: { generateId: "uuid" } },
   emailAndPassword: { enabled: true },
   plugins: [multiTenant()],
-  socialProviders: {
-    github: {
-      clientId: config.GITHUB_CLIENT_ID,
-      clientSecret: config.GITHUB_CLIENT_SECRET,
-    },
-  },
+  socialProviders,
   databaseHooks: {
     session: {
       create: {
@@ -38,12 +47,13 @@ type EnrichInput = { user: { id: string }; session: { activeTenantId?: string | 
  *  every value comes from this project's rbac.ts. */
 export async function enrichSession({ user, session }: EnrichInput) {
   const activeTenantId = session.activeTenantId ?? null;
-  const [tenants, permissions] = await Promise.all([
+  const [tenants, permissions, tenantInvites] = await Promise.all([
     listTenantsForUser(user.id),
     getUserPermissions(user.id, activeTenantId),
+    getUserInvites(user.id),
   ]);
 
-  return { user, session, tenants, permissions: [...permissions] };
+  return { user, session, tenants, tenantInvites, permissions: [...permissions] };
 }
 
 export const auth = betterAuth({

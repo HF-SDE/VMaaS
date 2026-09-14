@@ -22,31 +22,19 @@ import {
 } from "./ui/collapsible"
 import {
   ArrowRightLeft,
-  Beer,
-  BottleWine,
-  CalendarRange,
   ChevronRight,
-  Cog,
-  FileText,
-  Key,
   LayoutDashboard,
   LogOut,
   MoreHorizontal,
-  Package,
-  Plus,
   ScanBarcode,
   ScrollText,
   ShelvingUnit,
-  ShieldUser,
   TableProperties,
-  Trash,
   User,
-  UserKey,
-  Users,
 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
-import { redirect, usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   DropdownMenu,
@@ -61,18 +49,19 @@ import Image from "next/image"
 import { UserAvatarProps, UserAvatar } from "./user-avatar"
 import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
+import { PermissionKey } from "@vmaas/shared/types"
 
 interface NavItem {
   title: string
   url?: string
   icon?: React.ReactNode
-  requiredPermission?: Permissions[]
+  requiredPermission?: PermissionKey
   feature?: "brew-log"
   items?: {
     title: string
     url: string
     icon?: React.ReactNode
-    requiredPermission?: Permissions[]
+    requiredPermission?: PermissionKey
     feature?: "brew-log"
   }[]
 }
@@ -133,18 +122,18 @@ const data: AppSidebarProps = {
         {
           title: "Users",
           url: "/users",
-
+          requiredPermission: "user:view",
           icon: <TableProperties />,
         },
-        {
-          title: "Permissions",
-          url: "/permissions",
-
-          icon: <ArrowRightLeft />,
-        },
+        // {
+        //   title: "Permissions",
+        //   url: "/permissions",
+        //   icon: <ArrowRightLeft />,
+        // },
         {
           title: "Roles",
           url: "/roles",
+          requiredPermission: "role:view",
           icon: <ScrollText />,
         },
       ],
@@ -269,7 +258,7 @@ export function AppSidebarSkeleton() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
-  const { user } = useSession()
+  const { user, hasPermission } = useSession()
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -373,25 +362,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </SidebarMenu>
                   <CollapsibleContent>
                     <SidebarMenu>
-                      {item.items?.map((subItem) => (
-                        <SidebarMenuItem key={subItem.title} className="pl-4">
-                          <SidebarMenuButton
-                            className={cn(
-                              currentPath === subItem.url
-                                ? "bg-primary! text-primary-foreground!"
-                                : "",
-                              "text-sm"
-                            )}
-                            isActive={currentPath === subItem.url}
-                            render={<Link href={subItem.url} />}
-                          >
-                            {subItem.icon && (
-                              <span className="mr-2">{subItem.icon}</span>
-                            )}
-                            {subItem.title}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
+                      {item.items?.map((subItem) => {
+                        if (
+                          subItem.requiredPermission &&
+                          !hasPermission(subItem.requiredPermission)
+                        ) {
+                          return null
+                        }
+
+                        return (
+                          <SidebarMenuItem key={subItem.title} className="pl-4">
+                            <SidebarMenuButton
+                              className={cn(
+                                currentPath === subItem.url
+                                  ? "bg-primary! text-primary-foreground!"
+                                  : "",
+                                "text-sm"
+                              )}
+                              isActive={currentPath === subItem.url}
+                              render={<Link href={subItem.url} />}
+                            >
+                              {subItem.icon && (
+                                <span className="mr-2">{subItem.icon}</span>
+                              )}
+                              {subItem.title}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
                     </SidebarMenu>
                   </CollapsibleContent>
                 </Collapsible>

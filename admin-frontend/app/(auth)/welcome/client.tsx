@@ -18,20 +18,40 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { createTenant } from "@/app/(protected)/actions"
 import { createTenantSchema } from "@vmaas/shared/schemas"
-import { Tenant } from "@prisma"
 
 import { backendPost } from "@/lib/data/post-wrapper"
 import { redirect } from "next/navigation"
 import { toast } from "sonner"
+import { Session } from "@/lib/session-fetch"
+import { fetchData } from "@/lib/data/data-fetch"
+import { InviteResponses } from "@vmaas/shared/types/tenants"
 
 export type CreateTenantFormData = z.infer<typeof createTenantSchema>
 
-export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
+export default function WelcomePageClient({
+  tenants,
+  tenantInvites,
+}: {
+  tenants: Session["tenants"]
+  tenantInvites: Session["tenantInvites"]
+}) {
   async function switchTenant(tenantId: string) {
     const [error] = await backendPost("/api/auth/tenant/switch", { tenantId })
     if (error) {
       // Handle the error appropriately, e.g., show a toast or log it
       toast.error(error.message)
+      return
+    } else redirect("/machines")
+  }
+
+  async function respondToInvite(token: string, status: InviteResponses) {
+    const [error] = await fetchData(`/api/tenants/accept-invite/${token}`, {
+      method: "POST",
+      body: { status },
+    })
+    if (error) {
+      // Handle the error appropriately, e.g., show a toast or log it
+      toast.error(error.reason)
       return
     } else redirect("/machines")
   }
@@ -55,9 +75,11 @@ export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
       <EmptyContent>
         <NewTeneantForm />
 
-        <EmptyDescription>
-          Or join an existing tenant by clicking on the name below
-        </EmptyDescription>
+        {tenants.length > 0 && (
+          <EmptyDescription>
+            Or join an existing tenant by clicking on the name below
+          </EmptyDescription>
+        )}
 
         {tenants.map((tenant) => (
           <Button
@@ -67,6 +89,35 @@ export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
           >
             {tenant.name}
           </Button>
+        ))}
+
+        {tenantInvites.length > 0 && (
+          <EmptyDescription>
+            You have been invited to join the following tenants:
+          </EmptyDescription>
+        )}
+
+        {tenantInvites.map((invite) => (
+          <div key={invite.tenantId} className="flex gap-2">
+            <span>
+              {invite.tenantName} - Invited by {invite.tenantName} as{" "}
+              {invite.roleName}
+            </span>
+
+            <Button
+              key={invite.tenantId}
+              variant="outline"
+              onClick={() => respondToInvite(invite.token, "accepted")}
+            >
+              Accept
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => respondToInvite(invite.token, "rejected")}
+            >
+              Reject
+            </Button>
+          </div>
         ))}
       </EmptyContent>
     </Empty>
