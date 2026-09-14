@@ -5,6 +5,8 @@ export const PERMISSIONS = {
   USER_VIEW: "user:view",
   MACHINE_READ: "machine:read",
   MACHINE_WRITE: "machine:write",
+  SITE_READ: "site:read",
+  SITE_WRITE: "site:write",
   PRODUCT_READ: "product:read",
   PRODUCT_WRITE: "product:write",
   SLOT_MANAGE: "slot:manage",
