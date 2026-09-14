@@ -51,7 +51,7 @@ export function ProductForm({
     defaultValues,
     validators: {
       onSubmit: createProductSchema.shape.body,
-      onBlur: createProductSchema.shape.body,
+      // onBlur: createProductSchema.shape.body,
     },
 
     onSubmit: async ({ value }) => {
@@ -74,7 +74,7 @@ export function ProductForm({
               field.state.meta.isTouched && !field.state.meta.isValid
             return (
               <Field data-invalid={isInvalid} orientation="vertical">
-                <FieldLabel htmlFor={field.name}>Navn*</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Name*</FieldLabel>
                 <Input
                   id={field.name}
                   name={field.name}
@@ -98,7 +98,7 @@ export function ProductForm({
               field.state.meta.isTouched && !field.state.meta.isValid
             return (
               <Field data-invalid={isInvalid} orientation="vertical">
-                <FieldLabel htmlFor={field.name}>Pris</FieldLabel>
+                <FieldLabel htmlFor={field.name}>Price*</FieldLabel>
                 <Input
                   type="number"
                   id={field.name}
@@ -107,7 +107,7 @@ export function ProductForm({
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(Number(e.target.value))}
                   aria-invalid={isInvalid}
-                  placeholder="Skriv prisen"
+                  placeholder="Enter price"
                   autoComplete="off"
                 />
 
@@ -119,7 +119,7 @@ export function ProductForm({
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={() => onCancel()}>
-            Annuller
+            Cancel
           </Button>
           <form.Subscribe selector={(s) => s.isSubmitting}>
             {(isSubmitting) => (
@@ -145,7 +145,7 @@ export function CreateProductForm({
   return (
     <ProductForm
       defaultValues={{ name: "", price: 0 }}
-      submitLabel="Opret produkt"
+      submitLabel="Create Product"
       onCancel={triggerCloseDialog}
       onSubmit={async (values) => {
         const [error, product] = await createProductAction(values)

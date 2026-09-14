@@ -1,8 +1,5 @@
 "use server"
-
-import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 import type { GetProductsParams } from "@vmaas/shared/types/product"
-
 import {
   createProduct,
   deleteProduct,
@@ -10,8 +7,6 @@ import {
   setProductArchived,
   updateProduct,
 } from "@/lib/data/products"
-import { requirePermission } from "@/lib/dal"
-
 import { revalidatePath } from "next/cache"
 import { err, ok } from "@vmaas/shared/lib/error-handling"
 
@@ -28,9 +23,7 @@ function revalidateProduct(id: string) {
  * component can pick the page and sort order, but not the tenant it reads.
  */
 export async function getProductsAction(params: GetProductsParams) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_READ)
-
-  const [error, result] = await getProductsPaginated(activeTenantId, params)
+  const [error, result] = await getProductsPaginated(params)
 
   if (error) return err(error)
 
@@ -41,13 +34,7 @@ export async function createProductAction(input: {
   name: string
   price: number
 }) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_WRITE)
-
-  const [error, product] = await createProduct(
-    activeTenantId,
-    input.name,
-    input.price
-  )
+  const [error, product] = await createProduct(input.name, input.price)
 
   if (error) return err(error)
 
@@ -59,9 +46,7 @@ export async function updateProductAction(
   id: string,
   input: { name?: string; price?: number }
 ) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_WRITE)
-
-  const [error, product] = await updateProduct(activeTenantId, id, input)
+  const [error, product] = await updateProduct(id, input)
 
   if (error) return err(error)
 
@@ -70,13 +55,7 @@ export async function updateProductAction(
 }
 
 export async function setProductArchivedAction(id: string, archived: boolean) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_WRITE)
-
-  const [error, product] = await setProductArchived(
-    activeTenantId,
-    id,
-    archived
-  )
+  const [error, product] = await setProductArchived(id, archived)
 
   if (error) return err(error)
 
@@ -90,9 +69,7 @@ export async function setProductArchivedAction(id: string, archived: boolean) {
  * itself or show a failure.
  */
 export async function deleteProductAction(id: string) {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.PRODUCT_WRITE)
-
-  const [error] = await deleteProduct(activeTenantId, id)
+  const [error] = await deleteProduct(id)
 
   if (error) return err(error)
 

@@ -1,4 +1,9 @@
-import { createProductSchema, getProductsPageSchema } from "@vmaas/shared/schemas";
+import {
+  createProductSchema,
+  getProductsPageSchema,
+  productIdParamsSchema,
+  updateProductSchema,
+} from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 import { z } from "zod/v4";
 
@@ -13,20 +18,14 @@ import {
 } from "../services/products.service";
 
 /**
- * Express 5 types every route param as `string | string[]`, but every `/:id`
- * route below runs `validate(productIdParamsSchema)` first, which rejects
- * anything that is not a single uuid — so it is a string by the time a
- * controller sees it.
- */
-function productId(req: Request): string {
-  return req.params.id as string;
-}
-
-/**
  * Every controller destructures the service's `Result` tuple and switches on
  * the failure's `reason`. The `satisfies never` in each default arm is what
  * makes it exhaustive: adding a reason to a service stops compiling until the
  * status code and the wording for it are decided here.
+ *
+ * Params and bodies reach the services through a schema parse of the request
+ * rather than a cast: Express types a route param as `string | string[]`, so
+ * the parse is what turns `req.params.id` into the uuid string a service takes.
  */
 export async function getProductsController(req: Request, res: Response) {
   const { tenantId } = req;
@@ -51,7 +50,11 @@ export async function getProductsPageController(req: Request, res: Response) {
 
   // This route has no `validate()` middleware — the query is parsed here.
   const { data, error: parseError } = getProductsPageSchema.safeParse(req.query);
-  if (parseError) return res.status(400).json({ error: z.treeifyError(parseError) }).end();
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
 
   const [error, page] = await getProductsPageService(tenantId!, data);
 
@@ -72,7 +75,11 @@ export async function createProductsController(req: Request, res: Response) {
   const { tenantId } = req;
 
   const { data, error: parseError } = createProductSchema.safeParse(req);
-  if (parseError) return res.status(400).json({ error: z.treeifyError(parseError) }).end();
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
 
   const { name, price } = data.body;
   const [error, product] = await createProductService(tenantId!, name, price);
@@ -93,7 +100,14 @@ export async function createProductsController(req: Request, res: Response) {
 export async function getProductController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const [error, product] = await getProductByIdService(tenantId!, productId(req));
+  const { data, error: parseError } = productIdParamsSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, product] = await getProductByIdService(tenantId!, data.params.id);
 
   if (error) {
     const reason = error.reason;
@@ -113,7 +127,14 @@ export async function getProductController(req: Request, res: Response) {
 export async function updateProductController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const [error, product] = await updateProductService(tenantId!, productId(req), req.body);
+  const { data, error: parseError } = updateProductSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, product] = await updateProductService(tenantId!, data.params.id, data.body);
 
   if (error) {
     const reason = error.reason;
@@ -137,7 +158,14 @@ function archiveController(archived: boolean) {
   return async (req: Request, res: Response) => {
     const { tenantId } = req;
 
-    const [error, product] = await setProductArchivedService(tenantId!, productId(req), archived);
+    const { data, error: parseError } = productIdParamsSchema.safeParse(req);
+    if (parseError)
+      return res
+        .status(400)
+        .json({ error: z.treeifyError(parseError) })
+        .end();
+
+    const [error, product] = await setProductArchivedService(tenantId!, data.params.id, archived);
 
     if (error) {
       const reason = error.reason;
@@ -145,7 +173,10 @@ function archiveController(archived: boolean) {
         case "PRODUCT_NOT_FOUND":
           return res.status(404).json({ error: "Product not found" }).end();
         case "UNKNOWN_ERROR":
-          return res.status(500).json({ error: `An unknown error occurred while ${action} the product` }).end();
+          return res
+            .status(500)
+            .json({ error: `An unknown error occurred while ${action} the product` })
+            .end();
         default:
           throw new Error(`Unhandled error reason ${reason satisfies never}`);
       }
@@ -161,7 +192,14 @@ export const unarchiveProductController = archiveController(false);
 export async function deleteProductController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const [error] = await deleteProductService(tenantId!, productId(req));
+  const { data, error: parseError } = productIdParamsSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error] = await deleteProductService(tenantId!, data.params.id);
 
   if (error) {
     const reason = error.reason;

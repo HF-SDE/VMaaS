@@ -16,5 +16,5 @@ export type Machine = {
  * membership and permissions, so passing a foreign tenant 403s rather than leaking.
  */
 export async function getMachines(tenantId: string): Promise<Machine[]> {
-  return backendFetch<Machine[]>("/api/machines", { tenantId })
+  return backendFetch<Machine[]>("/api/machines")
 }
