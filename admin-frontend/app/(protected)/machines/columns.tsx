@@ -17,9 +17,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { formatDate, formatPrice } from "@/lib/utils"
-import { Product } from "@prisma"
+import { Machine } from "@prisma"
 
-function MachineActionsCell({ product }: { product: Product }) {
+function MachineActionsCell({ product }: { product: Machine }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -53,35 +53,30 @@ function MachineActionsCell({ product }: { product: Product }) {
  * Cells read `row.original` rather than `row.getValue()`: v9 widens a mixed
  * column array's `TValue` to `CellData`, which is not renderable without a cast.
  */
-export const machineColumns: ColumnDef<DataTableFeatures, Product>[] = [
+export const machineColumns: ColumnDef<DataTableFeatures, Machine>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Navn" />
+      <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <Link
-          href={`/products/${row.original.id}`}
+          href={`/machines/${row.original.id}`}
           className="font-medium hover:underline"
         >
           {row.original.name}
         </Link>
-        {row.original.archivedAt && (
-          <Badge variant="secondary">Arkiveret</Badge>
-        )}
       </div>
     ),
   },
   {
-    accessorKey: "price",
+    accessorKey: "location",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Pris" />
+      <DataTableColumnHeader column={column} title="Location" />
     ),
     cell: ({ row }) => (
-      <span className="tabular-nums">
-        {formatPrice(Number(row.original.price))}
-      </span>
+      <span className="text-muted-foreground">{row.original.location}</span>
     ),
   },
   {

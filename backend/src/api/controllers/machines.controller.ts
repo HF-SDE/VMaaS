@@ -1,20 +1,169 @@
-import { createMachineSchema } from "@vmaas/shared/schemas";
+import {
+  createMachineSchema,
+  getMachinesPageSchema,
+  machineIdParamsSchema,
+  updateMachineSchema,
+} from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
+import { z } from "zod/v4";
 
-import { createMachineService, getMachinesService } from "../services/machines.service";
+import {
+  createMachineService,
+  deleteMachineService,
+  getMachineByIdService,
+  getMachinesPageService,
+  getMachinesService,
+  updateMachineService,
+} from "../services/machines.service";
 
 export async function getMachinesController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const response = await getMachinesService(tenantId!);
+  const [error, machines] = await getMachinesService(tenantId!);
 
-  res.status(200).json(response).end();
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the machines" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(machines).end();
+}
+
+export async function getMachinesPageController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = getMachinesPageSchema.safeParse(req.query);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, page] = await getMachinesPageService(tenantId!, data);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the machines" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(page).end();
 }
 
 export async function createMachineController(req: Request, res: Response) {
-  const { tenantId, body } = createMachineSchema.parse(req);
+  const { tenantId } = req;
 
-  const response = await createMachineService(tenantId, body.name, body.location);
+  const { data, error: parseError } = createMachineSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
 
-  res.status(201).json(response).end();
+  const { name, location } = data.body;
+  const [error, machine] = await createMachineService(tenantId!, name, location);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while creating the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(201).json(machine).end();
+}
+
+export async function getMachineController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = machineIdParamsSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, machine] = await getMachineByIdService(tenantId!, data.params.id);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "Machine not found" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(machine).end();
+}
+
+export async function updateMachineController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = updateMachineSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, machine] = await updateMachineService(tenantId!, data.params.id, data.body);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "Machine not found" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while updating the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(machine).end();
+}
+
+export async function deleteMachineController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = machineIdParamsSchema.safeParse(req);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error] = await deleteMachineService(tenantId!, data.params.id);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "MACHINE_IN_USE":
+        return res.status(409).json({ error: "Machine is used by one or more slots or sales" }).end();
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "Machine not found" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while deleting the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json({ success: true }).end();
 }

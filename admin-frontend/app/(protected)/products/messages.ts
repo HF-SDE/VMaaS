@@ -1,34 +1,3 @@
-import type {
-  CreateProductError,
-  DeleteProductError,
-  GetProductError,
-  GetProductsError,
-  SetProductArchivedError,
-  UpdateProductError,
-} from "@/lib/data/products"
-
-/**
- * The data layer reports a tagged `reason`; the wording is decided here, at the
- * only layer that knows this is an English admin UI.
- *
- * Its own module rather than actions.ts: a `"use server"` file may only export
- * async functions, so a plain helper cannot live there. It is also imported by
- * client components, which is why it stays free of server-only imports.
- *
- * The parameter is the union of every product error — wider than what any one
- * call site passes. Narrowing is the data layer's job, and a narrower union is
- * assignable to this one, so a single set of wordings serves all seven
- * functions without letting any of them report a reason its endpoint cannot
- * actually produce.
- */
-// type ProductsError =
-//   | GetProductsError
-//   | GetProductError
-//   | CreateProductError
-//   | UpdateProductError
-//   | DeleteProductError
-//   | SetProductArchivedError
-
 export function productsErrorMessage(status: number): string {
   switch (status) {
     case 401:

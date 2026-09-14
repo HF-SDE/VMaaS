@@ -50,7 +50,7 @@ export function ProductActions({
 
   function toggleArchived() {
     startArchiving(async () => {
-      const path = `/api/products/${id}/${archived ? "archive" : "unarchive"}`
+      const path = `/api/products/${id}/${archived ? "unarchive" : "archive"}`
 
       const [error, product] = await fetchData<ProductDetail>(path, {
         method: "POST",
