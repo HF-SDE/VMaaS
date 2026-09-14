@@ -22,14 +22,18 @@ import { Tenant } from "@prisma"
 
 import { backendPost } from "@/lib/data/post-wrapper"
 import { redirect } from "next/navigation"
+import { toast } from "sonner"
 
 export type CreateTenantFormData = z.infer<typeof createTenantSchema>
 
 export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
   async function switchTenant(tenantId: string) {
-    await backendPost("/api/auth/tenant/switch", { tenantId })
-
-    redirect("/machines")
+    const [error] = await backendPost("/api/auth/tenant/switch", { tenantId })
+    if (error) {
+      // Handle the error appropriately, e.g., show a toast or log it
+      toast.error(error.message)
+      return
+    } else redirect("/machines")
   }
 
   return (

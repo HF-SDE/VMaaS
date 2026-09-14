@@ -1,3 +1,4 @@
+import { err, ok } from "@vmaas/shared/lib/error-handling"
 import { config } from "../config"
 
 export async function backendPost<T = unknown>(path: string, body: T) {
@@ -10,8 +11,12 @@ export async function backendPost<T = unknown>(path: string, body: T) {
 
   if (!res.ok) {
     const error = await res.json()
-    throw new Error(error.message)
+    return err({
+      reason: "ERROR",
+      message: error.message,
+      status: res.status,
+    })
   }
 
-  return res.json()
+  return ok(await res.json())
 }
