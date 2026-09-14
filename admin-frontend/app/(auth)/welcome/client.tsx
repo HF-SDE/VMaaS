@@ -81,6 +81,8 @@ function NewTeneantForm() {
 
   async function onSubmit(data: CreateTenantFormData) {
     await createTenant(data)
+
+    redirect("/machines")
   }
 
   return (

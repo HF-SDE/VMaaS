@@ -1,6 +1,6 @@
 import "server-only"
 
-import { cookies } from "next/headers"
+import { cookies, headers as nextHeaders } from "next/headers"
 
 import { config } from "./config"
 
@@ -87,6 +87,8 @@ type QueryValue = string | number | boolean | null | undefined
 
 type BackendRequestOptions = Omit<RequestInit, "body" | "cache"> & {
   cookieHeader: string
+  /** The frontend's own origin, forwarded so Better Auth's CSRF check trusts it. */
+  originHeader?: string
   json?: unknown
   /** Appended to `path` as a query string. */
   query?: Record<string, QueryValue>
@@ -118,7 +120,7 @@ function queryString(query: Record<string, QueryValue> | undefined): string {
  */
 export async function backendRequest<T>(
   path: string,
-  { cookieHeader, json, query, headers, ...init }: BackendRequestOptions
+  { cookieHeader, originHeader, json, query, headers, ...init }: BackendRequestOptions
 ): Promise<T> {
   // An anonymous request would 401 at best and silently read as "no data" at
   // worst, so treat a missing cookie as the programming error it is.
@@ -133,6 +135,7 @@ export async function backendRequest<T>(
       headers: {
         ...headers,
         cookie: cookieHeader,
+        ...(originHeader ? { origin: originHeader } : {}),
         ...(json !== undefined ? { "content-type": "application/json" } : {}),
       },
       ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
@@ -157,12 +160,13 @@ export async function backendRequest<T>(
  */
 export async function backendFetch<T>(
   path: string,
-  options: Omit<BackendRequestOptions, "cookieHeader"> = {}
+  options: Omit<BackendRequestOptions, "cookieHeader" | "originHeader"> = {}
 ): Promise<T> {
-  const store = await cookies()
+  const [store, headerStore] = await Promise.all([cookies(), nextHeaders()])
   return backendRequest<T>(path, {
     ...options,
     cookieHeader: authCookieHeader(store.getAll()),
+    originHeader: headerStore.get("origin") ?? undefined,
   })
 }
 export function backendDetail(error: unknown): string | undefined {

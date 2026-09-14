@@ -10,19 +10,19 @@ async function main() {
   }
 
   for (const [roleName, permissionKeysForRole] of Object.entries(ROLE_PERMISSIONS)) {
-    const role = await prisma.role.upsert({
-      where: { name: roleName },
-      update: {},
-      create: { name: roleName, isPlatformRole: roleName === PLATFORM_ROLE },
-    });
+    // const role = await prisma.role.upsert({
+    //   where: { name: roleName },
+    //   update: {},
+    //   create: { name: roleName },
+    // });
 
     for (const permissionKey of permissionKeysForRole) {
       const permission = await prisma.permission.findUniqueOrThrow({ where: { key: permissionKey } });
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-        update: {},
-        create: { roleId: role.id, permissionId: permission.id },
-      });
+      // await prisma.rolePermission.upsert({
+      //   where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+      //   update: {},
+      //   create: { roleId: role.id, permissionId: permission.id },
+      // });
     }
   }
 

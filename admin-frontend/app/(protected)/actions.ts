@@ -53,7 +53,7 @@ export async function createTenant(data: CreateTenantFormData): Promise<void> {
     json: data,
   })
 
-  await switchTenant(result.id)
-
   revalidateTag("tenants", IMMEDIATE)
+
+  await switchTenant(result.id)
 }
