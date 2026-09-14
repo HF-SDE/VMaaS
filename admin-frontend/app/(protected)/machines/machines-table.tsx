@@ -21,11 +21,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useDebounce } from "@/hooks/use-debounce"
 
-import { getProductsAction } from "./actions"
-import { productsErrorMessage } from "./messages"
+import { machineColumnNames, machineColumns } from "./columns"
 import { toast } from "sonner"
-import { Product } from "@prisma"
+import { Machine } from "@prisma"
 import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
+import { fetchData } from "@/lib/data/data-fetch"
+import { machinesErrorMessage } from "./messages"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,10 +86,10 @@ function readNumber(raw: string | null, fallback: number): number {
  * **Column visibility** is persisted in `localStorage` under the key
  * `products-table:column-visibility`.
  */
-export function ProductsDataTable({
+export function MachinesDataTable({
   initialData,
 }: {
-  initialData?: GetPaginatedResult<Product>
+  initialData?: GetPaginatedResult<Machine>
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -125,7 +126,7 @@ export function ProductsDataTable({
   )
 
   // -- Data state -------------------------------------------------------------
-  const [data, setData] = React.useState<Product[]>(initialData?.data ?? [])
+  const [data, setData] = React.useState<Machine[]>(initialData?.data ?? [])
   const [pageCount, setPageCount] = React.useState(initialData?.pageCount ?? 0)
   const [totalCount, setTotalCount] = React.useState(
     initialData?.totalCount ?? 0
@@ -166,40 +167,32 @@ export function ProductsDataTable({
   )
 
   // -- Fetch data whenever URL-driven state changes --------------------------
-  const fetchData = React.useCallback(() => {
+  const fetchData_ = React.useCallback(() => {
     startTransition(async () => {
-      const [actionError, result] = await getProductsAction({
-        page: pageIndex,
-        pageSize,
-        sortBy: orderBy,
-        sortOrder: orderDir,
-        search: searchQuery,
-        includeArchived,
-      })
-
-      if (actionError) {
-        const reason = actionError?.reason
-        switch (reason) {
-          // The action's own permission gate redirects to /forbidden, so this
-          // only fires when the backend itself denies the write — no redirect
-          // happens there, which would otherwise leave the button silent.
-          // No NOT_FOUND or CONFLICT arm: the paginated list answers neither,
-          // so GetProductsError does not carry them.
-          case "FORBIDDEN":
-          case "UNAUTHORIZED":
-          case "BAD_REQUEST":
-          case "BACKEND_ERROR":
-          case "NETWORK_ERROR":
-            toast.error(productsErrorMessage(actionError))
-            break
-          default:
-            throw new Error(`Unhandled error reason ${reason satisfies never}`)
+      const [error, machines] = await fetchData<GetPaginatedResult<Machine>>(
+        "/api/machines/paginated",
+        {
+          // Listed field by field rather than spread: an object literal is what makes
+          // this assignable to the `query` record, and it keeps the wire names visible.
+          query: {
+            page: pageIndex,
+            pageSize: pageSize,
+            sortBy: orderBy,
+            sortOrder: orderDir,
+            search: searchQuery,
+            includeArchived: includeArchived,
+          },
         }
+      )
+
+      if (error) {
+        const status = error?.status
+        toast.error(machinesErrorMessage(status))
       } else {
         setError(null)
-        setData(result.data)
-        setPageCount(result.pageCount)
-        setTotalCount(result.totalCount)
+        setData(machines.data)
+        setPageCount(machines.pageCount)
+        setTotalCount(machines.totalCount)
       }
     })
   }, [pageIndex, pageSize, orderBy, orderDir, searchQuery, includeArchived])
@@ -214,17 +207,17 @@ export function ProductsDataTable({
       skipFirstFetch.current = false
       return
     }
-    fetchData()
-  }, [fetchData])
+    fetchData_()
+  }, [fetchData_])
 
   // -- Toolbar ----------------------------------------------------------------
-  const toolbar = (table: DataTableInstance<Product>) => (
+  const toolbar = (table: DataTableInstance<Machine>) => (
     <div className="flex items-center justify-between gap-2">
       <div className="flex flex-1 items-center space-x-2">
         <div className="relative w-full max-w-sm">
           <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Søg produkter..."
+            placeholder="Søg maskiner..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="pl-8"
@@ -232,7 +225,7 @@ export function ProductsDataTable({
         </div>
         {totalCount > 0 && (
           <p className="text-sm text-muted-foreground">
-            {totalCount} produkt{totalCount !== 1 ? "er" : ""}
+            {totalCount} maskine{totalCount !== 1 ? "r" : ""}
           </p>
         )}
       </div>
@@ -270,7 +263,7 @@ export function ProductsDataTable({
                 checked={column.getIsVisible()}
                 onCheckedChange={(value) => column.toggleVisibility(!!value)}
               >
-                {productColumnNames[column.id] || column.id}
+                {machineColumnNames[column.id] || column.id}
               </DropdownMenuCheckboxItem>
             ))}
         </DropdownMenuContent>
@@ -286,7 +279,7 @@ export function ProductsDataTable({
         </p>
       )}
       <DataTable
-        columns={productColumns}
+        columns={machineColumns}
         data={data}
         pageCount={pageCount}
         pageIndex={pageIndex}
