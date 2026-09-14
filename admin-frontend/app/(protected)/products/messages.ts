@@ -21,35 +21,31 @@ import type {
  * functions without letting any of them report a reason its endpoint cannot
  * actually produce.
  */
-type ProductsError =
-  | GetProductsError
-  | GetProductError
-  | CreateProductError
-  | UpdateProductError
-  | DeleteProductError
-  | SetProductArchivedError
+// type ProductsError =
+//   | GetProductsError
+//   | GetProductError
+//   | CreateProductError
+//   | UpdateProductError
+//   | DeleteProductError
+//   | SetProductArchivedError
 
-export function productsErrorMessage(error: ProductsError): string {
-  const reason = error.reason
-
-  switch (reason) {
-    case "UNAUTHORIZED":
+export function productsErrorMessage(status: number): string {
+  switch (status) {
+    case 401:
       return "Your session has expired. Sign in again."
-    case "FORBIDDEN":
+    case 403:
       return "You do not have access to products."
-    case "NOT_FOUND":
+    case 404:
       return "That product no longer exists."
-    case "BAD_REQUEST":
+    case 400:
       return "That request could not be read. Reload the page and try again."
-    case "CONFLICT":
+    case 409:
       return "That product is in use and cannot be changed."
-    case "NETWORK_ERROR":
-      return "Network error. Check your connection and try again."
-    case "BACKEND_ERROR":
+    case 500:
       // The backend already logged the cause; the page only needs something to show.
-      return "Could not load products."
+      return "An unexpected error occurred. Please try again."
     default:
-      throw new Error(`Unhandled error reason ${reason satisfies never}`)
+      throw new Error(`Unexpected error - status: ${status}`)
   }
 }
 
@@ -61,28 +57,21 @@ export type ProductWriteAction = "create" | "save" | "delete" | "archive"
  * does on a read — a 403 here is a missing write permission, not missing access
  * to the section, and CONFLICT only ever comes back from a blocked delete.
  */
-export function productWriteErrorMessage(
-  error: ProductsError,
-  action: ProductWriteAction
-): string {
-  const reason = error.reason
-
-  switch (reason) {
-    case "UNAUTHORIZED":
+export function productWriteErrorMessage(status: number): string {
+  switch (status) {
+    case 401:
       return "Your session has expired. Sign in again."
-    case "FORBIDDEN":
+    case 403:
       return "You do not have permission to change products."
-    case "NOT_FOUND":
+    case 404:
       return "That product no longer exists."
-    case "CONFLICT":
+    case 409:
       return "That product is stocked in one or more slots and cannot be deleted. Archive it instead."
-    case "BAD_REQUEST":
+    case 400:
       return "Check the fields and try again."
-    case "NETWORK_ERROR":
-      return "Network error. Check your connection and try again."
-    case "BACKEND_ERROR":
-      return `Could not ${action} the product. Try again.`
+    case 500:
+      return "An unexpected error occurred. Please try again."
     default:
-      throw new Error(`Unhandled error reason ${reason satisfies never}`)
+      throw new Error(`Unexpected error - status: ${status}`)
   }
 }

@@ -11,13 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getProduct } from "@/lib/data/products"
 import { requirePermission } from "@/lib/dal"
 import { formatDate, formatPrice } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { productsErrorMessage } from "../messages"
 import { ProductActions } from "./product-actions"
+import { fetchData } from "@/lib/data/data-fetch"
+import { ProductDetail } from "@vmaas/shared/types/product"
 
 export const NO_READ_ACCESS = "Du har ikke adgang til produkter."
 
@@ -40,7 +41,7 @@ export async function ProductDetailLoader({
     NO_READ_ACCESS
   )
 
-  const [error, product] = await getProduct(id)
+  const [error, product] = await fetchData<ProductDetail>(`/api/products/${id}`)
   console.log("🚀 ~ ProductDetailLoader ~ product:", product)
 
   if (error) {
@@ -48,7 +49,7 @@ export async function ProductDetailLoader({
 
     return (
       <p role="alert" className="text-sm text-destructive">
-        {productsErrorMessage(error)}
+        {productsErrorMessage(error.status)}
       </p>
     )
   }

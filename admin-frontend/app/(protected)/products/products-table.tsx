@@ -21,12 +21,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useDebounce } from "@/hooks/use-debounce"
 
-import { getProductsAction } from "./actions"
 import { productColumnNames, productColumns } from "./columns"
 import { productsErrorMessage } from "./messages"
 import { toast } from "sonner"
 import { Product } from "@prisma"
 import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
+import { fetchData } from "@/lib/data/data-fetch"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -167,40 +167,32 @@ export function ProductsDataTable({
   )
 
   // -- Fetch data whenever URL-driven state changes --------------------------
-  const fetchData = React.useCallback(() => {
+  const fetchData_ = React.useCallback(() => {
     startTransition(async () => {
-      const [actionError, result] = await getProductsAction({
-        page: pageIndex,
-        pageSize,
-        sortBy: orderBy,
-        sortOrder: orderDir,
-        search: searchQuery,
-        includeArchived,
-      })
-
-      if (actionError) {
-        const reason = actionError?.reason
-        switch (reason) {
-          // The action's own permission gate redirects to /forbidden, so this
-          // only fires when the backend itself denies the write — no redirect
-          // happens there, which would otherwise leave the button silent.
-          // No NOT_FOUND or CONFLICT arm: the paginated list answers neither,
-          // so GetProductsError does not carry them.
-          case "FORBIDDEN":
-          case "UNAUTHORIZED":
-          case "BAD_REQUEST":
-          case "BACKEND_ERROR":
-          case "NETWORK_ERROR":
-            toast.error(productsErrorMessage(actionError))
-            break
-          default:
-            throw new Error(`Unhandled error reason ${reason satisfies never}`)
+      const [error, products] = await fetchData<GetPaginatedResult<Product>>(
+        "/api/products/paginated",
+        {
+          // Listed field by field rather than spread: an object literal is what makes
+          // this assignable to the `query` record, and it keeps the wire names visible.
+          query: {
+            page: pageIndex,
+            pageSize: pageSize,
+            sortBy: orderBy,
+            sortOrder: orderDir,
+            search: searchQuery,
+            includeArchived: includeArchived,
+          },
         }
+      )
+
+      if (error) {
+        const status = error?.status
+        toast.error(productsErrorMessage(status))
       } else {
         setError(null)
-        setData(result.data)
-        setPageCount(result.pageCount)
-        setTotalCount(result.totalCount)
+        setData(products.data)
+        setPageCount(products.pageCount)
+        setTotalCount(products.totalCount)
       }
     })
   }, [pageIndex, pageSize, orderBy, orderDir, searchQuery, includeArchived])
@@ -215,8 +207,8 @@ export function ProductsDataTable({
       skipFirstFetch.current = false
       return
     }
-    fetchData()
-  }, [fetchData])
+    fetchData_()
+  }, [fetchData_])
 
   // -- Toolbar ----------------------------------------------------------------
   const toolbar = (table: DataTableInstance<Product>) => (

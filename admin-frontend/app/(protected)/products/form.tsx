@@ -14,8 +14,10 @@ import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createProductSchema } from "@vmaas/shared/schemas"
-import { createProductAction, updateProductAction } from "./actions"
 import { productWriteErrorMessage } from "./messages"
+import { fetchData } from "@/lib/data/data-fetch"
+import { ProductDetail } from "@vmaas/shared/types/product"
+import { Product } from "@prisma"
 
 export type ProductFormValues = {
   name: string
@@ -148,7 +150,10 @@ export function CreateProductForm({
       submitLabel="Create Product"
       onCancel={triggerCloseDialog}
       onSubmit={async (values) => {
-        const [error, product] = await createProductAction(values)
+        const [error, product] = await fetchData<Product>("/api/products", {
+          method: "POST",
+          body: { name: values.name, price: values.price },
+        })
 
         // The action's own permission gate redirects to /forbidden, so a
         // `forbidden` here means the backend itself denied the write — no
@@ -172,12 +177,10 @@ export function CreateProductForm({
             case "BAD_REQUEST":
             case "BACKEND_ERROR":
             case "NETWORK_ERROR":
-              toast.error(productWriteErrorMessage(error, "create"))
+              toast.error(productWriteErrorMessage(error.status))
               break
             default:
-              throw new Error(
-                `Unhandled error reason ${reason satisfies never}`
-              )
+              throw new Error(`Unhandled error - reason: ${reason}`)
           }
         } else {
           triggerCloseDialog()
@@ -208,9 +211,15 @@ export function EditProductForm({
       submitLabel="Gem ændringer"
       onCancel={onCancel}
       onSubmit={async (values) => {
-        const [error] = await updateProductAction(id, values)
+        const [error, product] = await fetchData<ProductDetail>(
+          `/api/products/${id}`,
+          {
+            method: "PATCH",
+            body: values,
+          }
+        )
 
-        if (error) return productWriteErrorMessage(error, "save")
+        if (error) return productWriteErrorMessage(error.status)
 
         toast.success("Product saved.")
         onSaved()

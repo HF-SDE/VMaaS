@@ -14,10 +14,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
-import { deleteProductAction, setProductArchivedAction } from "../actions"
 import { EditProductForm } from "../form"
 import { productWriteErrorMessage } from "../messages"
 import { DeleteProductDialog } from "./delete-product-dialog"
+import { fetchData } from "@/lib/data/data-fetch"
+import { ProductDetail } from "@vmaas/shared/types/product"
 
 type ProductActionsProps = {
   id: string
@@ -45,13 +46,18 @@ export function ProductActions({
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [isArchiving, startArchiving] = useTransition()
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   function toggleArchived() {
     startArchiving(async () => {
-      const [error] = await setProductArchivedAction(id, !archived)
+      const path = `/api/products/${id}/${archived ? "archive" : "unarchive"}`
+
+      const [error, product] = await fetchData<ProductDetail>(path, {
+        method: "POST",
+      })
 
       if (error) {
-        toast.error(productWriteErrorMessage(error, "archive"))
+        toast.error(productWriteErrorMessage(error.status))
         return
       }
 
@@ -83,7 +89,19 @@ export function ProductActions({
       {canDelete && (
         <DeleteProductDialog
           name={name}
-          onConfirm={() => deleteProductAction(id)}
+          onConfirm={async () => {
+            const [error] = await fetchData<null>(`/api/products/${id}`, {
+              method: "DELETE",
+            })
+            if (error) {
+              toast.error(productWriteErrorMessage(error.status))
+            }
+            toast.success(`"${name}" deleted.`)
+            setDeleteOpen(false)
+            router.push("/products")
+          }}
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
         />
       )}
 

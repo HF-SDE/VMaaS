@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, Trash2 } from "lucide-react"
-import { toast } from "sonner"
 
 import {
   AlertDialog,
@@ -17,50 +16,29 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import type { DeleteProductError } from "@/lib/data/products"
-import type { Result } from "@vmaas/shared/lib/error-handling"
 
-import { productWriteErrorMessage } from "../messages"
-
-/**
- * Confirms deleting a product, then sends the user back to the list.
- *
- * The redirect lives here rather than in the server action: redirecting from
- * the action would throw through the `await` below, leaving the dialog unable
- * to report a failure or close itself.
- */
 export function DeleteProductDialog({
   name,
   onConfirm,
+  open,
+  onOpenChange,
 }: {
   name: string
-  onConfirm: () => Promise<Result<DeleteProductError, null>>
+  onConfirm: () => Promise<void>
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
   const [isDeleting, startDeleting] = useTransition()
 
   function confirm() {
     startDeleting(async () => {
-      const [error] = await onConfirm()
-
-      if (error) {
-        // CONFLICT means a slot started stocking the product after the page
-        // was rendered — the button is hidden for a product already in use.
-        toast.error(productWriteErrorMessage(error, "delete"))
-        setOpen(false)
-        router.refresh()
-        return
-      }
-
-      toast.success(`"${name}" deleted.`)
-      setOpen(false)
-      router.push("/products")
+      await onConfirm()
     })
   }
 
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogTrigger
         render={
           <Button variant="outline" className="text-destructive">

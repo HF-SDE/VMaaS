@@ -1,12 +1,6 @@
 "use server"
 import type { GetProductsParams } from "@vmaas/shared/types/product"
-import {
-  createProduct,
-  deleteProduct,
-  getProductsPaginated,
-  setProductArchived,
-  updateProduct,
-} from "@/lib/data/products"
+
 import { revalidatePath } from "next/cache"
 import { err, ok } from "@vmaas/shared/lib/error-handling"
 

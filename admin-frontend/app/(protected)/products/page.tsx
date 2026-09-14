@@ -4,10 +4,12 @@ import Loader from "@/components/loader/loader"
 import Link from "next/link"
 import { RoleGate } from "@/components/role-gate"
 import { Button } from "@/components/ui/button"
-import { getProductsPaginated } from "@/lib/data/products"
 import { requirePermission } from "@/lib/dal"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 import { NewProductDialog } from "./new-product-dialog"
+import { fetchData } from "@/lib/data/data-fetch"
+import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
+import { Product } from "@prisma"
 
 const NO_READ_ACCESS = "Du har ikke adgang til produkter."
 
@@ -34,14 +36,22 @@ async function ProductsTableLoader({
     NO_READ_ACCESS
   )
   const { activeTenantId } = session
-  const [error, initialData] = await getProductsPaginated({
-    page,
-    pageSize,
-    sortBy,
-    sortOrder,
-    search,
-    includeArchived,
-  })
+
+  const [error, initialData] = await fetchData<GetPaginatedResult<Product>>(
+    "/api/products/paginated",
+    {
+      // Listed field by field rather than spread: an object literal is what makes
+      // this assignable to the `query` record, and it keeps the wire names visible.
+      query: {
+        page: page,
+        pageSize: pageSize,
+        sortBy: sortBy,
+        sortOrder: sortOrder,
+        search: search,
+        includeArchived: includeArchived,
+      },
+    }
+  )
 
   return <ProductsDataTable initialData={initialData ?? undefined} />
 }
