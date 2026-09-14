@@ -26,7 +26,7 @@ export type CreateTenantFormData = z.infer<typeof createTenantSchema>
 
 export default function WelcomePageClient({ tenants }: { tenants: Tenant[] }) {
   async function switchTenant(tenantId: string) {
-    await fetch(config.BACKEND_URL + "/api/auth/tenant/switch", {
+    await fetch(config.NEXT_PUBLIC_BACKEND_URL + "/api/auth/tenant/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
