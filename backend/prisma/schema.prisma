@@ -180,14 +180,18 @@ model Tenant {
 }
 
 model Product {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  price     Decimal
-  createdAt DateTime @default(now())
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  price      Decimal
+  createdAt  DateTime  @default(now())
+  // Null means active. A timestamp rather than a flag, so the list can say when
+  // a product was taken out of use without a second column.
+  archivedAt DateTime?
 
   slots Slot[]
+  sales Sale[]
 
   @@index([tenantId])
   @@map("products")
@@ -258,6 +262,8 @@ model Sale {
   machine     Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
   slotId      String      @db.Uuid
   slot        Slot        @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  productId   String?     @db.Uuid // SetNull, so a hard delete doesn't erase the sale
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: Restrict)
   status      sale_status @default(pending)
   price       Decimal
   createdAt   DateTime    @default(now())
@@ -266,6 +272,7 @@ model Sale {
   @@index([tenantId])
   @@index([machineId])
   @@index([slotId])
+  @@index([productId])
   @@map("sales")
   @@schema("public")
 }
