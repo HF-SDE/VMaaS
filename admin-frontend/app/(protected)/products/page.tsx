@@ -34,7 +34,7 @@ async function ProductsTableLoader({
     NO_READ_ACCESS
   )
   const { activeTenantId } = session
-  const [, initialData] = await getProductsPaginated(activeTenantId, {
+  const [error, initialData] = await getProductsPaginated({
     page,
     pageSize,
     sortBy,

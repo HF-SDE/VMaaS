@@ -8,7 +8,8 @@ export const createProductSchema = z.object({
 });
 
 /** Shared by every `/:id` route, so a malformed id is a 400 rather than a
- *  database error on a value that could never have matched. */
+ *  database error on a value that could never have matched. The controllers
+ *  parse it again to read the id as a typed string. */
 export const productIdParamsSchema = z.object({
   params: z.object({
     id: z.uuid({ message: "id must be a uuid" }),

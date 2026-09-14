@@ -191,7 +191,10 @@ export async function deleteProductService(
   tenantId: string,
   id: string,
 ): Promise<
-  Result<ProductNotFoundError | ProductInUseError | ProductReferencedError | UnknownProductError, { deletedProductId: string }>
+  Result<
+    ProductNotFoundError | ProductInUseError | ProductReferencedError | UnknownProductError,
+    { deletedProductId: string }
+  >
 > {
   try {
     const product = await prisma.product.findFirst({
@@ -213,10 +216,7 @@ export async function deleteProductService(
       }
 
       if (error.code === "P2003") {
-        return err({
-          reason: "PRODUCT_REFERENCED",
-          message: "The product cannot be deleted because it is referenced by other data (foreign key constraint).",
-        });
+        return unknownError("deleting", error);
       }
     }
 

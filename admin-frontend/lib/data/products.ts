@@ -71,11 +71,11 @@ export type DeleteProductError =
  * `tenantId` must come from a lib/dal.ts `require*` gate. The backend re-checks
  * membership and permissions, so passing a foreign tenant 403s rather than leaking.
  */
-export async function getProducts(
-  tenantId: string
-): Promise<Result<GetProductsError, Product[]>> {
+export async function getProducts(): Promise<
+  Result<GetProductsError, Product[]>
+> {
   try {
-    return ok(await backendFetch<Product[]>("/api/products", { tenantId }))
+    return ok(await backendFetch<Product[]>("/api/products"))
   } catch (error) {
     unstable_rethrow(error)
     const status = expectStatus(error, [400, 401, 403] as const)
@@ -100,7 +100,6 @@ export async function getProducts(
  * were actually served — prefer them over the ones sent here.
  */
 export async function getProductsPaginated(
-  tenantId: string,
   params: GetProductsParams
 ): Promise<Result<GetProductsError, GetPaginatedResult<Product>>> {
   try {
@@ -108,7 +107,6 @@ export async function getProductsPaginated(
       await backendFetch<GetPaginatedResult<Product>>(
         "/api/products/paginated",
         {
-          tenantId,
           // Listed field by field rather than spread: an object literal is what makes
           // this assignable to the `query` record, and it keeps the wire names visible.
           query: {
@@ -142,7 +140,6 @@ export async function getProductsPaginated(
 }
 
 export async function createProduct(
-  tenantId: string,
   name: string,
   price: number
 ): Promise<Result<CreateProductError, Product>> {
@@ -150,7 +147,6 @@ export async function createProduct(
     return ok(
       await backendFetch<Product>("/api/products", {
         method: "POST",
-        tenantId,
         json: { name, price },
       })
     )
@@ -174,13 +170,10 @@ export async function createProduct(
 
 /** One product, with the slot count that decides whether it can be deleted. */
 export async function getProduct(
-  tenantId: string,
   id: string
 ): Promise<Result<GetProductError, ProductDetail>> {
   try {
-    return ok(
-      await backendFetch<ProductDetail>(`/api/products/${id}`, { tenantId })
-    )
+    return ok(await backendFetch<ProductDetail>(`/api/products/${id}`))
   } catch (error) {
     unstable_rethrow(error)
     const status = expectStatus(error, [400, 401, 403, 404] as const)
@@ -202,7 +195,6 @@ export async function getProduct(
 }
 
 export async function updateProduct(
-  tenantId: string,
   id: string,
   input: { name?: string; price?: number }
 ): Promise<Result<UpdateProductError, ProductDetail>> {
@@ -210,7 +202,6 @@ export async function updateProduct(
     return ok(
       await backendFetch<ProductDetail>(`/api/products/${id}`, {
         method: "PATCH",
-        tenantId,
         json: input,
       })
     )
@@ -238,13 +229,11 @@ export async function updateProduct(
 
 /** Answers CONFLICT when machine slots still stock the product. */
 export async function deleteProduct(
-  tenantId: string,
   id: string
 ): Promise<Result<DeleteProductError, null>> {
   try {
     await backendFetch<void>(`/api/products/${id}`, {
       method: "DELETE",
-      tenantId,
     })
     return ok(null)
   } catch (error) {
@@ -272,16 +261,13 @@ export async function deleteProduct(
 }
 
 export async function setProductArchived(
-  tenantId: string,
   id: string,
   archived: boolean
 ): Promise<Result<SetProductArchivedError, ProductDetail>> {
   const path = `/api/products/${id}/${archived ? "archive" : "unarchive"}`
 
   try {
-    return ok(
-      await backendFetch<ProductDetail>(path, { method: "POST", tenantId })
-    )
+    return ok(await backendFetch<ProductDetail>(path, { method: "POST" }))
   } catch (error) {
     unstable_rethrow(error)
     const status = expectStatus(error, [400, 401, 403, 404] as const)

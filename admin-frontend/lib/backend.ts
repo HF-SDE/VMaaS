@@ -87,8 +87,6 @@ type QueryValue = string | number | boolean | null | undefined
 
 type BackendRequestOptions = Omit<RequestInit, "body" | "cache"> & {
   cookieHeader: string
-  /** Sent as X-Tenant-Id. Must come from a lib/dal.ts gate, never from user input. */
-  tenantId?: string
   json?: unknown
   /** Appended to `path` as a query string. */
   query?: Record<string, QueryValue>
@@ -120,14 +118,7 @@ function queryString(query: Record<string, QueryValue> | undefined): string {
  */
 export async function backendRequest<T>(
   path: string,
-  {
-    cookieHeader,
-    tenantId,
-    json,
-    query,
-    headers,
-    ...init
-  }: BackendRequestOptions
+  { cookieHeader, json, query, headers, ...init }: BackendRequestOptions
 ): Promise<T> {
   // An anonymous request would 401 at best and silently read as "no data" at
   // worst, so treat a missing cookie as the programming error it is.
@@ -142,7 +133,6 @@ export async function backendRequest<T>(
       headers: {
         ...headers,
         cookie: cookieHeader,
-        ...(tenantId ? { "x-tenant-id": tenantId } : {}),
         ...(json !== undefined ? { "content-type": "application/json" } : {}),
       },
       ...(json !== undefined ? { body: JSON.stringify(json) } : {}),

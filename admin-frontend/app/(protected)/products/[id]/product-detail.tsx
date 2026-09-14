@@ -40,7 +40,7 @@ export async function ProductDetailLoader({
     NO_READ_ACCESS
   )
 
-  const [error, product] = await getProduct(activeTenantId, id)
+  const [error, product] = await getProduct(id)
   console.log("🚀 ~ ProductDetailLoader ~ product:", product)
 
   if (error) {
