@@ -15,6 +15,7 @@ model User {
   name          String
   emailVerified Boolean  @default(false)
   image         String?
+  isSuperAdmin  Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -82,11 +83,12 @@ model Verification {
 }
 
 model Role {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @unique
-  description    String?
-  isPlatformRole Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  description String?
+  createdAt   DateTime @default(now())
 
   rolePermissions RolePermission[]
   userRoles       UserRole[]
@@ -174,6 +176,7 @@ model Tenant {
   machines       Machine[]
   sales          Sale[]
   activeSessions Session[]
+  roles          Role[]
 
   @@map("tenants")
   @@schema("public")

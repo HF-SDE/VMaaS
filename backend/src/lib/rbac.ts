@@ -44,12 +44,31 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   ],
 };
 
-/** All permission keys granted to `userId`, scoped to `tenantId` plus any platform-wide roles. */
+/** Creates `roleNames` for `tenantId` and grants each role the permissions from `ROLE_PERMISSIONS`. */
+export async function createRolesWithPermissions(tenantId: string, roleNames: string[]): Promise<void> {
+  await prisma.role.createMany({ data: roleNames.map((name) => ({ name, tenantId })) });
+
+  const roles = await prisma.role.findMany({ where: { tenantId, name: { in: roleNames } } });
+
+  for (const role of roles) {
+    const permissionKeys = ROLE_PERMISSIONS[role.name] ?? [];
+    if (permissionKeys.length === 0) continue;
+
+    const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } });
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })),
+      skipDuplicates: true,
+    });
+  }
+}
+
+/** All permission keys granted to `userId`, scoped to `tenantId`. Platform admins get every permission. */
 export async function getUserPermissions(userId: string, tenantId: string | null): Promise<Set<PermissionKey>> {
+  if (await isPlatformAdmin(userId)) return new Set(Object.values(PERMISSIONS));
+
   const userRoles = await prisma.userRole.findMany({
-    where: tenantId
-      ? { userId, OR: [{ role: { isPlatformRole: true } }, { tenantId }] }
-      : { userId, role: { isPlatformRole: true } },
+    where: tenantId ? { userId, tenantId } : { userId },
     include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
   });
 
@@ -72,9 +91,7 @@ export async function hasPermission(
 }
 
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
-  const count = await prisma.userRole.count({
-    where: { userId, role: { isPlatformRole: true } },
-  });
+  const count = await prisma.user.count({ where: { id: userId, isSuperAdmin: true } });
   return count > 0;
 }
 

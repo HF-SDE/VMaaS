@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ROLE_PERMISSIONS, TENANT_ROLES, listTenantsForUser } from "@/lib/rbac";
+import { ROLE_PERMISSIONS, TENANT_ROLES, createRolesWithPermissions, listTenantsForUser } from "@/lib/rbac";
 
 import { APIError } from "better-auth";
 
@@ -19,23 +19,20 @@ export async function getMembersService(tenantId: string) {
 }
 
 export async function createTenantService(userId: string, name: string) {
-  const ownerRole = await prisma.role.findUnique({ where: { name: TENANT_ROLES.OWNER } });
-  if (!ownerRole) {
-    return { ok: false as const, error: "Owner role is not seeded", status: 500 };
-  }
+  const tenant = await prisma.tenant.create({ data: { name } });
 
-  const tenant = await prisma.tenant.create({
-    data: {
-      name,
-      userRoles: { create: { userId, roleId: ownerRole.id } },
-    },
-  });
+  await createRolesWithPermissions(tenant.id, ASSIGNABLE_ROLES);
+
+  const ownerRole = await prisma.role.findFirst({ where: { name: TENANT_ROLES.OWNER, tenantId: tenant.id } });
+  if (!ownerRole) return { ok: false as const, error: "Owner role is not seeded", status: 500 };
+
+  await prisma.userRole.create({ data: { userId, roleId: ownerRole.id, tenantId: tenant.id } });
 
   return { ok: true as const, tenant };
 }
 
 export async function addMemberService(tenantId: string, userId: string, role: string) {
-  const roleRecord = await prisma.role.findUnique({ where: { name: role } });
+  const roleRecord = await prisma.role.findFirst({ where: { name: role, tenantId } });
   if (!roleRecord) {
     throw new APIError("BAD_REQUEST", { message: `Unknown role: ${role}` });
   }
@@ -50,7 +47,7 @@ export async function addMemberService(tenantId: string, userId: string, role: s
 }
 
 export async function removeMemberService(tenantId: string, userId: string) {
-  const ownerRole = await prisma.role.findUnique({ where: { name: TENANT_ROLES.OWNER } });
+  const ownerRole = await prisma.role.findFirst({ where: { name: TENANT_ROLES.OWNER, tenantId } });
   if (ownerRole) {
     const isOwner = await prisma.userRole.findUnique({
       where: { userId_roleId_tenantId: { userId, roleId: ownerRole.id, tenantId } },

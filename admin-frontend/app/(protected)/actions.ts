@@ -37,9 +37,7 @@ export async function createTenant(data: CreateTenantFormData): Promise<void> {
     body: data,
   })
 
-  if (error) {
-    throw error
-  }
+  if (error) throw error
 
   await switchTenant(result.id)
 

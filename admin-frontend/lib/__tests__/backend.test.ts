@@ -8,9 +8,11 @@ import {
 } from "@/lib/backend"
 
 const cookieJar: { name: string; value: string }[] = []
+let requestHeaders = new Headers()
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({ getAll: () => cookieJar }),
+  headers: async () => requestHeaders,
 }))
 
 function mockFetch(status: number, body: unknown = {}) {
@@ -207,6 +209,19 @@ describe("backendRequest", () => {
 describe("backendFetch", () => {
   afterEach(() => {
     cookieJar.length = 0
+    requestHeaders = new Headers()
+  })
+
+  it("forwards the incoming request's Origin, so Better Auth's CSRF check trusts it", async () => {
+    const spy = mockFetch(200, [])
+    vi.stubGlobal("fetch", spy)
+    cookieJar.push({ name: "better-auth.session_token", value: "abc" })
+    requestHeaders = new Headers({ origin: "https://admin.example.com" })
+
+    await backendFetch("/api/auth/tenant/switch", { method: "POST" })
+
+    const headers = new Headers(lastInit(spy).headers)
+    expect(headers.get("origin")).toBe("https://admin.example.com")
   })
 
   it("forwards the request's auth cookies without the caller handling them", async () => {
