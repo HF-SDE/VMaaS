@@ -5,10 +5,10 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import type { PermissionKey } from "@vmaas/shared/types/permissions"
 
-import { authCookieHeader } from "./backend"
 import { forbiddenPath } from "./forbidden"
 import { hasPermission } from "./permissions"
 import { fetchSession, type Session } from "./session-fetch"
+import { getAuthCookie } from "./data/fetch-helpers"
 
 export type { Session }
 
@@ -21,7 +21,7 @@ export async function getSession(): Promise<Session | null> {
 
   const store = await cookies()
 
-  return fetchSession(authCookieHeader(store.getAll()))
+  return fetchSession(getAuthCookie(store.getAll()))
 }
 
 export async function requireUser(): Promise<Session> {

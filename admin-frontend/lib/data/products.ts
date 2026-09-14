@@ -1,14 +1,3 @@
-import "server-only"
-
-import { redirect, unstable_rethrow } from "next/navigation"
-
-import {
-  backendDetail,
-  backendFetch,
-  expectStatus,
-  unexpectedBackendError,
-  type UnexpectedBackendError,
-} from "../backend"
 import { err, ok, type Result } from "@vmaas/shared/lib/error-handling"
 import type {
   GetProductsParams,
@@ -16,6 +5,7 @@ import type {
 } from "@vmaas/shared/types/product"
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table"
 import type { Product } from "@prisma"
+import { fetchData } from "./data-fetch"
 
 /**
  * Why a tagged `reason` and not a message: the caller owns the wording (and the
@@ -50,37 +40,37 @@ type ProductNotFoundError = { reason: "NOT_FOUND"; status: number }
 /** Only a delete: machine slots still stock the product, or sales reference it. */
 type ProductConflictError = { reason: "CONFLICT"; status: number }
 
+/** Anything the endpoint does not document — a 500, or a status nobody planned for. */
+type UnexpectedError = { reason: "UNEXPECTED_ERROR"; status: number }
+
 /** A single product as `GET /api/products/:id` returns it. */
 export type ProductDetail = Product & ProductUsage
 
-export type GetProductsError = ProductRouteError | UnexpectedBackendError
-export type CreateProductError = ProductRouteError | UnexpectedBackendError
+export type GetProductsError = ProductRouteError | UnexpectedError
+export type CreateProductError = ProductRouteError | UnexpectedError
 export type GetProductError =
-  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+  ProductRouteError | ProductNotFoundError | UnexpectedError
 export type UpdateProductError =
-  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+  ProductRouteError | ProductNotFoundError | UnexpectedError
 export type SetProductArchivedError =
-  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+  ProductRouteError | ProductNotFoundError | UnexpectedError
 export type DeleteProductError =
   | ProductRouteError
   | ProductNotFoundError
   | ProductConflictError
-  | UnexpectedBackendError
+  | UnexpectedError
 
 /**
- * `tenantId` must come from a lib/dal.ts `require*` gate. The backend re-checks
- * membership and permissions, so passing a foreign tenant 403s rather than leaking.
+ * The tenant comes from the session cookie that `fetchData` forwards, and the
+ * backend re-checks membership and permissions, so nothing here is taken from
+ * client input.
  */
 export async function getProducts(): Promise<
   Result<GetProductsError, Product[]>
 > {
-  try {
-    return ok(await backendFetch<Product[]>("/api/products"))
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error, products] = await fetchData<Product[]>("/api/products")
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -89,8 +79,10 @@ export async function getProducts(): Promise<
       case 403:
         return err({ reason: "FORBIDDEN", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(products)
   }
 }
 
@@ -102,30 +94,23 @@ export async function getProducts(): Promise<
 export async function getProductsPaginated(
   params: GetProductsParams
 ): Promise<Result<GetProductsError, GetPaginatedResult<Product>>> {
-  try {
-    return ok(
-      await backendFetch<GetPaginatedResult<Product>>(
-        "/api/products/paginated",
-        {
-          // Listed field by field rather than spread: an object literal is what makes
-          // this assignable to the `query` record, and it keeps the wire names visible.
-          query: {
-            page: params.page,
-            pageSize: params.pageSize,
-            sortBy: params.sortBy,
-            sortOrder: params.sortOrder,
-            search: params.search,
-            includeArchived: params.includeArchived,
-          },
-        }
-      )
-    )
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403] as const)
-    const detail = backendDetail(error)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error, page] = await fetchData<GetPaginatedResult<Product>>(
+    "/api/products/paginated",
+    {
+      // Listed field by field rather than spread: an object literal is what makes
+      // this assignable to the `query` record, and it keeps the wire names visible.
+      query: {
+        page: params.page,
+        pageSize: params.pageSize,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+        search: params.search,
+        includeArchived: params.includeArchived,
+      },
+    }
+  )
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -134,8 +119,10 @@ export async function getProductsPaginated(
       case 403:
         return err({ reason: "FORBIDDEN", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(page)
   }
 }
 
@@ -143,18 +130,12 @@ export async function createProduct(
   name: string,
   price: number
 ): Promise<Result<CreateProductError, Product>> {
-  try {
-    return ok(
-      await backendFetch<Product>("/api/products", {
-        method: "POST",
-        json: { name, price },
-      })
-    )
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error, product] = await fetchData<Product>("/api/products", {
+    method: "POST",
+    body: { name, price },
+  })
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -163,8 +144,10 @@ export async function createProduct(
       case 403:
         return err({ reason: "FORBIDDEN", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(product)
   }
 }
 
@@ -172,13 +155,9 @@ export async function createProduct(
 export async function getProduct(
   id: string
 ): Promise<Result<GetProductError, ProductDetail>> {
-  try {
-    return ok(await backendFetch<ProductDetail>(`/api/products/${id}`))
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403, 404] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error, product] = await fetchData<ProductDetail>(`/api/products/${id}`)
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -189,8 +168,10 @@ export async function getProduct(
       case 404:
         return err({ reason: "NOT_FOUND", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(product)
   }
 }
 
@@ -198,20 +179,17 @@ export async function updateProduct(
   id: string,
   input: { name?: string; price?: number }
 ): Promise<Result<UpdateProductError, ProductDetail>> {
-  try {
-    return ok(
-      await backendFetch<ProductDetail>(`/api/products/${id}`, {
-        method: "PATCH",
-        json: input,
-      })
-    )
-  } catch (error) {
-    unstable_rethrow(error)
+  const [error, product] = await fetchData<ProductDetail>(
+    `/api/products/${id}`,
+    {
+      method: "PATCH",
+      body: input,
+    }
+  )
+  if (error) {
     // No 409 here: updateProductController only ever answers PRODUCT_NOT_FOUND
     // or a 500, so a CONFLICT arm would be unreachable.
-    const status = expectStatus(error, [400, 401, 403, 404] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -222,8 +200,10 @@ export async function updateProduct(
       case 404:
         return err({ reason: "NOT_FOUND", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(product)
   }
 }
 
@@ -231,16 +211,11 @@ export async function updateProduct(
 export async function deleteProduct(
   id: string
 ): Promise<Result<DeleteProductError, null>> {
-  try {
-    await backendFetch<void>(`/api/products/${id}`, {
-      method: "DELETE",
-    })
-    return ok(null)
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403, 404, 409] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error] = await fetchData<null>(`/api/products/${id}`, {
+    method: "DELETE",
+  })
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -255,8 +230,10 @@ export async function deleteProduct(
       case 409:
         return err({ reason: "CONFLICT", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(null)
   }
 }
 
@@ -266,13 +243,11 @@ export async function setProductArchived(
 ): Promise<Result<SetProductArchivedError, ProductDetail>> {
   const path = `/api/products/${id}/${archived ? "archive" : "unarchive"}`
 
-  try {
-    return ok(await backendFetch<ProductDetail>(path, { method: "POST" }))
-  } catch (error) {
-    unstable_rethrow(error)
-    const status = expectStatus(error, [400, 401, 403, 404] as const)
-    if (status === null) return err(unexpectedBackendError(error))
-
+  const [error, product] = await fetchData<ProductDetail>(path, {
+    method: "POST",
+  })
+  if (error) {
+    const status = error?.status
     switch (status) {
       case 400:
         return err({ reason: "BAD_REQUEST", status })
@@ -283,7 +258,9 @@ export async function setProductArchived(
       case 404:
         return err({ reason: "NOT_FOUND", status })
       default:
-        throw new Error(`Unhandled status ${status satisfies never}`)
+        return err({ reason: "UNEXPECTED_ERROR", status })
     }
+  } else {
+    return ok(product)
   }
 }

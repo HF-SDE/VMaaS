@@ -1,13 +1,12 @@
 "use server"
 
 import { revalidateTag } from "next/cache"
-import { PERMISSIONS } from "@vmaas/shared/types"
 
-import { backendFetch } from "@/lib/backend"
 import { tenantTags } from "@/lib/cache-tags"
-import { requirePermission, requireTenant } from "@/lib/dal"
+import { requireTenant } from "@/lib/dal"
 import { CreateTenantFormData } from "../(auth)/welcome/client"
 import { Tenant } from "@prisma"
+import { fetchData } from "@/lib/data/data-fetch"
 
 // Next 16 requires a cache-life profile as revalidateTag's second argument.
 // These are explicit, user-triggered mutations, so expire the entry immediately
@@ -18,9 +17,9 @@ export async function switchTenant(tenantId: string): Promise<void> {
   const session = await requireTenant()
 
   // The backend verifies membership via isTenantMember, so a 403 here is correct.
-  await backendFetch("/api/auth/tenant/switch", {
+  const [error] = await fetchData("/api/auth/tenant/switch", {
     method: "POST",
-    json: { tenantId },
+    body: { tenantId },
   })
 
   // Clear both tenants: the one being left and the one being entered.
@@ -32,26 +31,15 @@ export async function switchTenant(tenantId: string): Promise<void> {
   }
 }
 
-export async function createMachine(formData: FormData): Promise<void> {
-  const { activeTenantId } = await requirePermission(PERMISSIONS.MACHINE_WRITE)
-
-  await backendFetch("/api/machines", {
-    method: "POST",
-    tenantId: activeTenantId,
-    json: {
-      name: formData.get("name"),
-      location: formData.get("location") || undefined,
-    },
-  })
-
-  revalidateTag(`machines:${activeTenantId}`, IMMEDIATE)
-}
-
 export async function createTenant(data: CreateTenantFormData): Promise<void> {
-  const result: Tenant = await backendFetch("/api/tenants", {
+  const [error, result] = await fetchData<Tenant>("/api/tenants", {
     method: "POST",
-    json: data,
+    body: data,
   })
+
+  if (error) {
+    throw error
+  }
 
   await switchTenant(result.id)
 

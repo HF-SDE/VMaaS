@@ -1,8 +1,10 @@
 import { Suspense } from "react"
 import { PERMISSIONS } from "../../../shared/types/permissions"
 
-import { getMachines } from "@/lib/data/machines"
+import { getMachines, Machine } from "@/lib/data/machines"
 import { requirePermission } from "@/lib/dal"
+import { fetchData } from "@/lib/data/data-fetch"
+import { toast } from "sonner"
 
 export default function DashboardPage() {
   return (
@@ -18,10 +20,13 @@ export default function DashboardPage() {
 
 async function MachineList() {
   // Gate first, then the read — never the other way around.
-  const { activeTenantId } = await requirePermission(PERMISSIONS.MACHINE_READ)
-  const machines = await getMachines(activeTenantId)
-
-  if (machines.length === 0) return <p>Ingen maskiner endnu.</p>
+  const [error, machines] = await fetchData<Machine[]>("/api/machines")
+  if (error) {
+    toast.error("An error occurred while fetching machines.", {
+      duration: 20_000,
+    })
+    return null
+  }
 
   return (
     <ul>

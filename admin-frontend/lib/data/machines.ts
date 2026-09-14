@@ -1,6 +1,5 @@
 import "server-only"
-
-import { backendFetch } from "../backend"
+import { fetchData } from "./data-fetch"
 
 export type Machine = {
   id: string
@@ -15,6 +14,10 @@ export type Machine = {
  * `tenantId` must come from a lib/dal.ts `require*` gate. The backend re-checks
  * membership and permissions, so passing a foreign tenant 403s rather than leaking.
  */
-export async function getMachines(tenantId: string): Promise<Machine[]> {
-  return backendFetch<Machine[]>("/api/machines")
+export async function getMachines(): Promise<Machine[]> {
+  const [error, machines] = await fetchData<Machine[]>("/api/machines")
+  if (error) {
+    throw error
+  }
+  return machines
 }
