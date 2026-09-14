@@ -177,8 +177,40 @@ model Tenant {
   sales          Sale[]
   activeSessions Session[]
   roles          Role[]
+  sites          Site[]
 
   @@map("tenants")
+  @@schema("public")
+}
+
+model Site {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name String
+
+  addressLine1 String?
+  addressLine2 String?
+  postalCode   String?
+  city         String?
+  countryCode  String? // "DK"
+
+  latitude  Decimal?
+  longitude Decimal?
+
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+
+  machines Machine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("sites")
   @@schema("public")
 }
 
@@ -206,19 +238,21 @@ model Product {
 // # Der mangler en tabel med machine event
 // # Der mangler en engangs aktiverings kode
 model Machine {
-  id        String         @id @default(uuid()) @db.Uuid
-  tenantId  String         @db.Uuid
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  location  String?
-  status    machine_status @default(online)
-  createdAt DateTime       @default(now())
-
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @db.Uuid
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  status         machine_status  @default(online)
+  createdAt      DateTime        @default(now())
+  siteId         String          @db.Uuid
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
   slots          Slot[]
   sales          Sale[]
   securityAlerts SecurityAlert[]
 
   @@index([tenantId])
+  @@index([siteId])
   @@map("machines")
   @@schema("public")
 }
