@@ -19,8 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./*", "../backend/src/*"],
       "@prisma": ["../backend/src/generated/prisma/browser"],
+      "@backend-responses": ["../backend/src/types/responses"],
       "@shared": ["../shared"]
     }
   },

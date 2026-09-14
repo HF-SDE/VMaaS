@@ -15,13 +15,23 @@ export type { Session }
 /** Reads the session cookie, so it cannot live in a plain `use cache` scope.
  *  `use cache: private` lets it read cookies while staying out of the shared,
  *  cross-request server cache. `stale` of at least 30s keeps it prefetchable. */
-export async function getSession(): Promise<Session | null> {
+export async function getSession(redirectOnNull: true): Promise<Session>
+export async function getSession(
+  redirectOnNull?: false
+): Promise<Session | null>
+export async function getSession(
+  redirectOnNull = false
+): Promise<Session | null> {
   "use cache: private"
   cacheLife({ stale: 60 })
 
   const store = await cookies()
 
-  return fetchSession(getAuthCookie(store.getAll()))
+  const session = await fetchSession(getAuthCookie(store.getAll()))
+
+  if (!session && redirectOnNull) redirect("/auth/welcome")
+
+  return session
 }
 
 export async function requireUser(): Promise<Session> {

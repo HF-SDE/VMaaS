@@ -1,3 +1,5 @@
+import { invitation_status } from "@/generated/prisma/client";
+
 import { PERMISSIONS, type PermissionKey } from "@vmaas/shared/types";
 
 import type { TenantModel } from "../generated/prisma/models";
@@ -13,7 +15,7 @@ export type { PermissionKey };
 
 export const PLATFORM_ROLE = "superadmin";
 
-export const TENANT_ROLES = {
+export const DEFAULT_TENANT_ROLES = {
   OWNER: "owner",
   ADMIN: "admin",
   OPERATOR: "operator",
@@ -23,9 +25,9 @@ export const TENANT_ROLES = {
 /** Baseline role -> permission mapping used by the seed script. */
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   [PLATFORM_ROLE]: Object.values(PERMISSIONS),
-  [TENANT_ROLES.OWNER]: Object.values(PERMISSIONS),
-  [TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter((key) => key !== PERMISSIONS.TENANT_MANAGE),
-  [TENANT_ROLES.OPERATOR]: [
+  [DEFAULT_TENANT_ROLES.OWNER]: Object.values(PERMISSIONS),
+  [DEFAULT_TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter((key) => key !== PERMISSIONS.TENANT_MANAGE),
+  [DEFAULT_TENANT_ROLES.OPERATOR]: [
     PERMISSIONS.TENANT_VIEW,
     PERMISSIONS.MACHINE_READ,
     PERMISSIONS.PRODUCT_READ,
@@ -34,7 +36,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.ALERT_READ,
     PERMISSIONS.ALERT_RESOLVE,
   ],
-  [TENANT_ROLES.VIEWER]: [
+  [DEFAULT_TENANT_ROLES.VIEWER]: [
     PERMISSIONS.TENANT_VIEW,
     PERMISSIONS.USER_VIEW,
     PERMISSIONS.MACHINE_READ,
@@ -113,4 +115,19 @@ export async function listTenantsForUser(userId: string): Promise<TenantModel[]>
     distinct: ["tenantId"],
   });
   return userRoles.map((userRole) => userRole.tenant!).filter(Boolean);
+}
+
+export async function getUserInvites(userId: string, status: invitation_status = "pending") {
+  const invites = await prisma.tenantInvite.findMany({
+    where: { userId, status },
+    include: { tenant: true, role: true },
+  });
+
+  return invites.map((invite) => ({
+    tenantId: invite.tenantId,
+    tenantName: invite.tenant.name,
+    token: invite.token,
+    roleName: invite.role?.name,
+    expiresAt: invite.expiresAt,
+  }));
 }
