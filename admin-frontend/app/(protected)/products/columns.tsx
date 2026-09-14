@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { MoreHorizontal } from "lucide-react"
-import type { Product } from "@vmaas/shared/types/product"
+
+import { Badge } from "@/components/ui/badge"
 
 import type { DataTableFeatures } from "@/components/data-table-generic"
 import { Button } from "@/components/ui/button"
@@ -15,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { formatDate, formatPrice } from "@/lib/utils"
+import { Product } from "@prisma"
 
 function ProductActionsCell({ product }: { product: Product }) {
   return (
@@ -27,6 +30,9 @@ function ProductActionsCell({ product }: { product: Product }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>Handlinger</DropdownMenuLabel>
+        <DropdownMenuItem
+          render={<Link href={`/products/${product.id}`}>Vis produkt</Link>}
+        />
         <DropdownMenuItem
           onClick={() => navigator.clipboard.writeText(product.id)}
         >
@@ -54,7 +60,17 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
       <DataTableColumnHeader column={column} title="Navn" />
     ),
     cell: ({ row }) => (
-      <span className="font-medium">{row.original.name}</span>
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/products/${row.original.id}`}
+          className="font-medium hover:underline"
+        >
+          {row.original.name}
+        </Link>
+        {row.original.archivedAt && (
+          <Badge variant="secondary">Arkiveret</Badge>
+        )}
+      </div>
     ),
   },
   {
@@ -63,7 +79,9 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
       <DataTableColumnHeader column={column} title="Pris" />
     ),
     cell: ({ row }) => (
-      <span className="tabular-nums">{formatPrice(row.original.price)}</span>
+      <span className="tabular-nums">
+        {formatPrice(Number(row.original.price))}
+      </span>
     ),
   },
   {
@@ -83,7 +101,7 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
     enableSorting: false,
     header: () => <span className="text-sm font-medium">ID</span>,
     cell: ({ row }) => (
-      <span className="text-muted-foreground font-mono text-xs">
+      <span className="font-mono text-xs text-muted-foreground">
         {row.original.id}
       </span>
     ),
@@ -98,8 +116,9 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
 
 /** Column id → Danish label, for the column-visibility dropdown. */
 export const productColumnNames: Record<string, string> = {
-  name: "Navn",
-  price: "Pris",
-  createdAt: "Oprettet",
+  name: "Name",
+  price: "Price",
+  createdAt: "Created",
+  archivedAt: "Archived",
   id: "ID",
 }

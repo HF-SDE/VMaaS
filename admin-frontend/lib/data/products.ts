@@ -1,50 +1,71 @@
 import "server-only"
 
-import { unstable_rethrow } from "next/navigation"
+import { redirect, unstable_rethrow } from "next/navigation"
 
-import { BackendError, backendFetch } from "../backend"
-import { err, ok, type Result } from "../error-handling"
+import {
+  backendDetail,
+  backendFetch,
+  expectStatus,
+  unexpectedBackendError,
+  type UnexpectedBackendError,
+} from "../backend"
+import { err, ok, type Result } from "@vmaas/shared/lib/error-handling"
 import type {
   GetProductsParams,
-  GetProductsResult,
-  Product,
+  ProductUsage,
 } from "@vmaas/shared/types/product"
+import type { GetPaginatedResult } from "@vmaas/shared/types/data-table"
+import type { Product } from "@prisma"
 
 /**
  * Why a tagged `reason` and not a message: the caller owns the wording (and the
  * language), while this layer only reports what went wrong. `status` is kept so
  * a caller that wants the raw code — logging, a retry rule — still has it.
+ *
+ * Each function below declares its own union of the codes its endpoint can
+ * actually answer with, rather than sharing one wide error type. That is the
+ * point of the pattern: PATCH /:id cannot answer 409, so handling a CONFLICT
+ * there would be dead code, and DELETE /:id can, so forgetting it is a compile
+ * error. The unions are built from the pieces below so the shared parts are
+ * written once without collapsing back into a single catch-all type.
  */
-export type ProductsError =
-  | { reason: "unauthorized"; status: number }
-  | { reason: "forbidden"; status: number }
-  | { reason: "not_found"; status: number }
-  | { reason: "backend_error"; status: number }
-  | { reason: "network_error"; cause: unknown }
-
-export type ProductsResult<T> = Result<ProductsError, T>
 
 /**
- * Next signals redirect/notFound/dynamic-bailout by throwing, so every catch
- * here has to hand those back to the framework before treating the throw as a
- * failed request — `unstable_rethrow` throws again for exactly those.
+ * On every product route, because they all chain
+ * `requireAuth → requireTenant → requirePermission(PRODUCT_*)`:
+ * 400 no tenant selected (or a malformed payload), 401 signed out,
+ * 403 not a member of the tenant / missing the permission.
  */
-function toProductsError(error: unknown): ProductsError {
-  unstable_rethrow(error)
+type ProductRouteError =
+  | { reason: "BAD_REQUEST"; status: number }
+  | { reason: "UNAUTHORIZED"; status: number }
+  | { reason: "FORBIDDEN"; status: number }
 
-  if (!(error instanceof BackendError)) return { reason: "network_error", cause: error }
+/**
+ * A product of another tenant answers 404 too, so this covers both "gone" and
+ * "not yours" — the page renders the same notFound() either way.
+ */
+type ProductNotFoundError = { reason: "NOT_FOUND"; status: number }
 
-  switch (error.status) {
-    case 401:
-      return { reason: "unauthorized", status: error.status }
-    case 403:
-      return { reason: "forbidden", status: error.status }
-    case 404:
-      return { reason: "not_found", status: error.status }
-    default:
-      return { reason: "backend_error", status: error.status }
-  }
-}
+/** Only a delete: machine slots still stock the product, or sales reference it. */
+type ProductConflictError = { reason: "CONFLICT"; status: number }
+
+/** A single product as `GET /api/products/:id` returns it. */
+export type ProductDetail = Product & ProductUsage
+
+export type GetProductsError = ProductRouteError | UnexpectedBackendError
+export type CreateProductError = ProductRouteError | UnexpectedBackendError
+export type GetProductError =
+  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+export type UpdateProductError =
+  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+export type SetProductArchivedError =
+  ProductRouteError | ProductNotFoundError | UnexpectedBackendError
+export type DeleteProductError =
+  | ProductRouteError
+  | ProductNotFoundError
+  | ProductConflictError
+  | UnexpectedBackendError
 
 /**
  * `tenantId` must come from a lib/dal.ts `require*` gate. The backend re-checks
@@ -52,11 +73,24 @@ function toProductsError(error: unknown): ProductsError {
  */
 export async function getProducts(
   tenantId: string
-): Promise<ProductsResult<Product[]>> {
+): Promise<Result<GetProductsError, Product[]>> {
   try {
     return ok(await backendFetch<Product[]>("/api/products", { tenantId }))
   } catch (error) {
-    return err(toProductsError(error))
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
   }
 }
 
@@ -68,24 +102,42 @@ export async function getProducts(
 export async function getProductsPaginated(
   tenantId: string,
   params: GetProductsParams
-): Promise<ProductsResult<GetProductsResult>> {
+): Promise<Result<GetProductsError, GetPaginatedResult<Product>>> {
   try {
     return ok(
-      await backendFetch<GetProductsResult>("/api/products/paginated", {
-        tenantId,
-        // Listed field by field rather than spread: an object literal is what makes
-        // this assignable to the `query` record, and it keeps the wire names visible.
-        query: {
-          page: params.page,
-          pageSize: params.pageSize,
-          sortBy: params.sortBy,
-          sortOrder: params.sortOrder,
-          search: params.search,
-        },
-      })
+      await backendFetch<GetPaginatedResult<Product>>(
+        "/api/products/paginated",
+        {
+          tenantId,
+          // Listed field by field rather than spread: an object literal is what makes
+          // this assignable to the `query` record, and it keeps the wire names visible.
+          query: {
+            page: params.page,
+            pageSize: params.pageSize,
+            sortBy: params.sortBy,
+            sortOrder: params.sortOrder,
+            search: params.search,
+            includeArchived: params.includeArchived,
+          },
+        }
+      )
     )
   } catch (error) {
-    return err(toProductsError(error))
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403] as const)
+    const detail = backendDetail(error)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
   }
 }
 
@@ -93,7 +145,7 @@ export async function createProduct(
   tenantId: string,
   name: string,
   price: number
-): Promise<ProductsResult<Product>> {
+): Promise<Result<CreateProductError, Product>> {
   try {
     return ok(
       await backendFetch<Product>("/api/products", {
@@ -103,6 +155,149 @@ export async function createProduct(
       })
     )
   } catch (error) {
-    return err(toProductsError(error))
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
+  }
+}
+
+/** One product, with the slot count that decides whether it can be deleted. */
+export async function getProduct(
+  tenantId: string,
+  id: string
+): Promise<Result<GetProductError, ProductDetail>> {
+  try {
+    return ok(
+      await backendFetch<ProductDetail>(`/api/products/${id}`, { tenantId })
+    )
+  } catch (error) {
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403, 404] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      case 404:
+        return err({ reason: "NOT_FOUND", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
+  }
+}
+
+export async function updateProduct(
+  tenantId: string,
+  id: string,
+  input: { name?: string; price?: number }
+): Promise<Result<UpdateProductError, ProductDetail>> {
+  try {
+    return ok(
+      await backendFetch<ProductDetail>(`/api/products/${id}`, {
+        method: "PATCH",
+        tenantId,
+        json: input,
+      })
+    )
+  } catch (error) {
+    unstable_rethrow(error)
+    // No 409 here: updateProductController only ever answers PRODUCT_NOT_FOUND
+    // or a 500, so a CONFLICT arm would be unreachable.
+    const status = expectStatus(error, [400, 401, 403, 404] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      case 404:
+        return err({ reason: "NOT_FOUND", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
+  }
+}
+
+/** Answers CONFLICT when machine slots still stock the product. */
+export async function deleteProduct(
+  tenantId: string,
+  id: string
+): Promise<Result<DeleteProductError, null>> {
+  try {
+    await backendFetch<void>(`/api/products/${id}`, {
+      method: "DELETE",
+      tenantId,
+    })
+    return ok(null)
+  } catch (error) {
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403, 404, 409] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      case 404:
+        return err({ reason: "NOT_FOUND", status })
+      // Both PRODUCT_IN_USE and PRODUCT_REFERENCED land here — the wire cannot
+      // tell them apart, so the caller offers archiving for either.
+      case 409:
+        return err({ reason: "CONFLICT", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
+  }
+}
+
+export async function setProductArchived(
+  tenantId: string,
+  id: string,
+  archived: boolean
+): Promise<Result<SetProductArchivedError, ProductDetail>> {
+  const path = `/api/products/${id}/${archived ? "archive" : "unarchive"}`
+
+  try {
+    return ok(
+      await backendFetch<ProductDetail>(path, { method: "POST", tenantId })
+    )
+  } catch (error) {
+    unstable_rethrow(error)
+    const status = expectStatus(error, [400, 401, 403, 404] as const)
+    if (status === null) return err(unexpectedBackendError(error))
+
+    switch (status) {
+      case 400:
+        return err({ reason: "BAD_REQUEST", status })
+      case 401:
+        return err({ reason: "UNAUTHORIZED", status })
+      case 403:
+        return err({ reason: "FORBIDDEN", status })
+      case 404:
+        return err({ reason: "NOT_FOUND", status })
+      default:
+        throw new Error(`Unhandled status ${status satisfies never}`)
+    }
   }
 }

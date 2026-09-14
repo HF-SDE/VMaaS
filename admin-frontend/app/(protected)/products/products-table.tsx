@@ -4,7 +4,6 @@ import * as React from "react"
 import type { ColumnVisibilityState, SortingState } from "@tanstack/react-table"
 import { Search, Settings2 } from "lucide-react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import type { GetProductsResult, Product } from "@vmaas/shared/types/product"
 
 import {
   DataTable,
@@ -12,6 +11,8 @@ import {
 } from "@/components/data-table-generic"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { FieldLabel } from "@/components/ui/field"
+import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -22,6 +23,10 @@ import { useDebounce } from "@/hooks/use-debounce"
 
 import { getProductsAction } from "./actions"
 import { productColumnNames, productColumns } from "./columns"
+import { productsErrorMessage } from "./messages"
+import { toast } from "sonner"
+import { Product } from "@prisma"
+import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,7 +89,7 @@ function readNumber(raw: string | null, fallback: number): number {
 export function ProductsDataTable({
   initialData,
 }: {
-  initialData?: GetProductsResult
+  initialData?: GetPaginatedResult<Product>
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -97,6 +102,7 @@ export function ProductsDataTable({
   const orderBy = searchParams.get("orderBy") ?? DEFAULT_ORDER_BY
   const orderDir = (searchParams.get("orderDir") ?? DEFAULT_ORDER_DIR) as
     "asc" | "desc"
+  const includeArchived = searchParams.get("archived") === "1"
 
   // -- Controlled search input (debounced before pushing to URL) -------------
   const [searchInput, setSearchInput] = React.useState(searchQuery)
@@ -169,19 +175,35 @@ export function ProductsDataTable({
         sortBy: orderBy,
         sortOrder: orderDir,
         search: searchQuery,
+        includeArchived,
       })
 
-      if (actionError !== null) {
-        setError(actionError)
-        return
+      if (actionError) {
+        const reason = actionError?.reason
+        switch (reason) {
+          // The action's own permission gate redirects to /forbidden, so this
+          // only fires when the backend itself denies the write — no redirect
+          // happens there, which would otherwise leave the button silent.
+          // No NOT_FOUND or CONFLICT arm: the paginated list answers neither,
+          // so GetProductsError does not carry them.
+          case "FORBIDDEN":
+          case "UNAUTHORIZED":
+          case "BAD_REQUEST":
+          case "BACKEND_ERROR":
+          case "NETWORK_ERROR":
+            toast.error(productsErrorMessage(actionError))
+            break
+          default:
+            throw new Error(`Unhandled error reason ${reason satisfies never}`)
+        }
+      } else {
+        setError(null)
+        setData(result.data)
+        setPageCount(result.pageCount)
+        setTotalCount(result.totalCount)
       }
-
-      setError(null)
-      setData(result.data)
-      setPageCount(result.pageCount)
-      setTotalCount(result.totalCount)
     })
-  }, [pageIndex, pageSize, orderBy, orderDir, searchQuery])
+  }, [pageIndex, pageSize, orderBy, orderDir, searchQuery, includeArchived])
 
   // Skip the first fetch when the server already provided data for the
   // current params — subsequent param changes (page, sort, search) will
@@ -216,6 +238,18 @@ export function ProductsDataTable({
         )}
       </div>
 
+      {/* Archived products are filtered out server-side, so this has to reset
+          the page — page 5 of the short list would otherwise come back empty. */}
+      <FieldLabel className="gap-2 text-sm font-normal text-muted-foreground">
+        <Switch
+          checked={includeArchived}
+          onCheckedChange={(checked) =>
+            updateParams({ archived: checked ? "1" : null, page: null })
+          }
+        />
+        Vis arkiverede
+      </FieldLabel>
+
       {/* Column visibility dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -224,7 +258,7 @@ export function ProductsDataTable({
           }
         >
           <Settings2 className="mr-2 h-4 w-4" />
-          Kolonner
+          Columns
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {table

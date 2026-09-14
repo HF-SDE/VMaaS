@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { getProductsPaginated } from "@/lib/data/products"
 import { requirePermission } from "@/lib/dal"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
+import { NewProductDialog } from "./new-product-dialog"
 
 const NO_READ_ACCESS = "Du har ikke adgang til produkter."
 
@@ -24,6 +25,8 @@ async function ProductsTableLoader({
   const sortOrder = ((params?.["orderDir"] as string | undefined) ?? "asc") as
     "asc" | "desc"
   const search = (params?.["q"] as string | undefined) ?? ""
+  // Archived products stay out of the list unless the toolbar toggle asks for them.
+  const includeArchived = params?.["archived"] === "1"
   // Re-checked here, not just in the <RoleGate> above: the gate decides what to
   // render, this is what actually guards the data.
   const session = await requirePermission(
@@ -37,6 +40,7 @@ async function ProductsTableLoader({
     sortBy,
     sortOrder,
     search,
+    includeArchived,
   })
 
   return <ProductsDataTable initialData={initialData ?? undefined} />
@@ -51,21 +55,15 @@ export default async function ProductsPage({
     <div className="container mx-auto py-10">
       <div className="flex w-full justify-between">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">Produkter</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
           <p className="text-muted-foreground">
-            Oversigt over alle produkter i systemet.
+            Overview of all products in the system.
           </p>
         </div>
         {/* Hiding one button must not redirect the whole page away. */}
         <Suspense>
           <RoleGate perms={[PERMISSIONS.PRODUCT_WRITE]} performRedirect={false}>
-            <Button
-              nativeButton={false}
-              size="lg"
-              render={<Link href="/produkter/opret" />}
-            >
-              Opret produkt
-            </Button>
+            <NewProductDialog />
           </RoleGate>
         </Suspense>
       </div>
