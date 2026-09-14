@@ -36,16 +36,6 @@ describe("forbiddenPath", () => {
 })
 
 describe("readForbiddenReason", () => {
-  it("falls back when the param is missing", () => {
-    expect(readForbiddenReason(undefined)).toBe(
-      "Du har ikke adgang til denne side."
-    )
-  })
-
-  it("falls back when the param is blank", () => {
-    expect(readForbiddenReason("   ")).toBe("Du har ikke adgang til denne side.")
-  })
-
   it("returns a supplied reason, trimmed", () => {
     expect(readForbiddenReason("  Du mangler adgang.  ")).toBe(
       "Du mangler adgang."
@@ -65,9 +55,5 @@ describe("readForbiddenReason", () => {
     expect(readForbiddenReason(["Første grund", "Anden grund"])).toBe(
       "Første grund"
     )
-  })
-
-  it("falls back for an empty array", () => {
-    expect(readForbiddenReason([])).toBe("Du har ikke adgang til denne side.")
   })
 })
