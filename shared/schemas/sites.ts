@@ -35,24 +35,62 @@ function updatableText() {
 }
 
 /**
- * `latitude` and `longitude` are deliberately absent from both write schemas.
- * They are geocoder output rather than something an admin types, and nothing
- * sends them today; a site is located by its address alone.
+ * One half of a coordinate pair.
+ *
+ * Geocoder output rather than something an admin types, so there is no text
+ * normalising here — a client either has the number or it does not. `null` is
+ * accepted on both write schemas and clears the column: dropping the pin in the
+ * UI has to be able to drop the stored position with it.
  */
+function optionalCoordinate(limit: number, label: string) {
+  return z
+    .number()
+    .min(-limit, { message: `${label} must be between -${limit} and ${limit}` })
+    .max(limit, { message: `${label} must be between -${limit} and ${limit}` })
+    .nullable()
+    .optional();
+}
+
+/** Reported against `latitude` so the issue lands on a field a form can show,
+ *  rather than at the root where a field-keyed UI would drop it. */
+const COORDINATE_PAIR_MESSAGE = {
+  message: "latitude and longitude must be sent together",
+  path: ["latitude"],
+};
+
+/**
+ * Half a coordinate locates nothing, and a column pair left half-written would
+ * read as a site that is somewhere on a line of latitude. Both keys absent is
+ * fine — that is a write that does not touch the position at all.
+ */
+function hasCompleteCoordinates(body: {
+  latitude?: number | null;
+  longitude?: number | null;
+}): boolean {
+  const hasLatitude = body.latitude !== undefined && body.latitude !== null;
+  const hasLongitude = body.longitude !== undefined && body.longitude !== null;
+
+  return hasLatitude === hasLongitude;
+}
+
 export const createSiteSchema = z.object({
-  body: z.object({
-    name: z.string().trim().min(1, { message: "name is required" }),
-    addressLine1: optionalText(),
-    addressLine2: optionalText(),
-    postalCode: optionalText(),
-    city: optionalText(),
-    countryCode: optionalText()
-      .transform((value) => value?.toUpperCase())
-      .pipe(z.string().length(2, COUNTRY_CODE_MESSAGE).optional()),
-    contactName: optionalText(),
-    contactPhone: optionalText(),
-    contactEmail: optionalText().pipe(z.email(CONTACT_EMAIL_MESSAGE).optional()),
-  }),
+  body: z
+    .object({
+      name: z.string().trim().min(1, { message: "name is required" }),
+      addressLine1: optionalText(),
+      addressLine2: optionalText(),
+      postalCode: optionalText(),
+      city: optionalText(),
+      countryCode: optionalText()
+        .transform((value) => value?.toUpperCase())
+        .pipe(z.string().length(2, COUNTRY_CODE_MESSAGE).optional()),
+      contactName: optionalText(),
+      contactPhone: optionalText(),
+      contactEmail: optionalText().pipe(z.email(CONTACT_EMAIL_MESSAGE).optional()),
+      latitude: optionalCoordinate(90, "latitude"),
+      longitude: optionalCoordinate(180, "longitude"),
+    })
+    .refine(hasCompleteCoordinates, COORDINATE_PAIR_MESSAGE),
 });
 
 /** Shared by every `/:id` route, so a malformed id is a 400 rather than a
@@ -84,10 +122,13 @@ export const updateSiteSchema = z.object({
       contactName: updatableText(),
       contactPhone: updatableText(),
       contactEmail: updatableText().pipe(z.email(CONTACT_EMAIL_MESSAGE).nullable().optional()),
+      latitude: optionalCoordinate(90, "latitude"),
+      longitude: optionalCoordinate(180, "longitude"),
     })
     .refine((body) => Object.values(body).some((value) => value !== undefined), {
       message: "at least one field is required",
-    }),
+    })
+    .refine(hasCompleteCoordinates, COORDINATE_PAIR_MESSAGE),
 });
 
 export const getSitesPageSchema = z.object({

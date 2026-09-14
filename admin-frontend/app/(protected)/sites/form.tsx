@@ -1,23 +1,16 @@
 "use client"
 
-import { useForm, type AnyFieldApi } from "@tanstack/react-form"
-import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { type AnyFieldApi } from "@tanstack/react-form"
+import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Loader2 } from "lucide-react"
 
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { createSiteSchema } from "@vmaas/shared/schemas"
 import { fetchData } from "@/lib/data/data-fetch"
 import { SiteUsage } from "@vmaas/shared/types/site"
 import { Site } from "@prisma"
 import { siteWriteErrorMessage } from "./messages"
+import { SiteStepperForm } from "./stepper-form"
 
 /**
  * What `GET`/`PATCH /api/sites/:id` answer with — the row plus its usage
@@ -42,6 +35,13 @@ export type SiteFormValues = {
   contactName?: string
   contactPhone?: string
   contactEmail?: string
+  /**
+   * Not typed into a field — the address search writes the pair, and the map
+   * reads it. `null` rather than `undefined` is what clears the stored pin on
+   * an edit, where an absent key means "leave the column alone".
+   */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 /** Every field blank — what the create dialog starts from. */
@@ -55,6 +55,8 @@ export const EMPTY_SITE: SiteFormValues = {
   contactName: "",
   contactPhone: "",
   contactEmail: "",
+  latitude: null,
+  longitude: null,
 }
 
 /**
@@ -65,7 +67,7 @@ export const EMPTY_SITE: SiteFormValues = {
  * would be nine near-identical signatures for no extra safety — `form.Field`
  * has already checked the name against `SiteFormValues` by the time this runs.
  */
-function TextField({
+export function TextField({
   field,
   label,
   placeholder,
@@ -99,151 +101,14 @@ function TextField({
   )
 }
 
-type SiteFormProps = {
-  defaultValues: SiteFormValues
-  submitLabel: string
-  onCancel: () => void
-  /** Resolves to an error message to show, or null when the write succeeded. */
-  onSubmit: (values: SiteFormValues) => Promise<string | null>
-}
-
 /**
- * The fields shared by creating and editing a site.
+ * Creating a site.
  *
- * It owns validation and the submitting state but not what submitting *does* —
- * the caller passes that in, so one set of fields serves both the new-site
- * dialog and the edit dialog on a site's page.
- *
- * `createSiteSchema.shape.body` is reused as the validator for both: the edit
- * endpoint accepts partial input, but this form always sends every field, so
- * requiring a name here is what the user should actually be held to. Everything
- * else stays optional on both sides — the columns are nullable, so a site can
- * be created from a name alone and filled in later.
+ * `createSiteSchema.shape.body` is what the stepper validates against, which is
+ * also what this endpoint parses. Everything but the name stays optional — the
+ * columns are nullable, so a site can be created from a name alone and filled
+ * in later.
  */
-export function SiteForm({
-  defaultValues,
-  submitLabel,
-  onCancel,
-  onSubmit,
-}: SiteFormProps) {
-  const form = useForm({
-    defaultValues,
-    validators: {
-      onSubmit: createSiteSchema.shape.body,
-    },
-
-    onSubmit: async ({ value }) => {
-      const message = await onSubmit(value)
-      if (message) toast.error(message)
-    },
-  })
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault()
-        form.handleSubmit()
-      }}
-    >
-      <FieldGroup>
-        <form.Field name="name">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Name*"
-              placeholder="Warehouse North"
-            />
-          )}
-        </form.Field>
-
-        <form.Field name="addressLine1">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Address line 1"
-              placeholder="Kullinggade 6A"
-            />
-          )}
-        </form.Field>
-
-        <form.Field name="addressLine2">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Address line 2"
-              placeholder="Building B, 2nd floor"
-            />
-          )}
-        </form.Field>
-
-        <form.Field name="postalCode">
-          {(field) => (
-            <TextField field={field} label="Postal code" placeholder="5700" />
-          )}
-        </form.Field>
-
-        <form.Field name="city">
-          {(field) => (
-            <TextField field={field} label="City" placeholder="Svendborg" />
-          )}
-        </form.Field>
-
-        <form.Field name="countryCode">
-          {(field) => (
-            <TextField field={field} label="Country code" placeholder="DK" />
-          )}
-        </form.Field>
-
-        <form.Field name="contactName">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Contact name"
-              placeholder="Jane Jensen"
-            />
-          )}
-        </form.Field>
-
-        <form.Field name="contactPhone">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Contact phone"
-              type="tel"
-              placeholder="+45 12 34 56 78"
-            />
-          )}
-        </form.Field>
-
-        <form.Field name="contactEmail">
-          {(field) => (
-            <TextField
-              field={field}
-              label="Contact email"
-              type="email"
-              placeholder="jane@example.com"
-            />
-          )}
-        </form.Field>
-
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={() => onCancel()}>
-            Cancel
-          </Button>
-          <form.Subscribe selector={(s) => s.isSubmitting}>
-            {(isSubmitting) => (
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="animate-spin" />}
-                {submitLabel}
-              </Button>
-            )}
-          </form.Subscribe>
-        </div>
-      </FieldGroup>
-    </form>
-  )
-}
-
 export function CreateSiteForm({
   triggerCloseDialog,
 }: {
@@ -252,9 +117,9 @@ export function CreateSiteForm({
   const router = useRouter()
 
   return (
-    <SiteForm
+    <SiteStepperForm
       defaultValues={EMPTY_SITE}
-      submitLabel="Create Site"
+      submitLabel="Create site"
       onCancel={triggerCloseDialog}
       onSubmit={async (values) => {
         const [error, site] = await fetchData<Site>("/api/sites", {
@@ -298,6 +163,12 @@ export function CreateSiteForm({
   )
 }
 
+/**
+ * Editing a site, through the same stepper as creating one.
+ *
+ * The edit endpoint accepts partial input, but this form always sends every
+ * field, so holding the user to a non-empty name is right on both sides.
+ */
 export function EditSiteForm({
   id,
   defaultValues,
@@ -305,6 +176,8 @@ export function EditSiteForm({
   onCancel,
 }: {
   id: string
+  /** Includes the site's stored coordinates, so the map opens on the existing
+   *  pin rather than waiting for the user to pick a new address. */
   defaultValues: SiteFormValues
   onSaved: () => void
   onCancel: () => void
@@ -312,7 +185,7 @@ export function EditSiteForm({
   const router = useRouter()
 
   return (
-    <SiteForm
+    <SiteStepperForm
       defaultValues={defaultValues}
       submitLabel="Save changes"
       onCancel={onCancel}

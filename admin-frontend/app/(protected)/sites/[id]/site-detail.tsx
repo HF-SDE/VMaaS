@@ -77,9 +77,20 @@ export async function SiteDetailLoader({
       ? `${site.latitude}, ${site.longitude}`
       : null
 
-  // Narrowed to plain strings before crossing the client boundary: this server
+  // The same pair as numbers, for the map in the edit dialog. `Number` is what
+  // turns the serialised Decimal back into a coordinate; a pair that does not
+  // parse is treated as no pin rather than as NaN reaching MapLibre.
+  const latitude = Number(site.latitude)
+  const longitude = Number(site.longitude)
+  const hasPin =
+    coordinates !== null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude)
+
+  // Narrowed to plain values before crossing the client boundary: this server
   // component holds Prisma's `Decimal` and `Date` fields, and the edit form
-  // only ever wants the nine text columns, with null as an empty input.
+  // wants the text columns with null as an empty input, and the coordinates as
+  // numbers — or null, which is what clears them on save.
   const formValues: SiteFormValues = {
     name: site.name,
     addressLine1: site.addressLine1 ?? "",
@@ -90,6 +101,8 @@ export async function SiteDetailLoader({
     contactName: site.contactName ?? "",
     contactPhone: site.contactPhone ?? "",
     contactEmail: site.contactEmail ?? "",
+    latitude: hasPin ? latitude : null,
+    longitude: hasPin ? longitude : null,
   }
 
   return (

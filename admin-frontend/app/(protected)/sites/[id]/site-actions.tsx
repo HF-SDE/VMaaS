@@ -22,7 +22,8 @@ import { fetchData } from "@/lib/data/data-fetch"
 type SiteActionsProps = {
   id: string
   name: string
-  /** The site's nine text columns, with null already flattened to "". */
+  /** The site's text columns with null flattened to "", plus its coordinates
+   *  as numbers — the edit stepper seeds both its fields and its map from it. */
   defaultValues: SiteFormValues
   /** False while machines still stand at the site. */
   canDelete: boolean
@@ -77,20 +78,26 @@ export function SiteActions({
       )}
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-sm">
+        {/* Wider than the delete dialog: the stepper carries a four-tab strip,
+            a three-column address row and a map. */}
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Edit Site</DialogTitle>
             <DialogDescription>
-              Change the address or contact details, and save to update the
-              site.
+              Step through the site&apos;s details and save to update it.
             </DialogDescription>
           </DialogHeader>
-          <EditSiteForm
-            id={id}
-            defaultValues={defaultValues}
-            onSaved={() => setEditOpen(false)}
-            onCancel={() => setEditOpen(false)}
-          />
+          {/* Remounted per opening: the stepper starts on step one and seeds
+              TanStack Form from `defaultValues`, so a dialog kept mounted would
+              still show the previous edit's values after a save. */}
+          {editOpen && (
+            <EditSiteForm
+              id={id}
+              defaultValues={defaultValues}
+              onSaved={() => setEditOpen(false)}
+              onCancel={() => setEditOpen(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

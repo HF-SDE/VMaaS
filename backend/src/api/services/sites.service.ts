@@ -23,8 +23,9 @@ export type UnknownSiteError = { reason: "UNKNOWN_ERROR"; message: string };
 /** A site row plus the usage fields `getSiteByIdService` derives. */
 export type SiteDetail = Site & SiteUsage;
 
-/** The columns a write accepts. `latitude`/`longitude` are absent on purpose —
- *  see the note on the schemas in `@vmaas/shared/schemas/sites`. */
+/** The columns a write accepts. The coordinates are geocoder output rather than
+ *  typed input, and the schemas hold them to a pair — see
+ *  `@vmaas/shared/schemas/sites`. Prisma widens the numbers to `Decimal`. */
 export type SiteWriteData = {
   name?: string;
   addressLine1?: string | null;
@@ -35,6 +36,8 @@ export type SiteWriteData = {
   contactName?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 function isSortField(value: string): value is SiteSortField {
