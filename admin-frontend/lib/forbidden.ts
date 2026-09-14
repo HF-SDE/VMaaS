@@ -13,7 +13,7 @@ export const FORBIDDEN_PATH = "/forbidden"
  *  two — enough for real copy, too short to be a wall of text. */
 export const FORBIDDEN_REASON_MAX_LENGTH = 200
 
-export const FORBIDDEN_FALLBACK_REASON = "Du har ikke adgang til denne side."
+export const FORBIDDEN_FALLBACK_REASON = "You don't have access to this page."
 
 function clean(reason: string): string {
   return reason.trim().slice(0, FORBIDDEN_REASON_MAX_LENGTH)

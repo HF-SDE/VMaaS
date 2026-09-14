@@ -1,5 +1,5 @@
 import "./loader.css"
-export default function Loader({ text = "Indlæser..." }: { text?: string }) {
+export default function Loader({ text = "Loading..." }: { text?: string }) {
   return (
     <div className="flex h-48 flex-col items-center justify-center gap-4">
       <div className="snippet" data-title="dot-bricks">
