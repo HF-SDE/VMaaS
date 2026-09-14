@@ -27,8 +27,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "pg": "^8.23.0",
-    "zod": "^4.6.2"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
