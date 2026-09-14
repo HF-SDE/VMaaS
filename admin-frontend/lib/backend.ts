@@ -125,7 +125,7 @@ export async function backendRequest<T>(
   if (!cookieHeader) throw new BackendError(401, path)
 
   const response = await fetch(
-    `${config.BACKEND_URL}${path}${queryString(query)}`,
+    `${config.NEXT_PUBLIC_BACKEND_URL}${path}${queryString(query)}`,
     {
       ...init,
       // The response is scoped to one user's cookie, so it must never be cached.

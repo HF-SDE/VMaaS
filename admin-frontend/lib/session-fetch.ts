@@ -38,7 +38,7 @@ function isTransient(status: number): boolean {
  */
 async function requestSession(cookieHeader: string): Promise<Response> {
   const attempt = () =>
-    fetch(`${config.BACKEND_URL}/api/auth/get-session`, {
+    fetch(`${config.NEXT_PUBLIC_BACKEND_URL}/api/auth/get-session`, {
       headers: { cookie: cookieHeader },
       cache: "no-store",
     })
