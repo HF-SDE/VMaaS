@@ -1,5 +1,6 @@
 "use client"
 
+import { useId } from "react"
 import { type AnyFieldApi } from "@tanstack/react-form"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -60,6 +61,26 @@ export const EMPTY_SITE: SiteFormValues = {
 }
 
 /**
+ * A short, meaningless token for a field name — `"contactEmail"` becomes
+ * something like `"1f0kq2"`.
+ *
+ * Chrome classifies a field by its `name` and `id` and largely ignores
+ * `autocomplete="off"` once it has decided it is looking at an address form;
+ * it then offers to save this site's address into the user's own profile. A
+ * name it cannot read gives those heuristics nothing to match. Nothing depends
+ * on the real value: the form is submitted through TanStack and `fetchData`,
+ * never natively, so these attributes are decoration the browser reads and the
+ * app does not.
+ */
+function scrambleName(name: string): string {
+  let hash = 0
+  for (let index = 0; index < name.length; index++) {
+    hash = (hash * 31 + name.charCodeAt(index)) | 0
+  }
+  return (hash >>> 0).toString(36)
+}
+
+/**
  * One labelled text input, bound to a TanStack field.
  *
  * Typed as `AnyFieldApi` rather than the exact field type: the nine fields
@@ -72,21 +93,31 @@ export function TextField({
   label,
   placeholder,
   type = "text",
+  inputMode,
 }: {
   field: AnyFieldApi
   label: string
   placeholder?: string
   type?: string
+  /** Picks the touch keyboard without `type="email"` / `type="tel"`, which are
+   *  the strongest autofill hints a field can carry. */
+  inputMode?: React.ComponentProps<"input">["inputMode"]
 }) {
   const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
 
+  // The `useId` half differs per mounted dialog, so the same field is not even
+  // consistently named across visits for a heuristic to learn from.
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "")
+  const domId = `f${uid}${scrambleName(field.name)}`
+
   return (
     <Field data-invalid={isInvalid} orientation="vertical">
-      <FieldLabel htmlFor={field.name}>{label}</FieldLabel>
+      <FieldLabel htmlFor={domId}>{label}</FieldLabel>
       <Input
-        id={field.name}
-        name={field.name}
+        id={domId}
+        name={domId}
         type={type}
+        inputMode={inputMode}
         // The schema leaves optional fields as `string | undefined`, and an
         // undefined `value` would make this an uncontrolled input.
         value={field.state.value ?? ""}
@@ -95,6 +126,10 @@ export function TextField({
         aria-invalid={isInvalid}
         placeholder={placeholder}
         autoComplete="off"
+        // Honoured by 1Password and LastPass respectively; both otherwise put
+        // an inline icon on anything that looks like a contact field.
+        data-1p-ignore=""
+        data-lpignore="true"
       />
       {isInvalid && <FieldError errors={field.state.meta.errors} />}
     </Field>

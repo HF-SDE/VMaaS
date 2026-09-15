@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import dynamic from "next/dynamic"
 import { useForm } from "@tanstack/react-form"
 import { cn } from "cn"
@@ -156,14 +156,23 @@ function StepNav({
         {step === 0 ? "Cancel" : "Back"}
       </Button>
 
-      {step === LAST_STEP ? (
+      {/* Two sibling conditionals rather than one ternary, deliberately: the
+          arms of a ternary share a child slot, so React would reconcile Next
+          into Submit by mutating `type` on the *same* DOM node. Clicking the
+          last Next flushes `setStep` synchronously during the click dispatch,
+          and the browser then reads the button's activation behaviour off the
+          attribute as it stands *after* that flush — `submit` — so the form
+          submitted instead of advancing to Confirm. Separate slots mean the
+          clicked button is detached before it can activate. */}
+      {step < LAST_STEP && (
+        <Button type="button" onClick={onNext} disabled={!canContinue}>
+          Next
+        </Button>
+      )}
+      {step === LAST_STEP && (
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="animate-spin" />}
           {submitLabel}
-        </Button>
-      ) : (
-        <Button type="button" onClick={onNext} disabled={!canContinue}>
-          Next
         </Button>
       )}
     </div>
@@ -205,6 +214,7 @@ export function SiteStepperForm({
   onSubmit,
 }: SiteStepperFormProps) {
   const [step, setStep] = useState(0)
+  const addressSearchId = `a${useId().replace(/[^a-zA-Z0-9]/g, "")}`
 
   const form = useForm({
     defaultValues,
@@ -257,6 +267,11 @@ export function SiteStepperForm({
     // instead of overflowing the dialog's grid track.
     <form
       className="@container/stepper min-w-0"
+      // This describes a *site*, not the person filling it in, so none of it
+      // belongs in the browser's saved addresses. The per-input measures in
+      // `TextField` are what actually stop Chrome; this is the declaration it
+      // is supposed to honour on its own.
+      autoComplete="off"
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
@@ -372,12 +387,17 @@ export function SiteStepperForm({
                       />
                     )}
                   </form.Field>
+                  {/* `inputMode` rather than `type="tel"` / `type="email"`:
+                      those two types are what make Chrome treat the panel as a
+                      contact form and offer to save it, and the schema is what
+                      validates the value either way. The touch keyboard is the
+                      only thing the type was buying, and `inputMode` keeps it. */}
                   <form.Field name="contactPhone">
                     {(field) => (
                       <TextField
                         field={field}
                         label="Contact phone"
-                        type="tel"
+                        inputMode="tel"
                         placeholder="+45 12 34 56 78"
                       />
                     )}
@@ -387,7 +407,7 @@ export function SiteStepperForm({
                       <TextField
                         field={field}
                         label="Contact email"
-                        type="email"
+                        inputMode="email"
                         placeholder="jane@example.com"
                       />
                     )}
@@ -398,11 +418,14 @@ export function SiteStepperForm({
               <TabsContent value="address" keepMounted>
                 <FieldGroup>
                   <Field orientation="vertical">
-                    <FieldLabel htmlFor="site-address-search">
+                    {/* Opaque id for the same reason the text fields carry
+                        one: `site-address-search` reads as an address box to
+                        Chrome's autofill before it has seen a single result. */}
+                    <FieldLabel htmlFor={addressSearchId}>
                       Search for an address
                     </FieldLabel>
                     <AddressSearch
-                      id="site-address-search"
+                      id={addressSearchId}
                       defaultValue={
                         joinParts(
                           [
