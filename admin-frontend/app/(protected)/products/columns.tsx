@@ -12,6 +12,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -25,19 +26,21 @@ function ProductActionsCell({ product }: { product: Product }) {
       <DropdownMenuTrigger
         render={<Button variant="ghost" className="h-8 w-8 p-0" />}
       >
-        <span className="sr-only">Åbn menu</span>
+        <span className="sr-only">Open menu</span>
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Handlinger</DropdownMenuLabel>
-        <DropdownMenuItem
-          render={<Link href={`/products/${product.id}`}>Vis produkt</Link>}
-        />
-        <DropdownMenuItem
-          onClick={() => navigator.clipboard.writeText(product.id)}
-        >
-          Kopiér ID
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem
+            render={<Link href={`/products/${product.id}`}>View product</Link>}
+          />
+          <DropdownMenuItem
+            onClick={() => navigator.clipboard.writeText(product.id)}
+          >
+            Copy ID
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

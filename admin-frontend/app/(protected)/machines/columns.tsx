@@ -12,6 +12,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -31,18 +32,20 @@ function MachineActionsCell({ machine }: { machine: MachineListItem }) {
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuItem
-          render={<Link href={`/machines/${machine.id}`}>View machine</Link>}
-        />
-        <DropdownMenuItem
-          render={<Link href={`/sites/${machine.site.id}`}>View site</Link>}
-        />
-        <DropdownMenuItem
-          onClick={() => navigator.clipboard.writeText(machine.id)}
-        >
-          Copy ID
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem
+            render={<Link href={`/machines/${machine.id}`}>View machine</Link>}
+          />
+          <DropdownMenuItem
+            render={<Link href={`/sites/${machine.site.id}`}>View site</Link>}
+          />
+          <DropdownMenuItem
+            onClick={() => navigator.clipboard.writeText(machine.id)}
+          >
+            Copy ID
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

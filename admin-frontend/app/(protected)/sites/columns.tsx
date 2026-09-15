@@ -10,6 +10,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -27,15 +28,17 @@ function SiteActionsCell({ site }: { site: Site }) {
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuItem
-          render={<Link href={`/sites/${site.id}`}>View site</Link>}
-        />
-        <DropdownMenuItem
-          onClick={() => navigator.clipboard.writeText(site.id)}
-        >
-          Copy ID
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem
+            render={<Link href={`/sites/${site.id}`}>View site</Link>}
+          />
+          <DropdownMenuItem
+            onClick={() => navigator.clipboard.writeText(site.id)}
+          >
+            Copy ID
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
