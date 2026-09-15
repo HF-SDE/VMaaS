@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/permissions"
 import type { MembersResponse } from "@backend-responses"
 import { cn } from "cn"
 import { InviteMemberForm } from "./invite-member-form"
+import { RoleSelect } from "./role-select"
 
 export const instant = false
 
@@ -17,7 +18,7 @@ export default async function UsersPage() {
   const session = await getSession(true)
 
   const [usersErr, members] = await fetchData<MembersResponse[]>(
-    "/api/tenants/" + session.activeTenantId + "/members"
+    "/api/tenants/members"
   )
 
   const canInviteUsers =
@@ -49,10 +50,7 @@ export default async function UsersPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">Members</h1>
         {canInviteUsers && tenant_roles && (
-          <InviteMemberForm
-            activeTenantId={session.activeTenantId}
-            tenantRoles={tenant_roles}
-          />
+          <InviteMemberForm tenantRoles={tenant_roles} />
         )}
       </div>
 
@@ -64,21 +62,10 @@ export default async function UsersPage() {
                 member.user.id === session.user.id ? "font-bold" : ""
               )}
             >
-              {member.user.name} - {member.role.name}
+              {member.user.name}
             </p>
-            {!isSelf(member.userId) && canChangeRoles && (
-              <select>
-                {tenant_roles &&
-                  tenant_roles.map((role) => (
-                    <option
-                      key={role.name}
-                      defaultValue={member.role.name}
-                      value={role.name}
-                    >
-                      {role.name}
-                    </option>
-                  ))}
-              </select>
+            {!isSelf(member.userId) && canChangeRoles && tenant_roles && (
+              <RoleSelect tenant_roles={tenant_roles} member={member} />
             )}
             {!isSelf(member.userId) && canRemoveUsers && (
               <button>Remove</button>

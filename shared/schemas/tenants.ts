@@ -24,3 +24,8 @@ export const updateRoleSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
   permissions: z.array(z.string()).optional(),
 });
+
+export const updateMemberRoleSchema = z.object({
+  params: z.object({ userId: z.string() }),
+  body: z.object({ roleName: z.string() }),
+});

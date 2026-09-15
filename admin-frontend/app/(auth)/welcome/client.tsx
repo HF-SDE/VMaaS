@@ -45,7 +45,7 @@ export default function WelcomePageClient({
   }
 
   async function respondToInvite(token: string, status: InviteResponses) {
-    const [error] = await fetchData(`/api/tenants/accept-invite/${token}`, {
+    const [error] = await fetchData(`/api/tenants/respond-to-invite/${token}`, {
       method: "POST",
       body: { status },
     })

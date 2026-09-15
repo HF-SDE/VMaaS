@@ -87,6 +87,15 @@ export async function removeMemberService(tenantId: string, userId: string) {
   return { ok: true as const };
 }
 
+export async function updateMemberRoleService(tenantId: string, userId: string, roleName: string) {
+  const role = await prisma.role.findFirst({ where: { name: roleName, tenantId } });
+  if (!role) throw new APIError("BAD_REQUEST", { message: `Unknown role: ${roleName}` });
+
+  await prisma.userRole.updateMany({ where: { userId, tenantId }, data: { roleId: role.id } });
+
+  return { ok: true as const };
+}
+
 export async function getRolesService(tenantId: string) {
   const tenantRolesWithPermissions = await prisma.role.findMany({
     where: { tenantId },

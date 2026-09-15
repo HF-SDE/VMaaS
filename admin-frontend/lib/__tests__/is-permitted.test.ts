@@ -7,6 +7,7 @@ const session: Session = {
   user: { id: "u1", name: "Kenni", email: "k@example.com" },
   activeTenantId: "t1",
   tenants: [{ id: "t1", name: "Tenant One" }],
+  tenantInvites: [],
   permissions: [PERMISSIONS.PRODUCT_READ, PERMISSIONS.MACHINE_READ],
 }
 
