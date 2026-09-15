@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "docker:dev": "docker compose -f ../docker/docker-compose.yml up -d backend && docker image prune -f",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
     "test": "vitest run",
