@@ -26,6 +26,7 @@ export async function serverFetch<TResponse, TBody = unknown>(
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      origin: config.FRONTEND_URL,
       cookie: getAuthCookie(store.getAll()),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

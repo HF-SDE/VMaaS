@@ -5,9 +5,15 @@ export const createTenantSchema = z.object({
   description: z.string().optional(),
 });
 
+/**
+ * A bare body schema — the invite route has no `validate()` middleware, so the
+ * controller parses `req.body` with this, and the invite form reuses it as its
+ * own validator. The email is checked here rather than only on the server so a
+ * typo is caught before it becomes a "no user with that email" round trip.
+ */
 export const inviteMemberSchema = z.object({
-  email: z.string().min(1, "User ID is required"),
-  role: z.string().min(1, "Role is required"),
+  email: z.email("Enter a valid email address"),
+  role: z.string().min(1, "Select a role"),
 });
 
 export const respondToInviteSchema = z.object({
@@ -28,4 +34,18 @@ export const updateRoleSchema = z.object({
 export const updateMemberRoleSchema = z.object({
   params: z.object({ userId: z.string() }),
   body: z.object({ roleName: z.string() }),
+});
+
+/**
+ * Parsed straight off `req.query` in the controller rather than through
+ * `validate()`, the same way `getProductsPageSchema` is: every field stays
+ * optional so a bare `/members/paginated` is a valid request, and the service
+ * is what clamps and whitelists the values it gets.
+ */
+export const getMembersPageSchema = z.object({
+  page: z.coerce.number().optional(),
+  pageSize: z.coerce.number().optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
+  search: z.string().optional(),
 });
