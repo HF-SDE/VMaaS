@@ -7,6 +7,6 @@
 /// Main-Controller pin numbers.
 namespace Pins
 {
-    constexpr int UART_RX = 16; ///Receives pin on Motorcontrol's TX.
-    constexpr int UART_TX = 17; ///Transmits pin on Motorcontrol's RX.
+    constexpr int UART_RX = 32; ///Receives pin on Motorcontrol's TX.
+    constexpr int UART_TX = 33; ///Transmits pin on Motorcontrol's RX.
 }
