@@ -22,8 +22,9 @@ import { fetchData } from "@/lib/data/data-fetch"
 type MachineActionsProps = {
   id: string
   name: string
-  /** `Machine.location` is nullable — a machine can be registered before it is placed. */
-  location: string | null
+  /** The site the machine stands at. Required, so the edit form always opens
+   *  with a site already picked. */
+  site: { id: string; name: string }
   /** False once slots or sales reference the machine; it cannot be deleted then. */
   canDelete: boolean
 }
@@ -42,7 +43,7 @@ type MachineActionsProps = {
 export function MachineActions({
   id,
   name,
-  location,
+  site,
   canDelete,
 }: MachineActionsProps) {
   const router = useRouter()
@@ -85,14 +86,16 @@ export function MachineActions({
           <DialogHeader>
             <DialogTitle>Edit machine</DialogTitle>
             <DialogDescription>
-              Change the name or location, and save to update the machine.
+              Change the name or move the machine to another site, and save to
+              update it.
             </DialogDescription>
           </DialogHeader>
-          {/* A cleared location is sent as "" and turned into a null by
-              updateMachineSchema, so emptying the field actually clears it. */}
+          {/* The picker needs the site's name to show and the form needs its id
+              to send, hence the two props. */}
           <EditMachineForm
             id={id}
-            defaultValues={{ name, location: location ?? "" }}
+            defaultValues={{ name, siteId: site.id }}
+            defaultSiteName={site.name}
             onSaved={() => setEditOpen(false)}
             onCancel={() => setEditOpen(false)}
           />

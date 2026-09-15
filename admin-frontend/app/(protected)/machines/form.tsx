@@ -15,30 +15,39 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createMachineSchema } from "@vmaas/shared/schemas"
 import { fetchData } from "@/lib/data/data-fetch"
-import { MachineUsage } from "@vmaas/shared/types/machine"
+import { MachineSite, MachineUsage } from "@vmaas/shared/types/machine"
 import { Machine } from "@prisma"
+import { SitePicker } from "@/components/site-picker"
 import { machineWriteErrorMessage } from "./messages"
 
 /**
- * What `GET`/`PATCH /api/machines/:id` answer with — the row plus its usage
- * flags. Composed here rather than in `@vmaas/shared/types/machine`, because the
- * `@prisma` alias that `Machine` comes from only exists in this package.
+ * What `GET`/`PATCH /api/machines/:id` answer with — the row, the site it stands
+ * at, and its usage flags. Composed here rather than in
+ * `@vmaas/shared/types/machine`, because the `@prisma` alias that `Machine` comes
+ * from only exists in this package.
  */
-export type MachineDetail = Machine & MachineUsage
+export type MachineDetail = Machine & MachineSite & MachineUsage
+
+/** A machine as the list returns it: the row plus its site, no usage flags. */
+export type MachineListItem = Machine & MachineSite
 
 /**
- * Mirrors `z.input<typeof createMachineSchema.shape.body>`. TanStack Form
- * matches the validator's input type against this one invariantly, so `location`
- * has to be optional here exactly as it is in the schema — a required `string`
- * makes the validator below stop type-checking.
+ * Mirrors `z.input<typeof createMachineSchema.shape.body>`. TanStack Form matches
+ * the validator's input type against this one invariantly, so both fields are
+ * required here exactly as they are in the schema.
+ *
+ * `siteId` is `""` until the picker has a selection — the schema's uuid check is
+ * what turns that into the "site is required" message.
  */
 export type MachineFormValues = {
   name: string
-  location?: string
+  siteId: string
 }
 
 type MachineFormProps = {
   defaultValues: MachineFormValues
+  /** Pre-fills the site picker's input when editing a machine already placed. */
+  defaultSiteName?: string
   submitLabel: string
   onCancel: () => void
   /** Resolves to an error message to show, or null when the write succeeded. */
@@ -54,14 +63,13 @@ type MachineFormProps = {
  *
  * `createMachineSchema.shape.body` is reused as the validator for both: the edit
  * endpoint accepts partial input, but this form always sends both fields, so
- * requiring a name here is what the user should actually be held to. `location`
- * stays optional on both sides — it is nullable in the database, so a machine
- * can be registered before it is placed.
+ * requiring a name and a site here is what the user should actually be held to.
  *
  * `status` is not a field: the firmware reports it, an admin does not set it.
  */
 export function MachineForm({
   defaultValues,
+  defaultSiteName,
   submitLabel,
   onCancel,
   onSubmit,
@@ -75,7 +83,7 @@ export function MachineForm({
     onSubmit: async ({ value }) => {
       const message = await onSubmit({
         name: value.name,
-        location: value.location,
+        siteId: value.siteId,
       })
       if (message) toast.error(message)
     },
@@ -113,23 +121,27 @@ export function MachineForm({
           }}
         </form.Field>
 
-        <form.Field name="location">
+        {/* The picker holds the site's *name* in its input and hands back the
+            row; the field itself only ever stores the id, which is what the
+            endpoints take. Clearing the picker writes "" back, so the site
+            becomes required again rather than silently keeping the old id. */}
+        <form.Field name="siteId">
           {(field) => {
             const isInvalid =
               field.state.meta.isTouched && !field.state.meta.isValid
             return (
               <Field data-invalid={isInvalid} orientation="vertical">
-                <FieldLabel htmlFor={field.name}>Location</FieldLabel>
-                <Input
-                  type="text"
+                <FieldLabel htmlFor={field.name}>Site*</FieldLabel>
+                <SitePicker
                   id={field.name}
                   name={field.name}
-                  value={field.state.value ?? ""}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  aria-invalid={isInvalid}
-                  placeholder="e.g. Building A, 2nd floor"
-                  autoComplete="off"
+                  defaultValue={defaultSiteName}
+                  onSelect={(site) => {
+                    field.handleChange(site?.id ?? "")
+                    // Picking is this field's equivalent of blurring an input —
+                    // without it the error only appears after a submit attempt.
+                    field.handleBlur()
+                  }}
                 />
 
                 {isInvalid && <FieldError errors={field.state.meta.errors} />}
@@ -165,17 +177,17 @@ export function CreateMachineForm({
 
   return (
     <MachineForm
-      defaultValues={{ name: "", location: "" }}
+      defaultValues={{ name: "", siteId: "" }}
       submitLabel="Create machine"
       onCancel={triggerCloseDialog}
       onSubmit={async (values) => {
-        // A blank location is sent as "" and normalised to "no location" by
-        // createMachineSchema, so the client does not have to decide between
-        // omitting the key and sending an empty one.
-        const [error, machine] = await fetchData<Machine>("/api/machines", {
-          method: "POST",
-          body: { name: values.name, location: values.location },
-        })
+        const [error, machine] = await fetchData<MachineListItem>(
+          "/api/machines",
+          {
+            method: "POST",
+            body: { name: values.name, siteId: values.siteId },
+          }
+        )
 
         // The action's own permission gate redirects to /forbidden, so a
         // `forbidden` here means the backend itself denied the write — no
@@ -217,11 +229,13 @@ export function CreateMachineForm({
 export function EditMachineForm({
   id,
   defaultValues,
+  defaultSiteName,
   onSaved,
   onCancel,
 }: {
   id: string
   defaultValues: MachineFormValues
+  defaultSiteName?: string
   onSaved: () => void
   onCancel: () => void
 }) {
@@ -230,14 +244,16 @@ export function EditMachineForm({
   return (
     <MachineForm
       defaultValues={defaultValues}
+      defaultSiteName={defaultSiteName}
       submitLabel="Save changes"
       onCancel={onCancel}
       onSubmit={async (values) => {
-        // Emptying the location field is a clear, not a no-op: updateMachineSchema
-        // turns the "" into a null so the nullable column is actually reset.
+        // Both fields go every time even when only one changed: the endpoint
+        // takes a partial body, and a write that names the same site again is a
+        // no-op rather than something to detect here.
         const [error] = await fetchData<MachineDetail>(`/api/machines/${id}`, {
           method: "PATCH",
-          body: { name: values.name, location: values.location },
+          body: { name: values.name, siteId: values.siteId },
         })
 
         if (error) return machineWriteErrorMessage(error.status)

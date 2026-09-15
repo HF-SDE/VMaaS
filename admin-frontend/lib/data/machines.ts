@@ -1,11 +1,15 @@
 import "server-only"
 import { fetchData } from "./data-fetch"
 
+/** Hand-written rather than Prisma's row: this one is read over the wire, so the
+ *  dates are strings. `site` is what `GET /api/machines` includes — a machine
+ *  always stands at one. */
 export type Machine = {
   id: string
   tenantId: string
   name: string
-  location: string | null
+  siteId: string
+  site: { id: string; name: string; city: string | null }
   status: "online" | "offline" | "error"
   createdAt: string
 }

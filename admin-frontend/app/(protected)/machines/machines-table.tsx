@@ -11,8 +11,6 @@ import {
 } from "@/components/data-table-generic"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { FieldLabel } from "@/components/ui/field"
-import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -23,16 +21,16 @@ import { useDebounce } from "@/hooks/use-debounce"
 
 import { machineColumnNames, machineColumns } from "./columns"
 import { toast } from "sonner"
-import { Machine } from "@prisma"
 import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
 import { fetchData } from "@/lib/data/data-fetch"
+import type { MachineListItem } from "./form"
 import { machinesErrorMessage } from "./messages"
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const COLUMN_VISIBILITY_KEY = "products-table:column-visibility"
+const COLUMN_VISIBILITY_KEY = "machines-table:column-visibility"
 
 const DEFAULT_PAGE_SIZE = 10
 const DEFAULT_ORDER_BY = "createdAt"
@@ -71,25 +69,28 @@ function readNumber(raw: string | null, fallback: number): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Client component that wires the reusable `<DataTable>` to the
- * `getProductsAction` server action with server-side pagination, sorting,
- * and debounced search.
+ * Client component that wires the reusable `<DataTable>` to
+ * `GET /api/machines/paginated` with server-side pagination, sorting, and
+ * debounced search.
  *
  * **URL query params** drive the table state so the view is shareable
  * and survives browser back/forward navigation:
  *  - `page`     – 0-based page index
  *  - `size`     – rows per page
- *  - `q`        – search query
+ *  - `q`        – search query, matched against the machine and site name
  *  - `orderBy`  – column id to sort by
  *  - `orderDir` – "asc" | "desc"
  *
+ * There is no "show archived" toggle as the products table has: a machine has no
+ * archived state, only the firmware-reported `status`.
+ *
  * **Column visibility** is persisted in `localStorage` under the key
- * `products-table:column-visibility`.
+ * `machines-table:column-visibility`.
  */
 export function MachinesDataTable({
   initialData,
 }: {
-  initialData?: GetPaginatedResult<Machine>
+  initialData?: GetPaginatedResult<MachineListItem>
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -102,7 +103,6 @@ export function MachinesDataTable({
   const orderBy = searchParams.get("orderBy") ?? DEFAULT_ORDER_BY
   const orderDir = (searchParams.get("orderDir") ?? DEFAULT_ORDER_DIR) as
     "asc" | "desc"
-  const includeArchived = searchParams.get("archived") === "1"
 
   // -- Controlled search input (debounced before pushing to URL) -------------
   const [searchInput, setSearchInput] = React.useState(searchQuery)
@@ -126,7 +126,9 @@ export function MachinesDataTable({
   )
 
   // -- Data state -------------------------------------------------------------
-  const [data, setData] = React.useState<Machine[]>(initialData?.data ?? [])
+  const [data, setData] = React.useState<MachineListItem[]>(
+    initialData?.data ?? []
+  )
   const [pageCount, setPageCount] = React.useState(initialData?.pageCount ?? 0)
   const [totalCount, setTotalCount] = React.useState(
     initialData?.totalCount ?? 0
@@ -169,21 +171,19 @@ export function MachinesDataTable({
   // -- Fetch data whenever URL-driven state changes --------------------------
   const fetchData_ = React.useCallback(() => {
     startTransition(async () => {
-      const [error, machines] = await fetchData<GetPaginatedResult<Machine>>(
-        "/api/machines/paginated",
-        {
-          // Listed field by field rather than spread: an object literal is what makes
-          // this assignable to the `query` record, and it keeps the wire names visible.
-          query: {
-            page: pageIndex,
-            pageSize: pageSize,
-            sortBy: orderBy,
-            sortOrder: orderDir,
-            search: searchQuery,
-            includeArchived: includeArchived,
-          },
-        }
-      )
+      const [error, machines] = await fetchData<
+        GetPaginatedResult<MachineListItem>
+      >("/api/machines/paginated", {
+        // Listed field by field rather than spread: an object literal is what makes
+        // this assignable to the `query` record, and it keeps the wire names visible.
+        query: {
+          page: pageIndex,
+          pageSize: pageSize,
+          sortBy: orderBy,
+          sortOrder: orderDir,
+          search: searchQuery,
+        },
+      })
 
       if (error) {
         const status = error?.status
@@ -195,11 +195,11 @@ export function MachinesDataTable({
         setTotalCount(machines.totalCount)
       }
     })
-  }, [pageIndex, pageSize, orderBy, orderDir, searchQuery, includeArchived])
+  }, [pageIndex, pageSize, orderBy, orderDir, searchQuery])
 
   // Skip the first fetch when the server already provided data for the
   // current params — subsequent param changes (page, sort, search) will
-  // still trigger a fresh Server Action call as normal.
+  // still trigger a fresh request as normal.
   const skipFirstFetch = React.useRef(initialData !== undefined)
 
   React.useEffect(() => {
@@ -211,13 +211,13 @@ export function MachinesDataTable({
   }, [fetchData_])
 
   // -- Toolbar ----------------------------------------------------------------
-  const toolbar = (table: DataTableInstance<Machine>) => (
+  const toolbar = (table: DataTableInstance<MachineListItem>) => (
     <div className="flex items-center justify-between gap-2">
       <div className="flex flex-1 items-center space-x-2">
         <div className="relative w-full max-w-sm">
           <Search className="absolute top-2.5 left-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Søg maskiner..."
+            placeholder="Search machines or sites..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="pl-8"
@@ -225,22 +225,10 @@ export function MachinesDataTable({
         </div>
         {totalCount > 0 && (
           <p className="text-sm text-muted-foreground">
-            {totalCount} maskine{totalCount !== 1 ? "r" : ""}
+            {totalCount} machine{totalCount !== 1 ? "s" : ""}
           </p>
         )}
       </div>
-
-      {/* Archived products are filtered out server-side, so this has to reset
-          the page — page 5 of the short list would otherwise come back empty. */}
-      <FieldLabel className="gap-2 text-sm font-normal text-muted-foreground">
-        <Switch
-          checked={includeArchived}
-          onCheckedChange={(checked) =>
-            updateParams({ archived: checked ? "1" : null, page: null })
-          }
-        />
-        Vis arkiverede
-      </FieldLabel>
 
       {/* Column visibility dropdown */}
       <DropdownMenu>

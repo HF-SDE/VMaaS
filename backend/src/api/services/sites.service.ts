@@ -133,6 +133,40 @@ export async function getSitesPageService(
   }
 }
 
+/**
+ * A short list of matching sites for a picker — id, name and city only.
+ *
+ * Deliberately not a page: a picker shows the first handful and asks the user to
+ * type more, so there is no count to run and no offset to carry. `limit` is
+ * clamped rather than rejected for the same reason the paginated list clamps.
+ */
+export async function simpleSiteSearchService(
+  tenantId: string,
+  params: SimpleSiteSearchParams,
+): Promise<Result<UnknownSiteError, SimpleSite[]>> {
+  const search = params.search.trim();
+  const limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(params.limit ?? DEFAULT_SEARCH_LIMIT)));
+
+  try {
+    return ok(
+      await prisma.site.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { city: { contains: search, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true, name: true, city: true },
+        orderBy: { name: "asc" },
+        take: limit,
+      }),
+    );
+  } catch (error) {
+    return unknownError("searching", error);
+  }
+}
+
 export async function createSiteService(
   tenantId: string,
   data: SiteWriteData & { name: string },

@@ -57,7 +57,7 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Navn" />
+      <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
   {
     accessorKey: "price",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Pris" />
+      <DataTableColumnHeader column={column} title="Price" />
     ),
     cell: ({ row }) => (
       <span className="tabular-nums">
@@ -87,7 +87,7 @@ export const productColumns: ColumnDef<DataTableFeatures, Product>[] = [
   {
     accessorKey: "createdAt",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Oprettet" />
+      <DataTableColumnHeader column={column} title="Created" />
     ),
     cell: ({ row }) => (
       <span className="text-muted-foreground">

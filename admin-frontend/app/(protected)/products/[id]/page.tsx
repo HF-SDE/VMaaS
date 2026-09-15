@@ -13,8 +13,10 @@ import { NO_READ_ACCESS, ProductDetailLoader } from "./product-detail"
  *
  * Everything below the back link depends on the session and on the product, so
  * the static shell is the link alone — the rest streams in behind <Suspense>.
- * The guard sits on the page rather than on the protected layout, which reads
- * no session on purpose.
+ * The title row belongs to the loader for the same reason: it names the
+ * product, so it cannot render before the product is read. The guard sits on
+ * the page rather than on the protected layout, which reads no session on
+ * purpose.
  */
 export default async function ProductPage({
   params,
@@ -31,7 +33,7 @@ export default async function ProductPage({
         Back to products
       </Link>
 
-      <Suspense fallback={<Loader text="Henter produkt..." />}>
+      <Suspense fallback={<Loader text="Loading product..." />}>
         <RoleGate perms={[PERMISSIONS.PRODUCT_READ]} reason={NO_READ_ACCESS}>
           <ProductDetailLoader params={params} />
         </RoleGate>

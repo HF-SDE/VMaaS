@@ -1,17 +1,15 @@
 import { Suspense } from "react"
 import Loader from "@/components/loader/loader"
-import Link from "next/link"
 import { RoleGate } from "@/components/role-gate"
-import { Button } from "@/components/ui/button"
 import { requirePermission } from "@/lib/dal"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 import { NewMachineDialog } from "./new-machine-dialog"
 import { fetchData } from "@/lib/data/data-fetch"
 import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
-import { Machine } from "@prisma"
+import type { MachineListItem } from "./form"
 import { MachinesDataTable } from "./machines-table"
 
-const NO_READ_ACCESS = "Du har ikke adgang til produkter."
+const NO_READ_ACCESS = "You do not have access to machines."
 
 // TODO: this was edited on 21/03/2026 to add server-side data fetching for the initial table render.
 // I'm not sure if this even helps with performance so maybe we should remove it again?
@@ -27,15 +25,10 @@ async function MachinesTableLoader({
   const sortOrder = ((params?.["orderDir"] as string | undefined) ?? "asc") as
     "asc" | "desc"
   const search = (params?.["q"] as string | undefined) ?? ""
-  // Archived products stay out of the list unless the toolbar toggle asks for them.
-  const includeArchived = params?.["archived"] === "1"
   // Re-checked here, not just in the <RoleGate> above: the gate decides what to
   // render, this is what actually guards the data.
-  const session = await requirePermission(
-    PERMISSIONS.MACHINE_READ,
-    NO_READ_ACCESS
-  )
-  const [error, initialData] = await fetchData<GetPaginatedResult<Machine>>(
+  await requirePermission(PERMISSIONS.MACHINE_READ, NO_READ_ACCESS)
+  const [, initialData] = await fetchData<GetPaginatedResult<MachineListItem>>(
     "/api/machines/paginated",
     {
       // Listed field by field rather than spread: an object literal is what makes
@@ -46,7 +39,6 @@ async function MachinesTableLoader({
         sortBy: sortBy,
         sortOrder: sortOrder,
         search: search,
-        includeArchived: includeArchived,
       },
     }
   )

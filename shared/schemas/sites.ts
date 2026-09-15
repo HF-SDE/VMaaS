@@ -63,10 +63,7 @@ const COORDINATE_PAIR_MESSAGE = {
  * read as a site that is somewhere on a line of latitude. Both keys absent is
  * fine — that is a write that does not touch the position at all.
  */
-function hasCompleteCoordinates(body: {
-  latitude?: number | null;
-  longitude?: number | null;
-}): boolean {
+function hasCompleteCoordinates(body: { latitude?: number | null; longitude?: number | null }): boolean {
   const hasLatitude = body.latitude !== undefined && body.latitude !== null;
   const hasLongitude = body.longitude !== undefined && body.longitude !== null;
 
@@ -129,6 +126,18 @@ export const updateSiteSchema = z.object({
       message: "at least one field is required",
     })
     .refine(hasCompleteCoordinates, COORDINATE_PAIR_MESSAGE),
+});
+
+/**
+ * `GET /api/sites/simple-search`, the site picker's endpoint.
+ *
+ * `search` is required and one character is enough — the picker searches from
+ * the first keystroke — while `limit` is only coerced here and clamped in the
+ * service, so a hand-edited `limit=9999` still answers a page.
+ */
+export const simpleSiteSearchSchema = z.object({
+  search: z.string().trim().min(1, { message: "search is required" }),
+  limit: z.coerce.number().optional(),
 });
 
 export const getSitesPageSchema = z.object({

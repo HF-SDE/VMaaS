@@ -1,11 +1,14 @@
 import { z } from "zod/v4";
 
+/** The wording a form shows when the site picker was left empty: a blank picker
+ *  sends `""`, which fails the uuid check, so this is what the user reads. */
+const SITE_ID_MESSAGE = { message: "site is required" };
+
 /**
- * `Machine.location` is `String?` in Prisma — a machine can be registered before
- * it has been placed — so a location is never required. A form sends `""` for an
- * empty field rather than omitting it, which is why blank is normalised here
- * instead of failing `min(1)`: the user leaving the field alone and a client
- * omitting the key have to mean the same thing.
+ * `Machine.siteId` is required and `onDelete: Restrict` — a machine stands at a
+ * site, so there is no "not placed yet" state to model and no blank to normalise
+ * away. That the site belongs to the caller's tenant is not something a schema
+ * can tell; the service checks it before the write.
  *
  * `status` is deliberately absent from both write schemas. It is reported by the
  * machine's firmware and defaults to `online`, so there is nothing for an admin
@@ -14,11 +17,7 @@ import { z } from "zod/v4";
 export const createMachineSchema = z.object({
   body: z.object({
     name: z.string().trim().min(1, { message: "name is required" }),
-    location: z
-      .string()
-      .trim()
-      .optional()
-      .transform((location) => location || undefined),
+    siteId: z.uuid(SITE_ID_MESSAGE),
   }),
 });
 
@@ -36,25 +35,18 @@ export const machineIdParamsSchema = z.object({
  * entirely empty body is rejected — it would be a write that silently does
  * nothing while answering 200.
  *
- * Blank maps to `null` here, not to `undefined` as it does on create: on an
- * update the two are different intents. `undefined` means "leave the location
- * alone", while a user who emptied the field means "clear it", and only `null`
- * reaches the nullable column as a clear.
+ * `siteId` takes no `null`, unlike the nullable columns on `Site`: moving a
+ * machine means naming another site, never clearing the one it stands at.
  */
 export const updateMachineSchema = z.object({
   params: machineIdParamsSchema.shape.params,
   body: z
     .object({
       name: z.string().trim().min(1, { message: "name is required" }).optional(),
-      location: z
-        .string()
-        .trim()
-        .nullable()
-        .optional()
-        .transform((location) => (location === undefined ? undefined : location || null)),
+      siteId: z.uuid(SITE_ID_MESSAGE).optional(),
     })
-    .refine((body) => body.name !== undefined || body.location !== undefined, {
-      message: "at least one of name or location is required",
+    .refine((body) => body.name !== undefined || body.siteId !== undefined, {
+      message: "at least one of name or site is required",
     }),
 });
 

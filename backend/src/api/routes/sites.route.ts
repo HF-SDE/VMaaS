@@ -11,6 +11,7 @@ import {
   getSiteController,
   getSitesController,
   getSitesPageController,
+  simpleSiteSearchController,
   updateSiteController,
 } from "../controllers/sites.controller";
 
@@ -21,6 +22,8 @@ sitesRouter.use(requireAuth, requireTenant);
 sitesRouter.get("/", requirePermission(PERMISSIONS.SITE_READ), getSitesController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.
 sitesRouter.get("/paginated", requirePermission(PERMISSIONS.SITE_READ), getSitesPageController);
+// Same: a literal path above "/:id". Feeds the site picker.
+sitesRouter.get("/simple-search", requirePermission(PERMISSIONS.SITE_READ), simpleSiteSearchController);
 sitesRouter.post("/", requirePermission(PERMISSIONS.SITE_WRITE), validate(createSiteSchema), createSiteController);
 
 sitesRouter.get("/:id", requirePermission(PERMISSIONS.SITE_READ), validate(siteIdParamsSchema), getSiteController);

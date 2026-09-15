@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import { RoleGate } from "@/components/role-gate"
@@ -12,24 +13,9 @@ import { machinesErrorMessage } from "../messages"
 import { MachineActions } from "./machine-actions"
 import { fetchData } from "@/lib/data/data-fetch"
 import type { MachineDetail } from "../form"
+import { STATUS_LABEL, STATUS_VARIANT } from "../status"
 
 export const NO_READ_ACCESS = "You do not have access to machines."
-
-/** `machine_status` is reported by the firmware, so it is shown, never edited. */
-const STATUS_VARIANT: Record<
-  MachineDetail["status"],
-  "default" | "secondary" | "destructive"
-> = {
-  online: "default",
-  offline: "secondary",
-  error: "destructive",
-}
-
-const STATUS_LABEL: Record<MachineDetail["status"], string> = {
-  online: "Online",
-  offline: "Offline",
-  error: "Error",
-}
 
 /**
  * Reads one machine and renders it.
@@ -61,8 +47,7 @@ export async function MachineDetailLoader({
     )
   }
 
-  // Bound to a local so its narrowing survives into the JSX below.
-  const location = machine.location
+  const site = machine.site
 
   return (
     <>
@@ -77,9 +62,7 @@ export async function MachineDetailLoader({
             </Badge>
           </h1>
           <p className="text-muted-foreground">
-            {location !== null
-              ? `Placed at ${location} — created ${formatDate(machine.createdAt)}`
-              : "Not placed yet — created " + formatDate(machine.createdAt)}
+            {`Placed at ${site.name} — created ${formatDate(machine.createdAt)}`}
           </p>
         </div>
         {/* Hiding the buttons for a read-only user must not take the page away,
@@ -89,7 +72,7 @@ export async function MachineDetailLoader({
             <MachineActions
               id={machine.id}
               name={machine.name}
-              location={location}
+              site={{ id: site.id, name: site.name }}
               canDelete={machine.canDelete}
             />
           </RoleGate>
@@ -100,8 +83,15 @@ export async function MachineDetailLoader({
         <CardContent>
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-muted-foreground">Location</dt>
-              <dd>{location ?? "—"}</dd>
+              <dt className="text-sm text-muted-foreground">Site</dt>
+              <dd>
+                <Link href={`/sites/${site.id}`} className="hover:underline">
+                  {site.name}
+                </Link>
+                {site.city && (
+                  <span className="text-muted-foreground"> — {site.city}</span>
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-sm text-muted-foreground">Created</dt>

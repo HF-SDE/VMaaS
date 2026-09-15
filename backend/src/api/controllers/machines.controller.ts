@@ -69,12 +69,17 @@ export async function createMachineController(req: Request, res: Response) {
       .json({ error: z.treeifyError(parseError) })
       .end();
 
-  const { name, location } = data.body;
-  const [error, machine] = await createMachineService(tenantId!, name, location);
+  const [error, machine] = await createMachineService(tenantId!, data.body);
 
   if (error) {
     const reason = error.reason;
     switch (reason) {
+      // 400 rather than 404: the missing row is the site the body named, not the
+      // machine this route addresses, so what is wrong is the payload. A site of
+      // another tenant lands here too — it does not exist as far as this
+      // caller is concerned.
+      case "SITE_NOT_FOUND":
+        return res.status(400).json({ error: "The selected site does not exist" }).end();
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while creating the machine" }).end();
       default:
@@ -129,6 +134,10 @@ export async function updateMachineController(req: Request, res: Response) {
     switch (reason) {
       case "MACHINE_NOT_FOUND":
         return res.status(404).json({ error: "Machine not found" }).end();
+      // As on create: the 404 above is the machine, so a missing site is a 400
+      // about the body rather than a second meaning for the same status.
+      case "SITE_NOT_FOUND":
+        return res.status(400).json({ error: "The selected site does not exist" }).end();
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while updating the machine" }).end();
       default:

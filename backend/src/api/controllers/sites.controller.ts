@@ -1,4 +1,10 @@
-import { createSiteSchema, getSitesPageSchema, siteIdParamsSchema, updateSiteSchema } from "@vmaas/shared/schemas";
+import {
+  createSiteSchema,
+  getSitesPageSchema,
+  simpleSiteSearchSchema,
+  siteIdParamsSchema,
+  updateSiteSchema,
+} from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 import { z } from "zod/v4";
 
@@ -8,6 +14,7 @@ import {
   getSiteByIdService,
   getSitesPageService,
   getSitesService,
+  simpleSiteSearchService,
   updateSiteService,
 } from "../services/sites.service";
 
@@ -63,6 +70,38 @@ export async function getSitesPageController(req: Request, res: Response) {
   }
 
   return res.status(200).json(page).end();
+}
+
+/**
+ * The site picker's endpoint: a handful of matches for what the user typed.
+ *
+ * Like the paginated list, the query is parsed here rather than by `validate()`
+ * middleware. A missing or blank `search` is a 400 — an empty query would list
+ * the tenant's sites, which is what `GET /api/sites` is for.
+ */
+export async function simpleSiteSearchController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = simpleSiteSearchSchema.safeParse(req.query);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, sites] = await simpleSiteSearchService(tenantId!, data);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while searching the sites" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(sites).end();
 }
 
 export async function createSiteController(req: Request, res: Response) {

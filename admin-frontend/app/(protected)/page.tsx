@@ -9,9 +9,9 @@ import { toast } from "sonner"
 export default function DashboardPage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold">Oversigt</h1>
+      <h1 className="text-2xl font-bold">Overview</h1>
 
-      <Suspense fallback={<p>Indlæser maskiner…</p>}>
+      <Suspense fallback={<p>Loading machines…</p>}>
         <MachineList />
       </Suspense>
     </div>
@@ -33,7 +33,7 @@ async function MachineList() {
       {machines.map((machine) => (
         <li key={machine.id}>
           {machine.name}
-          {machine.location ? ` — ${machine.location}` : ""}
+          {` — ${machine.site.name}`}
         </li>
       ))}
     </ul>

@@ -13,8 +13,10 @@ import { NO_READ_ACCESS, MachineDetailLoader } from "./machine-detail"
  *
  * Everything below the back link depends on the session and on the machine, so
  * the static shell is the link alone — the rest streams in behind <Suspense>.
- * The guard sits on the page rather than on the protected layout, which reads
- * no session on purpose.
+ * The title row belongs to the loader for the same reason: it names the
+ * machine, so it cannot render before the machine is read. The guard sits on
+ * the page rather than on the protected layout, which reads no session on
+ * purpose.
  */
 export default async function MachinePage({
   params,

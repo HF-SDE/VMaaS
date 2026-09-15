@@ -6,6 +6,21 @@ export interface GetSitesParams {
   search?: string;
 }
 
+/** What a site picker sends to `GET /api/sites/simple-search`. `search` is
+ *  required: the endpoint exists to answer a typed query, never to list. */
+export interface SimpleSiteSearchParams {
+  search: string;
+  limit?: number;
+}
+
+/** The minimum a site picker needs — the id it submits, plus enough to tell two
+ *  sites of the same name apart. */
+export interface SimpleSite {
+  id: string;
+  name: string;
+  city: string | null;
+}
+
 /** How many machines stand at the site. Above zero, it cannot be deleted —
  *  `Machine.site` is `onDelete: Restrict`. */
 export interface SiteUsage {
