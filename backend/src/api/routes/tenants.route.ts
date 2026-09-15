@@ -13,6 +13,7 @@ import {
   inviteMemberController,
   removeMemberController,
   respondToInviteController,
+  updateMemberRoleController,
   updateRoleController,
 } from "../controllers/tenants.controller";
 
@@ -34,12 +35,13 @@ tenantsRouter.post(
 tenantsRouter.post("/respond-to-invite/:token", respondToInviteController);
 tenantsRouter.post("/roles", requireTenant, requirePermission(PERMISSIONS.ROLE_MANAGE), createRoleController);
 
-tenantsRouter.patch(
-  "/roles/:roleId",
+tenantsRouter.put(
+  "/members/:userId/role",
   requireTenant,
-  requirePermission(PERMISSIONS.ROLE_MANAGE),
-  updateRoleController,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  updateMemberRoleController,
 );
+tenantsRouter.patch("/roles/:roleId", requireTenant, requirePermission(PERMISSIONS.ROLE_MANAGE), updateRoleController);
 
 tenantsRouter.delete(
   "/:tenantId/members/:userId",
@@ -47,9 +49,4 @@ tenantsRouter.delete(
   requirePermission(PERMISSIONS.USER_MANAGE),
   removeMemberController,
 );
-tenantsRouter.delete(
-  "/roles/:roleId",
-  requireTenant,
-  requirePermission(PERMISSIONS.ROLE_MANAGE),
-  deleteRoleController,
-);
+tenantsRouter.delete("/roles/:roleId", requireTenant, requirePermission(PERMISSIONS.ROLE_MANAGE), deleteRoleController);

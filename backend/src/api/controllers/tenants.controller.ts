@@ -1,6 +1,13 @@
-import { createRoleSchema, inviteMemberSchema, respondToInviteSchema, updateRoleSchema } from "@vmaas/shared/schemas";
+import {
+  createRoleSchema,
+  inviteMemberSchema,
+  requireTenantId,
+  respondToInviteSchema,
+  updateMemberRoleSchema,
+  updateRoleSchema,
+} from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
-import { z } from "zod/v4-mini";
+import { z } from "zod";
 
 import {
   DEFAULT_ROLES,
@@ -13,6 +20,7 @@ import {
   inviteMemberService,
   removeMemberService,
   respondToInviteService,
+  updateMemberRoleService,
   updateRoleService,
 } from "../services/tenants.service";
 
@@ -85,6 +93,15 @@ export async function removeMemberController(req: Request, res: Response) {
   }
 
   res.status(204).send();
+}
+
+export async function updateMemberRoleController(req: Request, res: Response) {
+  const data = updateMemberRoleSchema.extend(requireTenantId.shape).parse(req);
+  const { tenantId, params, body } = data;
+
+  await updateMemberRoleService(tenantId, params.userId, body.roleName);
+
+  res.status(200).json({ message: "Role updated successfully" });
 }
 
 export async function getRolesController(req: Request, res: Response) {

@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/permissions"
 import type { MembersResponse } from "@backend-responses"
 import { cn } from "cn"
 import { InviteMemberForm } from "./invite-member-form"
+import { RoleSelect } from "./role-select"
 
 export const instant = false
 
@@ -64,21 +65,10 @@ export default async function UsersPage() {
                 member.user.id === session.user.id ? "font-bold" : ""
               )}
             >
-              {member.user.name} - {member.role.name}
+              {member.user.name}
             </p>
-            {!isSelf(member.userId) && canChangeRoles && (
-              <select>
-                {tenant_roles &&
-                  tenant_roles.map((role) => (
-                    <option
-                      key={role.name}
-                      defaultValue={member.role.name}
-                      value={role.name}
-                    >
-                      {role.name}
-                    </option>
-                  ))}
-              </select>
+            {!isSelf(member.userId) && canChangeRoles && tenant_roles && (
+              <RoleSelect tenant_roles={tenant_roles} member={member} />
             )}
             {!isSelf(member.userId) && canRemoveUsers && (
               <button>Remove</button>
