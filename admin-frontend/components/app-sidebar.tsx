@@ -50,6 +50,7 @@ import { UserAvatarProps, UserAvatar } from "./user-avatar"
 import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
 import { PermissionKey } from "@vmaas/shared/types"
+import { Separator } from "./ui/separator"
 
 interface NavItem {
   title: string
@@ -285,7 +286,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader className="flex justify-between">
+      <SidebarHeader className="m-0 mb-4 flex justify-between p-0">
         <Link href="/" className="h-max">
           <h1 className="text-lg font-bold">VMaaS</h1>
         </Link>
