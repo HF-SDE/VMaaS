@@ -24,19 +24,26 @@ import { switchTenant } from "@/app/(protected)/actions"
 export function TeamSwitcher() {
   const { isMobile } = useSidebar()
   const { tenants, activeTenantId } = useSession()
-  const activeTenant = tenants.find((tenant) => tenant.id === activeTenantId) ?? null
+  const activeTenant =
+    tenants.find((tenant) => tenant.id === activeTenantId) ?? null
 
   if (tenants.length === 0) return null
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
+        {/* Offset copy of the trigger's shape, peeking out 5px below it to
+            give the button a sharp primary under-border. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-11.5 translate-y-1.25 rounded-md bg-primary group-data-[collapsible=icon]:size-8"
+        />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton
                 size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                className="relative z-10 border bg-sidebar data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   {/* <activeTeam.logo className="size-4" /> */}
