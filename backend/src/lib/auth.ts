@@ -23,7 +23,7 @@ if (github.clientId && github.clientSecret) {
 
 const options = {
   secret: config.BETTER_AUTH_SECRET,
-  trustedOrigins: [config.FRONTEND_URL],
+  trustedOrigins: config.FRONTEND_URL,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   advanced: { database: { generateId: "uuid" } },
   emailAndPassword: { enabled: true },

@@ -124,6 +124,17 @@ export default function WelcomePageClient({
   )
 }
 
+/** The action rejects with the HttpError from fetchData, not an Error instance. */
+function describeTenantError(error: unknown): string {
+  if (typeof error === "object" && error !== null) {
+    const { message, reason } = error as { message?: string; reason?: string }
+    if (message) return message
+    if (reason) return reason
+  }
+
+  return "Could not create the tenant. Please try again."
+}
+
 function NewTeneantForm() {
   const form = useForm<CreateTenantFormData>({
     resolver: zodResolver(createTenantSchema),
@@ -131,7 +142,14 @@ function NewTeneantForm() {
   })
 
   async function onSubmit(data: CreateTenantFormData) {
-    await createTenant(data)
+    try {
+      await createTenant(data)
+    } catch (error) {
+      // react-hook-form swallows a rejected submit handler, so without this the
+      // button just looks inert -- indistinguishable from nothing happening.
+      toast.error(describeTenantError(error))
+      return
+    }
 
     redirect("/machines")
   }

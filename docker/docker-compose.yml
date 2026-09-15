@@ -1,5 +1,9 @@
 name: VMaaS
 
+# Entry point for local development is http://localhost (nginx). It serves the
+# admin frontend on / and proxies /api to the backend, so browser, cookies and
+# CORS all see one origin.
+
 services:
   backend:
     container_name: backend
@@ -13,17 +17,27 @@ services:
       - 5000:5000
     command: ["npm", "run", "dev"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - ../config/environment-variables/.env.backend.dev
+    environment:
+      # Browser-facing origins. Overrides the env file on purpose: this is
+      # network topology owned by compose, not a per-developer secret.
+      # nginx (the normal entry point) plus a bare `next dev` on the host.
+      FRONTEND_URL: http://localhost,http://localhost:3000
+      BETTER_AUTH_URL: http://localhost
     volumes:
       - ../backend/src:/usr/src/app/src
+      # The entrypoint runs migrate deploy + db seed on every start; mounting
+      # prisma/ means new migrations and seed changes apply without a rebuild.
+      - ../backend/prisma:/usr/src/app/prisma
       - ../shared:/usr/src/shared
       - shared_node_modules:/usr/src/shared/node_modules
     networks:
@@ -50,41 +64,87 @@ services:
       - public
       - internal
 
-  # admin-frontend:
-  #   container_name: admin-frontend
-  #   build:
-  #     context: ..
-  #     dockerfile: admin-frontend/Dockerfile
-  #   expose:
-  #     - "3000"
-  #   depends_on:
-  #     - backend
-  #   env_file:
-  #     - ../config/environment-variables/.env.admin-frontend.dev
-  #   volumes:
-  #     - ../admin-frontend:/usr/src/app
-  #     - ../shared:/usr/src/shared
-  #     - shared_node_modules:/usr/src/shared/node_modules
-  #     - admin-frontend_node_modules:/usr/src/app/node_modules
-  #   networks:
-  #     - internal
-  #     - public
+  admin-frontend:
+    container_name: admin-frontend
+    build:
+      context: ..
+      dockerfile: admin-frontend/Dockerfile
+      target: dev
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - ../config/environment-variables/.env.admin-frontend.dev
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost
+      BACKEND_INTERNAL_URL: http://backend:5000
+      NEXT_TELEMETRY_DISABLED: 1
+      # Keep the heap under the container limit so Node collects garbage
+      # instead of getting OOM-killed.
+      NODE_OPTIONS: --max-old-space-size=1536
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    volumes:
+      # Read-only staging mounts. The entrypoint copies these over the container's
+      # own source on every start, so the container can never run stale image
+      # code, and `docker compose watch` (npm run dev) keeps them in sync while
+      # you work. Next itself never runs from the shared folder: Turbopack gets no
+      # change events over 9p/VirtioFS, and running off it is slow on a Mac.
+      - ../admin-frontend:/usr/src/app-src:ro
+      - ../shared:/usr/src/shared-src:ro
+      # Turbopack cache: survives container recreation so restarts stay fast.
+      - admin-frontend_next:/usr/src/app/.next
+      - shared_node_modules:/usr/src/shared/node_modules
+      # Prisma browser types and response types, see admin-frontend/tsconfig.json paths.
+      - ../backend/src:/usr/src/backend/src:ro
+    develop:
+      watch:
+        - action: sync
+          path: ../admin-frontend
+          target: /usr/src/app
+          ignore:
+            - node_modules/
+            - .next/
+        - action: sync
+          path: ../shared
+          target: /usr/src/shared
+          ignore:
+            - node_modules/
+        # A dependency change needs a new image; node_modules lives in the image.
+        - action: rebuild
+          path: ../admin-frontend/package.json
+        - action: rebuild
+          path: ../admin-frontend/package-lock.json
+    networks:
+      - internal
+      # public gives outbound internet: next/font downloads Google Fonts in dev
+      # and `compose run admin-frontend npm install` needs the registry.
+      - public
 
-  # reverse-proxy:
-  #   container_name: reverse-proxy
-  #   image: nginx:alpine
-  #   ports:
-  #     - 80:80
-  #   expose:
-  #     - "80"
-  #   depends_on:
-  #     - backend
-  #   configs:
-  #     - source: nginx_config
-  #       target: /etc/nginx/nginx.conf
-  #   networks:
-  #     - internal
-  #     - public
+  reverse-proxy:
+    container_name: reverse-proxy
+    image: nginx:1.27-alpine
+    ports:
+      - 80:80
+    depends_on:
+      - backend
+      - admin-frontend
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+      - public
 
 networks:
   public:
@@ -95,7 +155,7 @@ networks:
 
 volumes:
   postgres_data: {}
-  admin-frontend_node_modules: {}
+  admin-frontend_next: {}
   shared_node_modules: {}
 
 configs:

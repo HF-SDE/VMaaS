@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 import { z } from "zod";
 
+import { parseFrontendOrigins } from "./frontend-origins";
+
 dotenv.config({ quiet: true });
 
 const schema = z.object({
@@ -11,7 +13,8 @@ const schema = z.object({
   BETTER_AUTH_SECRET: z.string().min(1, { message: "BETTER_AUTH_SECRET is required" }),
   GITHUB_CLIENT_ID: z.string().min(1, { message: "GITHUB_CLIENT_ID is required" }).optional(),
   GITHUB_CLIENT_SECRET: z.string().min(1, { message: "GITHUB_CLIENT_SECRET is required" }).optional(),
-  FRONTEND_URL: z.url().default("http://localhost:3000"),
+  /** One or more browser origins, comma separated. See lib/frontend-origins.ts. */
+  FRONTEND_URL: z.string().default("http://localhost:3000").transform(parseFrontendOrigins),
   RATE_LIMIT_RESET_MINUTES: z.coerce.number().int().positive().default(5),
   RATE_LIMIT_COUNT: z.coerce.number().int().positive().default(1000),
 });
