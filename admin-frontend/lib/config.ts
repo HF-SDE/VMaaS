@@ -9,6 +9,9 @@ const schema = z
     NEXT_PUBLIC_BACKEND_URL: z
       .url({ protocol: /^https?$/ })
       .default("http://localhost:5000"),
+  // Sent as the Origin header on server-side requests — must be in the
+  // backend's trustedOrigins or Better Auth rejects POSTs with 403.
+  FRONTEND_URL: z.url().default("http://localhost:3000"),
     /**
      * Where the Next server itself reaches the backend. Inside Docker that is the
      * compose service name, which the browser cannot resolve, so it is kept apart

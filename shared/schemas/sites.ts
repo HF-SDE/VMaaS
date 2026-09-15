@@ -75,7 +75,6 @@ export const createSiteSchema = z.object({
     .object({
       name: z.string().trim().min(1, { message: "name is required" }),
       addressLine1: optionalText(),
-      addressLine2: optionalText(),
       postalCode: optionalText(),
       city: optionalText(),
       countryCode: optionalText()
@@ -110,7 +109,6 @@ export const updateSiteSchema = z.object({
     .object({
       name: z.string().trim().min(1, { message: "name is required" }).optional(),
       addressLine1: updatableText(),
-      addressLine2: updatableText(),
       postalCode: updatableText(),
       city: updatableText(),
       countryCode: updatableText()

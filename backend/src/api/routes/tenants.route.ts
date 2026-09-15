@@ -8,6 +8,7 @@ import {
   createTenantController,
   deleteRoleController,
   getMembersController,
+  getMembersPageController,
   getRolesController,
   getTenantsController,
   inviteMemberController,
@@ -23,6 +24,13 @@ tenantsRouter.use(requireAuth);
 
 tenantsRouter.get("/", getTenantsController);
 tenantsRouter.get("/members", requireTenant, requirePermission(PERMISSIONS.USER_VIEW), getMembersController);
+// Must stay above "/members/:userId", which would otherwise match "paginated" as a user id.
+tenantsRouter.get(
+  "/members/paginated",
+  requireTenant,
+  requirePermission(PERMISSIONS.USER_VIEW),
+  getMembersPageController,
+);
 tenantsRouter.get("/roles", requireTenant, requirePermission(PERMISSIONS.ROLE_VIEW), getRolesController);
 
 tenantsRouter.post("/", createTenantController);

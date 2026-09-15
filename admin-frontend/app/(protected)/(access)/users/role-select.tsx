@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { toast } from "sonner"
 
 interface RoleSelectProps {
   tenant_roles: TenantRole[]
@@ -27,10 +28,18 @@ export function RoleSelect({ tenant_roles, member }: RoleSelectProps) {
       return
     }
 
-    await fetchData(`/api/tenants/members/${member.user.id}/role`, {
-      method: "PUT",
-      body: { roleName: selectedRole.name },
-    })
+    const [error, data] = await fetchData(
+      `/api/tenants/members/${member.user.id}/role`,
+      {
+        method: "PUT",
+        body: { roleName: selectedRole.name },
+      }
+    )
+    if (error) {
+      toast.error("Failed to update role - status: " + error)
+    } else {
+      toast.success("Role updated successfully")
+    }
   }
 
   return (

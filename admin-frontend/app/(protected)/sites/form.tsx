@@ -29,7 +29,6 @@ export type SiteDetail = Site & SiteUsage
 export type SiteFormValues = {
   name: string
   addressLine1?: string
-  addressLine2?: string
   postalCode?: string
   city?: string
   countryCode?: string
@@ -49,7 +48,6 @@ export type SiteFormValues = {
 export const EMPTY_SITE: SiteFormValues = {
   name: "",
   addressLine1: "",
-  addressLine2: "",
   postalCode: "",
   city: "",
   countryCode: "",
