@@ -1,32 +1,26 @@
 import "dotenv/config";
 
 import { prisma } from "../src/lib/prisma";
-import { PERMISSIONS, PLATFORM_ROLE, ROLE_PERMISSIONS } from "../src/lib/rbac";
+import { PERMISSIONS } from "../src/lib/rbac";
+import { parseSeedAdmin, seedSuperAdmin } from "../src/lib/seed-admin";
 
 async function main() {
+  // Roles are per tenant and are created with the tenant (see rbac.createRolesWithPermissions),
+  // so the seed only provides the global permission catalogue and the platform super admin.
   const permissionKeys = Object.values(PERMISSIONS);
   for (const key of permissionKeys) {
     await prisma.permission.upsert({ where: { key }, update: {}, create: { key } });
   }
+  console.log(`Seeded ${permissionKeys.length} permissions.`);
 
-  for (const [roleName, permissionKeysForRole] of Object.entries(ROLE_PERMISSIONS)) {
-    // const role = await prisma.role.upsert({
-    //   where: { name: roleName },
-    //   update: {},
-    //   create: { name: roleName },
-    // });
-
-    for (const permissionKey of permissionKeysForRole) {
-      const permission = await prisma.permission.findUniqueOrThrow({ where: { key: permissionKey } });
-      // await prisma.rolePermission.upsert({
-      //   where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-      //   update: {},
-      //   create: { roleId: role.id, permissionId: permission.id },
-      // });
-    }
+  const admin = parseSeedAdmin(process.env);
+  if (!admin) {
+    console.log("No SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD set; skipping super admin.");
+    return;
   }
 
-  console.log(`Seeded ${permissionKeys.length} permissions and ${Object.keys(ROLE_PERMISSIONS).length} roles.`);
+  const outcome = await seedSuperAdmin(prisma, admin);
+  console.log(`Super admin ${admin.email}: ${outcome}.`);
 }
 
 main()
