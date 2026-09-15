@@ -1,3 +1,7 @@
+/**
+ * @file uart_bus.cpp
+ * @brief ESP-IDF UART transport implementation. See uart_bus.h.
+ */
 #ifdef ESP_PLATFORM
 
 #include "uart_bus.h"
@@ -57,7 +61,6 @@ namespace vmaas
     void UartBus::poll(TickType_t timeout)
     {
         uint8_t byte;
-        // First read may block up to timeout; subsequent reads drain what is there.
         int got = uart_read_bytes(port_, &byte, 1, timeout);
         int read_count = 0;
         while (got == 1)

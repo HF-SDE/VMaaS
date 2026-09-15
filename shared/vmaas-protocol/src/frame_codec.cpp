@@ -1,3 +1,7 @@
+/**
+ * @file frame_codec.cpp
+ * @brief Frame encoder and byte-at-a-time parser. See frame_codec.h.
+ */
 #include "frame_codec.h"
 #include "crc8.h"
 
@@ -16,7 +20,6 @@ namespace vmaas
         out[2] = static_cast<uint8_t>(f.cmd);
         for (uint8_t i = 0; i < f.len; ++i)
             out[3 + i] = f.payload[i];
-        // CRC covers LEN, CMD and PAYLOAD: bytes 1 .. 2+len
         out[3 + f.len] = crc8(&out[1], 2 + f.len);
         return total;
     }
@@ -55,7 +58,6 @@ namespace vmaas
 
         case Stage::READ_CRC:
         {
-            // Rebuild the CRC input: LEN, CMD, PAYLOAD.
             uint8_t header[2 + MAX_PAYLOAD];
             header[0] = current_.len;
             header[1] = static_cast<uint8_t>(current_.cmd);

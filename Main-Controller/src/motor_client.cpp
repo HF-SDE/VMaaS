@@ -1,3 +1,7 @@
+/**
+ * @file motor_client.cpp
+ * @brief MotorClient request sending and reply dispatch. See motor_client.h.
+ */
 #include "motor_client.h"
 #include "esp_log.h"
 

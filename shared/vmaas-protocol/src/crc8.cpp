@@ -1,3 +1,7 @@
+/**
+ * @file crc8.cpp
+ * @brief Bit-serial CRC-8 implementation. See crc8.h for the parameters.
+ */
 #include "crc8.h"
 
 namespace vmaas

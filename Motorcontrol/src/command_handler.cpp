@@ -1,3 +1,7 @@
+/**
+ * @file command_handler.cpp
+ * @brief CommandHandler request execution and motor timing. See command_handler.h.
+ */
 #include "command_handler.h"
 #include "esp_log.h"
 #include "freertos/task.h"
@@ -18,7 +22,6 @@ void CommandHandler::begin()
 {
     for (size_t i = 0; i < slot_count_; ++i)
     {
-        // Level first so the pin never drives high when it becomes an output (warm reset may leave GPIO_OUT latched).
         gpio_reset_pin(slots_[i].pin);
         gpio_set_level(slots_[i].pin, 0);
         gpio_set_direction(slots_[i].pin, GPIO_MODE_OUTPUT);
