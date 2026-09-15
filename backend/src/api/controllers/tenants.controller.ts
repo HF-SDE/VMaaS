@@ -1,5 +1,6 @@
 import {
   createRoleSchema,
+  getMembersPageSchema,
   inviteMemberSchema,
   requireTenantId,
   respondToInviteSchema,
@@ -14,6 +15,7 @@ import {
   createRoleService,
   createTenantService,
   deleteRoleService,
+  getMembersPageService,
   getMembersService,
   getRolesService,
   getTenantsService,
@@ -40,6 +42,39 @@ export async function getMembersController(req: Request, res: Response) {
   res.status(200).json(response).end();
 }
 
+/**
+ * One page of members, following the products slice: the service answers a
+ * `Result` tuple and this switches on the failure's `reason`. The
+ * `satisfies never` in the default arm is what makes that exhaustive — adding
+ * a reason to the service stops compiling until its status code and wording
+ * are decided here.
+ */
+export async function getMembersPageController(req: Request, res: Response) {
+  const tenantId = req.tenantId!;
+
+  // This route has no `validate()` middleware — the query is parsed here.
+  const { data, error: parseError } = getMembersPageSchema.safeParse(req.query);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, page] = await getMembersPageService(tenantId, data);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the members" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(page).end();
+}
+
 export async function createTenantController(req: Request, res: Response) {
   const { name } = req.body as { name?: string };
   const userId = req.session!.user.id;
@@ -58,13 +93,38 @@ export async function createTenantController(req: Request, res: Response) {
   res.status(201).json(result.tenant);
 }
 
+/**
+ * Invites a user to the active tenant.
+ *
+ * Like the paginated read above, the body is parsed here — this route has no
+ * `validate()` middleware — and every failure the service names gets its own
+ * status, because the invite dialog tells them apart: a 404 is "no account with
+ * that email", a 409 is "already a member", and a 400 is a role that vanished
+ * between the page load and the submit.
+ */
 export async function inviteMemberController(req: Request, res: Response) {
   const { email, role } = inviteMemberSchema.parse(req.body);
   const invitingUserId = req.session!.user.id;
 
-  const result = await inviteMemberService(req.tenantId!, email, invitingUserId, role);
+  const [error, invite] = await inviteMemberService(req.tenantId!, email, invitingUserId, role);
 
-  res.status(201).json(result.membership);
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "INVITE_USER_NOT_FOUND":
+        return res.status(404).json({ error: error.message }).end();
+      case "ALREADY_MEMBER":
+        return res.status(409).json({ error: error.message }).end();
+      case "INVITE_ROLE_NOT_FOUND":
+        return res.status(400).json({ error: error.message }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while inviting the member" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(201).json(invite).end();
 }
 
 export async function respondToInviteController(req: Request, res: Response) {
@@ -84,9 +144,12 @@ export async function respondToInviteController(req: Request, res: Response) {
 }
 
 export async function removeMemberController(req: Request, res: Response) {
-  const { userId, tenantId } = req.params as { userId: string; tenantId: string };
+  const { tenantId } = req;
+  const userId = req.params.userId as string;
+  console.log("🚀 ~ removeMemberController ~ req:", req.params);
+  console.log("🚀 ~ removeMemberController ~ tenantId:", tenantId);
 
-  const result = await removeMemberService(tenantId, userId);
+  const result = await removeMemberService(tenantId!, userId);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;

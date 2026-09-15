@@ -1,6 +1,10 @@
+import { Prisma, type TenantInvite } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_TENANT_ROLES, ROLE_PERMISSIONS, createRolesWithPermissions, listTenantsForUser } from "@/lib/rbac";
 
+import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
+import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
+import { type GetMembersParams, MEMBER_SORT_FIELDS, type MemberSortField } from "@vmaas/shared/types/member";
 import { InviteResponses } from "@vmaas/shared/types/tenants";
 import { APIError } from "better-auth";
 
@@ -10,13 +14,132 @@ export async function getTenantsService(userId: string) {
   return listTenantsForUser(userId);
 }
 
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+const DEFAULT_SORT_BY: MemberSortField = "name";
+const DEFAULT_SORT_ORDER = "asc" as const;
+
+/**
+ * Shared by the list and the page so both answer rows of the same shape — the
+ * frontend types its table on `MembersResponse`, which is derived from
+ * `getMembersService`, and a second `include` here would let the two drift.
+ * A user's email is part of the row because it is what the UI searches on.
+ */
+const MEMBER_INCLUDE = {
+  user: { select: { id: true, name: true, email: true } },
+  role: true,
+} satisfies Prisma.UserRoleInclude;
+
+/** One membership, not one user: a user holding two roles in the same tenant is
+ *  two rows, which is what `UserRole`'s `@@unique([userId, roleId, tenantId])`
+ *  allows. */
+export type MemberListItem = Prisma.UserRoleGetPayload<{ include: typeof MEMBER_INCLUDE }>;
+
+/**
+ * Only the paginated read answers a `Result` tuple so far — the rest of this
+ * file still throws `APIError`. New work here follows the products slice
+ * (`products.service.ts`), so the reasons a caller has to handle are named
+ * values its controller switches on exhaustively.
+ */
+export type UnknownMemberError = { reason: "UNKNOWN_ERROR"; message: string };
+export type InviteRoleNotFoundError = { reason: "INVITE_ROLE_NOT_FOUND"; message: string };
+export type InviteUserNotFoundError = { reason: "INVITE_USER_NOT_FOUND"; message: string };
+export type AlreadyMemberError = { reason: "ALREADY_MEMBER"; message: string };
+
+function isSortField(value: string): value is MemberSortField {
+  return (MEMBER_SORT_FIELDS as readonly string[]).includes(value);
+}
+
+/** The catch-all for a throw no service anticipated. The thrown value never
+ *  reaches the response; it is logged here so the caller only has to render one
+ *  generic failure. */
+function unknownError(action: string, cause: unknown): Result<UnknownMemberError, never> {
+  // TODO: capture sentry error
+  console.error(`[tenants.service] ${action} failed`, cause);
+
+  return err({
+    reason: "UNKNOWN_ERROR",
+    message: `An unknown error occurred while ${action}.`,
+  });
+}
+
 export async function getMembersService(tenantId: string) {
   const members = await prisma.userRole.findMany({
     where: { tenantId },
-    include: { user: { select: { id: true, name: true, email: true } }, role: true },
+    include: MEMBER_INCLUDE,
   });
 
   return members;
+}
+
+/**
+ * One page of a tenant's members, with optional search and sorting.
+ *
+ * Every parameter is clamped or whitelisted rather than rejected, so a stale
+ * bookmark (`?page=9999&sortBy=bogus`) still renders instead of erroring.
+ *
+ * The tenant comes from `req.tenantId`, never from the query, so this can only
+ * ever read the memberships of the tenant the caller was verified against.
+ */
+export async function getMembersPageService(
+  tenantId: string,
+  params: GetMembersParams = {},
+): Promise<Result<UnknownMemberError, GetPaginatedResult<MemberListItem>>> {
+  const page = Math.max(0, Math.trunc(params.page ?? 0));
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.trunc(params.pageSize ?? DEFAULT_PAGE_SIZE)));
+  const sortBy = params.sortBy && isSortField(params.sortBy) ? params.sortBy : DEFAULT_SORT_BY;
+  const sortOrder = params.sortOrder === "desc" ? "desc" : DEFAULT_SORT_ORDER;
+  const search = params.search?.trim();
+
+  // A member is looked up by who they are, so the search spans both of the
+  // columns that name them — the role is a filter's job, not a search's.
+  const where: Prisma.UserRoleWhereInput = {
+    tenantId,
+    ...(search
+      ? {
+          OR: [
+            { user: { name: { contains: search, mode: "insensitive" as const } } },
+            { user: { email: { contains: search, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  };
+
+  // `createdAt` is the only sort that lands on `user_roles` itself; the other
+  // three reach through a relation. Annotated rather than inferred: the union
+  // of the branches widens `sortOrder` back to `string`, which Prisma's
+  // `SortOrder` will not take.
+  const orderBy: Prisma.UserRoleOrderByWithRelationInput =
+    sortBy === "name"
+      ? { user: { name: sortOrder } }
+      : sortBy === "email"
+        ? { user: { email: sortOrder } }
+        : sortBy === "role"
+          ? { role: { name: sortOrder } }
+          : { createdAt: sortOrder };
+
+  try {
+    const [members, totalCount] = await prisma.$transaction([
+      prisma.userRole.findMany({
+        where,
+        include: MEMBER_INCLUDE,
+        orderBy,
+        skip: page * pageSize,
+        take: pageSize,
+      }),
+      prisma.userRole.count({ where }),
+    ]);
+
+    return ok({
+      data: members,
+      page,
+      pageSize,
+      pageCount: Math.ceil(totalCount / pageSize),
+      totalCount,
+    });
+  } catch (error) {
+    return unknownError("listing the members", error);
+  }
 }
 
 export async function createTenantService(userId: string, name: string) {
@@ -32,26 +155,55 @@ export async function createTenantService(userId: string, name: string) {
   return { ok: true as const, tenant };
 }
 
-export async function inviteMemberService(tenantId: string, email: string, invitedById: string, role: string) {
-  const roleRecord = await prisma.role.findFirst({ where: { name: role, tenantId } });
-  if (!roleRecord) throw new APIError("BAD_REQUEST", { message: `Unknown role: ${role}` });
-  const roleId = roleRecord?.id;
+/**
+ * Invite a user to the tenant.
+ *
+ * Every way this can fail is a named reason rather than a throw, because the
+ * dialog that calls it words each one differently — "no account with that
+ * email" is the one a user actually hits, and it has to be tellable apart from
+ * a role that went missing between the page load and the submit.
+ *
+ * Re-inviting someone who already has a pending invite is not a failure: the
+ * upsert re-points it at the role just picked and the invite stands.
+ */
+export async function inviteMemberService(
+  tenantId: string,
+  email: string,
+  invitedById: string,
+  role: string,
+): Promise<
+  Result<InviteRoleNotFoundError | InviteUserNotFoundError | AlreadyMemberError | UnknownMemberError, TenantInvite>
+> {
+  try {
+    const roleRecord = await prisma.role.findFirst({ where: { name: role, tenantId } });
+    if (!roleRecord) return err({ reason: "INVITE_ROLE_NOT_FOUND", message: `Unknown role: ${role}.` });
 
-  const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return err({ reason: "INVITE_USER_NOT_FOUND", message: `No user with the email ${email}.` });
 
-  if (!user) throw new APIError("NOT_FOUND", { message: `User with email ${email} not found` });
-  const userId = user.id;
+    const existing = await prisma.userRole.findFirst({ where: { userId: user.id, tenantId } });
+    if (existing) return err({ reason: "ALREADY_MEMBER", message: `${email} is already a member of this tenant.` });
 
-  const expireAfterDays = 7;
-  const expiresAt = new Date(Date.now() + expireAfterDays * 24 * 60 * 60 * 1000);
+    const expireAfterDays = 7;
+    const expiresAt = new Date(Date.now() + expireAfterDays * 24 * 60 * 60 * 1000);
 
-  const membership = await prisma.tenantInvite.upsert({
-    where: { userId_tenantId_status: { userId, tenantId, status: "pending" } },
-    update: { roleId },
-    create: { userId, tenantId, roleId, expiresAt, token: crypto.randomUUID(), invitedById },
-  });
-
-  return { ok: true as const, membership };
+    return ok(
+      await prisma.tenantInvite.upsert({
+        where: { userId_tenantId_status: { userId: user.id, tenantId, status: "pending" } },
+        update: { roleId: roleRecord.id },
+        create: {
+          userId: user.id,
+          tenantId,
+          roleId: roleRecord.id,
+          expiresAt,
+          token: crypto.randomUUID(),
+          invitedById,
+        },
+      }),
+    );
+  } catch (error) {
+    return unknownError("inviting the member", error);
+  }
 }
 
 export async function respondToInviteService(token: string, userId: string, status: InviteResponses) {
