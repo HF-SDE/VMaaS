@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-protocol",
+  "version": "0.1.0",
+  "description": "Binary UART command protocol shared by Main-Controller and Motorcontrol",
+  "keywords": ["uart", "protocol", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["protocol.h", "frame_codec.h", "crc8.h", "uart_bus.h"]
+}
