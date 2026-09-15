@@ -18,7 +18,8 @@ services:
       timeout: 10s
       retries: 5
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     env_file:
       - ../config/environment-variables/.env.backend.dev
     volumes:
@@ -39,7 +40,12 @@ services:
     env_file:
       - ../config/environment-variables/.env.db.dev
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root", "-d", "vmaas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - public
       - internal

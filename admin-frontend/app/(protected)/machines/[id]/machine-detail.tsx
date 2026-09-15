@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-
+import testData from "./test-data.json"
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,6 +14,7 @@ import { MachineActions } from "./machine-actions"
 import { fetchData } from "@/lib/data/data-fetch"
 import type { MachineDetail } from "../form"
 import { STATUS_LABEL, STATUS_VARIANT } from "../status"
+import { StockGrid } from "./stock-row-grid"
 
 export const NO_READ_ACCESS = "You do not have access to machines."
 
@@ -111,6 +112,15 @@ export async function MachineDetailLoader({
           </dl>
         </CardContent>
       </Card>
+      <StockGrid
+        stockRows={testData.map(({ beginX, beginY, endX, endY, ...row }) => ({
+          ...row,
+          x_start: beginX,
+          y_start: beginY,
+          x_end: endX,
+          y_end: endY,
+        }))}
+      />
     </>
   )
 }
