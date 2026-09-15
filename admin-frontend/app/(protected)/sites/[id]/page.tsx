@@ -13,8 +13,9 @@ import { NO_READ_ACCESS, SiteDetailLoader } from "./site-detail"
  *
  * Everything below the back link depends on the session and on the site, so the
  * static shell is the link alone — the rest streams in behind <Suspense>. The
- * guard sits on the page rather than on the protected layout, which reads no
- * session on purpose.
+ * title row belongs to the loader for the same reason: it names the site, so it
+ * cannot render before the site is read. The guard sits on the page rather than
+ * on the protected layout, which reads no session on purpose.
  */
 export default async function SitePage({
   params,

@@ -3,10 +3,19 @@ import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
-import { type GetSitesParams, SITE_SORT_FIELDS, type SiteSortField, type SiteUsage } from "@vmaas/shared/types/site";
+import {
+  type GetSitesParams,
+  SITE_SORT_FIELDS,
+  type SimpleSite,
+  type SimpleSiteSearchParams,
+  type SiteSortField,
+  type SiteUsage,
+} from "@vmaas/shared/types/site";
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 25;
 const DEFAULT_SORT_BY: SiteSortField = "createdAt";
 const DEFAULT_SORT_ORDER = "desc" as const;
 

@@ -3,19 +3,13 @@ import { notFound } from "next/navigation"
 
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { sitesErrorMessage } from "../messages"
+import BentoGrid from "./bento-grid"
 import { SiteActions } from "./site-actions"
 import { fetchData } from "@/lib/data/data-fetch"
 // Type-only: `../form` is a client module, and these two never cross as values.
@@ -106,66 +100,73 @@ export async function SiteDetailLoader({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-2xl">
-          {site.name}
-          {machineCount > 0 && (
-            <Badge variant="secondary">
-              {machineCount} machine{machineCount !== 1 ? "s" : ""}
-            </Badge>
-          )}
-        </CardTitle>
-        <CardDescription>Created {formatDate(site.createdAt)}</CardDescription>
-
+    <>
+      {/* Same title row as the sites list, with the edit/delete triggers where
+          that page puts its "New site" dialog. */}
+      <div className="flex w-full justify-between">
+        <div className="mb-6">
+          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
+            {site.name}
+            {machineCount > 0 && (
+              <Badge variant="secondary">
+                {machineCount} machine{machineCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </h1>
+          <p className="text-muted-foreground">
+            Created {formatDate(site.createdAt)}
+          </p>
+        </div>
         {/* Hiding the buttons for a read-only user must not take the page away,
             hence performRedirect={false}. */}
-        <CardAction>
-          <Suspense>
-            <RoleGate perms={[PERMISSIONS.SITE_WRITE]} performRedirect={false}>
-              <SiteActions
-                id={site.id}
-                name={site.name}
-                defaultValues={formValues}
-                canDelete={site.canDelete}
-              />
-            </RoleGate>
-          </Suspense>
-        </CardAction>
-      </CardHeader>
+        <Suspense>
+          <RoleGate perms={[PERMISSIONS.SITE_WRITE]} performRedirect={false}>
+            <SiteActions
+              id={site.id}
+              name={site.name}
+              defaultValues={formValues}
+              canDelete={site.canDelete}
+            />
+          </RoleGate>
+        </Suspense>
+      </div>
 
-      <CardContent className="space-y-6">
-        <div>
-          <h2 className="mb-2 text-sm font-medium">Address</h2>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailRow label="Address line 1" value={site.addressLine1} />
-            <DetailRow label="Address line 2" value={site.addressLine2} />
-            <DetailRow label="Postal code" value={site.postalCode} />
-            <DetailRow label="City" value={site.city} />
-            <DetailRow label="Country code" value={site.countryCode} />
-            <DetailRow label="Coordinates" value={coordinates} />
-          </dl>
-        </div>
+      <BentoGrid />
 
-        <div>
-          <h2 className="mb-2 text-sm font-medium">Contact</h2>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailRow label="Name" value={site.contactName} />
-            <DetailRow label="Phone" value={site.contactPhone} />
-            <DetailRow label="Email" value={site.contactEmail} />
-          </dl>
-        </div>
-
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <DetailRow label="Machines" value={String(machineCount)} />
-          <div className="sm:col-span-2">
-            <dt className="text-sm text-muted-foreground">ID</dt>
-            <dd className="font-mono text-xs text-muted-foreground">
-              {site.id}
-            </dd>
+      <Card>
+        <CardContent className="space-y-6">
+          <div>
+            <h2 className="mb-2 text-sm font-medium">Address</h2>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <DetailRow label="Address line 1" value={site.addressLine1} />
+              <DetailRow label="Address line 2" value={site.addressLine2} />
+              <DetailRow label="Postal code" value={site.postalCode} />
+              <DetailRow label="City" value={site.city} />
+              <DetailRow label="Country code" value={site.countryCode} />
+              <DetailRow label="Coordinates" value={coordinates} />
+            </dl>
           </div>
-        </dl>
-      </CardContent>
-    </Card>
+
+          <div>
+            <h2 className="mb-2 text-sm font-medium">Contact</h2>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <DetailRow label="Name" value={site.contactName} />
+              <DetailRow label="Phone" value={site.contactPhone} />
+              <DetailRow label="Email" value={site.contactEmail} />
+            </dl>
+          </div>
+
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <DetailRow label="Machines" value={String(machineCount)} />
+            <div className="sm:col-span-2">
+              <dt className="text-sm text-muted-foreground">ID</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
+                {site.id}
+              </dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+    </>
   )
 }

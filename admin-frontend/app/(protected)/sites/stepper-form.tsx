@@ -4,7 +4,7 @@ import { useState } from "react"
 import dynamic from "next/dynamic"
 import { useForm } from "@tanstack/react-form"
 import { cn } from "cn"
-import { Check, Loader2, MapPin } from "lucide-react"
+import { ArrowBigDown, Check, Loader2, MapPin } from "lucide-react"
 import { toast } from "sonner"
 
 import { createSiteSchema } from "@vmaas/shared/schemas"
@@ -119,7 +119,7 @@ function SummaryRow({ label, value }: { label: string; value?: string }) {
       <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
       {/* An address or an email has no break opportunity the row can rely on,
           and one long value would otherwise widen the whole summary. */}
-      <span className="min-w-0 wrap-break-word text-right text-sm font-medium">
+      <span className="min-w-0 text-right text-sm font-medium wrap-break-word">
         {value || <span className="text-muted-foreground">Not set</span>}
       </span>
     </div>
@@ -418,8 +418,8 @@ export function SiteStepperForm({
                       onSelect={applyAddress}
                     />
                     <FieldDescription>
-                      Picking a result fills in the fields below and drops a pin.
-                      You can also type them yourself.
+                      Picking a result fills in the fields below and drops a
+                      pin. You can also type them yourself.
                     </FieldDescription>
                   </Field>
 
@@ -427,7 +427,7 @@ export function SiteStepperForm({
                     <SiteLocationMap
                       latitude={location.latitude}
                       longitude={location.longitude}
-                      label={pinLabel}
+                      label={<ArrowBigDown className="text-primary" />}
                     />
                   )}
 

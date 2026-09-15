@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { ReactElement, useEffect, useState } from "react"
 
 import {
   Map,
@@ -19,7 +19,7 @@ type SiteLocationMapProps = {
   latitude: number
   longitude: number
   /** Drawn above the pin. Usually the site's name or the matched address. */
-  label?: string
+  label?: string | ReactElement
   /** Overrides the default height — the wrapper is what gives the map a size. */
   className?: string
 }

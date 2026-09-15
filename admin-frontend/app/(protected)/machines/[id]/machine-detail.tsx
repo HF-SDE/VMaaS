@@ -3,14 +3,7 @@ import { notFound } from "next/navigation"
 
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
@@ -72,62 +65,62 @@ export async function MachineDetailLoader({
   const location = machine.location
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3 text-2xl">
-          {machine.name}
-          <Badge variant={STATUS_VARIANT[machine.status]}>
-            {STATUS_LABEL[machine.status]}
-          </Badge>
-        </CardTitle>
-        <CardDescription>
-          {location !== null
-            ? `Placed at ${location} — created ${formatDate(machine.createdAt)}`
-            : "Not placed yet — created " + formatDate(machine.createdAt)}
-        </CardDescription>
-
+    <>
+      {/* Same title row as the machines list, with the edit/delete triggers
+          where that page puts its "New machine" dialog. */}
+      <div className="flex w-full justify-between">
+        <div className="mb-6">
+          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
+            {machine.name}
+            <Badge variant={STATUS_VARIANT[machine.status]}>
+              {STATUS_LABEL[machine.status]}
+            </Badge>
+          </h1>
+          <p className="text-muted-foreground">
+            {location !== null
+              ? `Placed at ${location} — created ${formatDate(machine.createdAt)}`
+              : "Not placed yet — created " + formatDate(machine.createdAt)}
+          </p>
+        </div>
         {/* Hiding the buttons for a read-only user must not take the page away,
             hence performRedirect={false}. */}
-        <CardAction>
-          <Suspense>
-            <RoleGate
-              perms={[PERMISSIONS.MACHINE_WRITE]}
-              performRedirect={false}
-            >
-              <MachineActions
-                id={machine.id}
-                name={machine.name}
-                location={location}
-                canDelete={machine.canDelete}
-              />
-            </RoleGate>
-          </Suspense>
-        </CardAction>
-      </CardHeader>
+        <Suspense>
+          <RoleGate perms={[PERMISSIONS.MACHINE_WRITE]} performRedirect={false}>
+            <MachineActions
+              id={machine.id}
+              name={machine.name}
+              location={location}
+              canDelete={machine.canDelete}
+            />
+          </RoleGate>
+        </Suspense>
+      </div>
 
-      <CardContent>
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-sm text-muted-foreground">Location</dt>
-            <dd>{location ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-sm text-muted-foreground">Created</dt>
-            <dd>{formatDate(machine.createdAt)}</dd>
-          </div>
-          <div>
-            <dt className="text-sm text-muted-foreground">Status</dt>
-            <dd>{STATUS_LABEL[machine.status]}</dd>
-          </div>
+      <Card>
+        <CardContent>
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm text-muted-foreground">Location</dt>
+              <dd>{location ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Created</dt>
+              <dd>{formatDate(machine.createdAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Status</dt>
+              <dd>{STATUS_LABEL[machine.status]}</dd>
+            </div>
 
-          <div className="sm:col-span-2">
-            <dt className="text-sm text-muted-foreground">ID</dt>
-            <dd className="font-mono text-xs text-muted-foreground">
-              {machine.id}
-            </dd>
-          </div>
-        </dl>
-      </CardContent>
-    </Card>
+            <div className="sm:col-span-2">
+              <dt className="text-sm text-muted-foreground">ID</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
+                {machine.id}
+              </dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+    </>
   )
 }
