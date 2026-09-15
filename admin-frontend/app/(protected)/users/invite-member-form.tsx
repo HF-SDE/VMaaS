@@ -6,19 +6,15 @@ import { inviteMemberSchema } from "@vmaas/shared/schemas"
 import { useState } from "react"
 import { TenantRole } from "./page"
 
-export function InviteMemberForm({
-  tenantRoles,
-  activeTenantId,
-}: {
+interface InviteMemberFormProps {
   tenantRoles: TenantRole[]
-  activeTenantId: string
-}) {
+}
+
+export function InviteMemberForm({ tenantRoles }: InviteMemberFormProps) {
   const [email, setEmail] = useState("")
   const [role, setRole] = useState("")
 
   async function handleSubmit() {
-    console.log("Inviting member with email:", email, "and role:", role)
-
     const { data, error } = inviteMemberSchema.safeParse({ email, role })
 
     if (error) {
@@ -26,7 +22,7 @@ export function InviteMemberForm({
       return
     }
 
-    const [err] = await fetchData(`/api/tenants/${activeTenantId}/members`, {
+    const [err] = await fetchData("/api/tenants/members", {
       method: "POST",
       body: data,
     })

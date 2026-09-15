@@ -18,7 +18,7 @@ export default async function UsersPage() {
   const session = await getSession(true)
 
   const [usersErr, members] = await fetchData<MembersResponse[]>(
-    "/api/tenants/" + session.activeTenantId + "/members"
+    "/api/tenants/members"
   )
 
   const canInviteUsers =
@@ -50,10 +50,7 @@ export default async function UsersPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">Members</h1>
         {canInviteUsers && tenant_roles && (
-          <InviteMemberForm
-            activeTenantId={session.activeTenantId}
-            tenantRoles={tenant_roles}
-          />
+          <InviteMemberForm tenantRoles={tenant_roles} />
         )}
       </div>
 
