@@ -15,6 +15,7 @@ import { fetchData } from "@/lib/data/data-fetch"
 import type { MachineDetail } from "../form"
 import { STATUS_LABEL, STATUS_VARIANT } from "../status"
 import { StockGrid } from "./stock-row-grid"
+import { VendingMachine } from "./vending-machine"
 
 export const NO_READ_ACCESS = "You do not have access to machines."
 
@@ -112,15 +113,17 @@ export async function MachineDetailLoader({
           </dl>
         </CardContent>
       </Card>
-      <StockGrid
-        stockRows={testData.map(({ beginX, beginY, endX, endY, ...row }) => ({
-          ...row,
-          x_start: beginX,
-          y_start: beginY,
-          x_end: endX,
-          y_end: endY,
-        }))}
-      />
+      <VendingMachine>
+        <StockGrid
+          stockRows={testData.map(({ beginX, beginY, endX, endY, ...row }) => ({
+            ...row,
+            x_start: beginX,
+            y_start: beginY,
+            x_end: endX,
+            y_end: endY,
+          }))}
+        />
+      </VendingMachine>
     </>
   )
 }

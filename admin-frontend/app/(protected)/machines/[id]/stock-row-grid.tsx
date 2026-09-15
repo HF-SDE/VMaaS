@@ -29,14 +29,19 @@ export function StockGrid({ stockRows }: StockGridProps) {
 
   const slotCount = bounds.width * bounds.height
 
+  // Cells grow to fill the container but never shrink below 60px, so a grid
+  // too large for its box overflows into the scroll container instead of
+  // collapsing.
+  const template = {
+    gridTemplateColumns: `repeat(${bounds.width}, minmax(60px, 1fr))`,
+    gridTemplateRows: `repeat(${bounds.height}, minmax(60px, 1fr))`,
+  }
+
+  // No explicit width/height on the wrapper: as a grid/flex item it stretches
+  // to its container on both axes, which a percentage height cannot do against
+  // an auto-sized parent.
   return (
-    <div
-      className="relative grid size-fit"
-      style={{
-        gridTemplateColumns: `repeat(${bounds.width}, 60px)`,
-        gridTemplateRows: `repeat(${bounds.height}, 60px)`,
-      }}
-    >
+    <div className="relative grid" style={template}>
       {/* Empty grid slots */}
       {Array.from({ length: slotCount }).map((_, index) => (
         <div key={index} className="border border-neutral-200" />
@@ -45,10 +50,7 @@ export function StockGrid({ stockRows }: StockGridProps) {
       {/* Stock rows */}
       <div
         className="pointer-events-none absolute inset-0 grid"
-        style={{
-          gridTemplateColumns: `repeat(${bounds.width}, 60px)`,
-          gridTemplateRows: `repeat(${bounds.height}, 60px)`,
-        }}
+        style={template}
       >
         {stockRows.map((stockRow, index) => {
           const position = getGridPosition(stockRow, bounds)

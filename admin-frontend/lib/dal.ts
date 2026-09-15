@@ -29,7 +29,7 @@ export async function getSession(
 
   const session = await fetchSession(getAuthCookie(store.getAll()))
 
-  if (!session && redirectOnNull) redirect("/auth/welcome")
+  if (!session && redirectOnNull) redirect("/login")
 
   return session
 }
