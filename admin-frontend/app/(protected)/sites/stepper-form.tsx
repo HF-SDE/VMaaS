@@ -427,7 +427,6 @@ export function SiteStepperForm({
                     <SiteLocationMap
                       latitude={location.latitude}
                       longitude={location.longitude}
-                      label={<ArrowBigDown className="text-primary" />}
                     />
                   )}
 

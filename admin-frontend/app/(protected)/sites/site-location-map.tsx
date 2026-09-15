@@ -22,6 +22,12 @@ type SiteLocationMapProps = {
   label?: string | ReactElement
   /** Overrides the default height — the wrapper is what gives the map a size. */
   className?: string
+  /**
+   * Makes the map a static picture: hides the on-screen controls and detaches
+   * MapLibre's gesture handlers, so dragging or pinching it pans the page
+   * instead of the map. Read once, when the map is constructed.
+   */
+  disableControls?: boolean
 }
 
 /**
@@ -36,6 +42,7 @@ type SiteLocationMapProps = {
 export function SiteLocationMap({
   latitude,
   longitude,
+  disableControls = false,
   label,
   className,
 }: SiteLocationMapProps) {
@@ -61,8 +68,12 @@ export function SiteLocationMap({
         className
       )}
     >
-      <Map viewport={viewport} onViewportChange={setViewport}>
-        <MapControls />
+      <Map
+        viewport={viewport}
+        onViewportChange={setViewport}
+        interactive={!disableControls}
+      >
+        {!disableControls && <MapControls />}
         <MapMarker longitude={longitude} latitude={latitude}>
           <MarkerContent>
             <div className="size-3.5 rounded-full border-2 border-white bg-primary shadow-lg" />

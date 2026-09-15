@@ -3,7 +3,6 @@ import { notFound } from "next/navigation"
 
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
@@ -16,25 +15,6 @@ import { fetchData } from "@/lib/data/data-fetch"
 import type { SiteDetail, SiteFormValues } from "../form"
 
 export const NO_READ_ACCESS = "You do not have access to sites."
-
-/** One `<dl>` row. Renders a dash rather than nothing when the column is null,
- *  so the grid keeps its shape whatever the site has filled in. */
-function DetailRow({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: string | null
-  className?: string
-}) {
-  return (
-    <div className={className}>
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd>{value || "—"}</dd>
-    </div>
-  )
-}
 
 /**
  * Reads one site and renders it.
@@ -71,9 +51,10 @@ export async function SiteDetailLoader({
       ? `${site.latitude}, ${site.longitude}`
       : null
 
-  // The same pair as numbers, for the map in the edit dialog. `Number` is what
-  // turns the serialised Decimal back into a coordinate; a pair that does not
-  // parse is treated as no pin rather than as NaN reaching MapLibre.
+  // The same pair as numbers, for the location card and the map in the edit
+  // dialog. `Number` is what turns the serialised Decimal back into a
+  // coordinate; a pair that does not parse is treated as no pin rather than as
+  // NaN reaching MapLibre.
   const latitude = Number(site.latitude)
   const longitude = Number(site.longitude)
   const hasPin =
@@ -131,42 +112,12 @@ export async function SiteDetailLoader({
         </Suspense>
       </div>
 
-      <BentoGrid />
-
-      <Card>
-        <CardContent className="space-y-6">
-          <div>
-            <h2 className="mb-2 text-sm font-medium">Address</h2>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <DetailRow label="Address line 1" value={site.addressLine1} />
-              <DetailRow label="Address line 2" value={site.addressLine2} />
-              <DetailRow label="Postal code" value={site.postalCode} />
-              <DetailRow label="City" value={site.city} />
-              <DetailRow label="Country code" value={site.countryCode} />
-              <DetailRow label="Coordinates" value={coordinates} />
-            </dl>
-          </div>
-
-          <div>
-            <h2 className="mb-2 text-sm font-medium">Contact</h2>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <DetailRow label="Name" value={site.contactName} />
-              <DetailRow label="Phone" value={site.contactPhone} />
-              <DetailRow label="Email" value={site.contactEmail} />
-            </dl>
-          </div>
-
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailRow label="Machines" value={String(machineCount)} />
-            <div className="sm:col-span-2">
-              <dt className="text-sm text-muted-foreground">ID</dt>
-              <dd className="font-mono text-xs text-muted-foreground">
-                {site.id}
-              </dd>
-            </div>
-          </dl>
-        </CardContent>
-      </Card>
+      <BentoGrid
+        site={site}
+        coordinates={coordinates}
+        latitude={hasPin ? latitude : null}
+        longitude={hasPin ? longitude : null}
+      />
     </>
   )
 }
