@@ -6,6 +6,7 @@
   "scripts": {
     "install": "cd backend && npm i && cd ../admin-frontend && npm i",
     "dev": "docker compose -f ./docker/docker-compose.yml up -d && docker image prune -f",
+    "dev-rebuild": "docker compose -f ./docker/docker-compose.yml up -d --build && docker image prune -f",
     "backend:dev": "docker compose -f ./docker/docker-compose.yml run --rm admin-frontend npm install && docker compose -f ./docker/docker-compose.yml up -d --build && docker image prune -f",
     "backend": "docker compose --env-file ./config/environment-variables/.env.docker.prod -f ./docker/docker-compose.prod.yml up -d && docker image prune",
     "build:dev": "docker compose -f ./docker/docker-compose.yml build",

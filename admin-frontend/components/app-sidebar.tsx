@@ -22,31 +22,19 @@ import {
 } from "./ui/collapsible"
 import {
   ArrowRightLeft,
-  Beer,
-  BottleWine,
-  CalendarRange,
   ChevronRight,
-  Cog,
-  FileText,
-  Key,
   LayoutDashboard,
   LogOut,
   MoreHorizontal,
-  Package,
-  Plus,
   ScanBarcode,
   ScrollText,
   ShelvingUnit,
-  ShieldUser,
   TableProperties,
-  Trash,
   User,
-  UserKey,
-  Users,
 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
-import { redirect, usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   DropdownMenu,
@@ -58,21 +46,23 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
 import Image from "next/image"
-import { UserAvatarProps, UserAvatar } from "./nav-user copy"
-import { useUser } from "@/hooks/use-user"
+import { UserAvatarProps, UserAvatar } from "./user-avatar"
+import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
+import { PermissionKey } from "@vmaas/shared/types"
+import { Separator } from "./ui/separator"
 
 interface NavItem {
   title: string
   url?: string
   icon?: React.ReactNode
-  requiredPermission?: Permissions[]
+  requiredPermission?: PermissionKey
   feature?: "brew-log"
   items?: {
     title: string
     url: string
     icon?: React.ReactNode
-    requiredPermission?: Permissions[]
+    requiredPermission?: PermissionKey
     feature?: "brew-log"
   }[]
 }
@@ -91,46 +81,61 @@ const data: AppSidebarProps = {
       icon: <LayoutDashboard />,
     },
     {
-      title: "Kiosk",
-      url: "/kiosk",
+      title: "Sales",
+      url: "/sales",
       icon: <ScanBarcode />,
     },
     {
-      title: "Lager",
+      title: "Management",
       icon: <ShelvingUnit />,
 
       items: [
         {
-          title: "Oversigt",
-          url: "/lager",
+          title: "Machines",
+          url: "/machines",
 
           icon: <TableProperties />,
         },
         {
-          title: "Flyt vare",
-          url: "/lager/bevaegelse",
+          title: "Products",
+          url: "/products",
 
           icon: <ArrowRightLeft />,
         },
         {
-          title: "Opret ny",
-          url: "/lager/opret",
-          icon: <Plus />,
+          title: "Sites",
+          url: "/sites",
+
+          icon: <ArrowRightLeft />,
         },
         {
-          title: "Registrer spild",
-          url: "/lager/spild",
-          icon: <Trash />,
-        },
-        {
-          title: "Historik",
-          url: "/lager/logs",
+          title: "History",
+          url: "/history",
           icon: <ScrollText />,
         },
+      ],
+    },
+    {
+      title: "Access",
+      icon: <ShelvingUnit />,
+
+      items: [
         {
-          title: "Optælling",
-          url: "/lager/optaelling",
+          title: "Users",
+          url: "/users",
+          requiredPermission: "user:view",
           icon: <TableProperties />,
+        },
+        // {
+        //   title: "Permissions",
+        //   url: "/permissions",
+        //   icon: <ArrowRightLeft />,
+        // },
+        {
+          title: "Roles",
+          url: "/roles",
+          requiredPermission: "role:view",
+          icon: <ScrollText />,
         },
       ],
     },
@@ -231,10 +236,30 @@ function SidebarNavigationSkeleton() {
   )
 }
 
+export function AppSidebarSkeleton() {
+  return (
+    <Sidebar variant="inset">
+      <SidebarHeader className="flex justify-between">
+        <h1 className="text-lg font-bold">VMaaS</h1>
+      </SidebarHeader>
+      <SidebarContent className="gap-0">
+        <SidebarNavigationSkeleton />
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuSkeleton showIcon />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  )
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
-  const user = useUser()
+  const { user, hasPermission } = useSession()
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -261,7 +286,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader className="flex justify-between">
+      <SidebarHeader className="m-0 mb-4 flex justify-between p-0">
         <Link href="/" className="h-max">
           <h1 className="text-lg font-bold">VMaaS</h1>
         </Link>
@@ -338,25 +363,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </SidebarMenu>
                   <CollapsibleContent>
                     <SidebarMenu>
-                      {item.items?.map((subItem) => (
-                        <SidebarMenuItem key={subItem.title} className="pl-4">
-                          <SidebarMenuButton
-                            className={cn(
-                              currentPath === subItem.url
-                                ? "bg-primary! text-primary-foreground!"
-                                : "",
-                              "text-sm"
-                            )}
-                            isActive={currentPath === subItem.url}
-                            render={<Link href={subItem.url} />}
-                          >
-                            {subItem.icon && (
-                              <span className="mr-2">{subItem.icon}</span>
-                            )}
-                            {subItem.title}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
+                      {item.items?.map((subItem) => {
+                        if (
+                          subItem.requiredPermission &&
+                          !hasPermission(subItem.requiredPermission)
+                        ) {
+                          return null
+                        }
+
+                        return (
+                          <SidebarMenuItem key={subItem.title} className="pl-4">
+                            <SidebarMenuButton
+                              className={cn(
+                                currentPath === subItem.url
+                                  ? "bg-primary! text-primary-foreground!"
+                                  : "",
+                                "text-sm"
+                              )}
+                              isActive={currentPath === subItem.url}
+                              render={<Link href={subItem.url} />}
+                            >
+                              {subItem.icon && (
+                                <span className="mr-2">{subItem.icon}</span>
+                              )}
+                              {subItem.title}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
                     </SidebarMenu>
                   </CollapsibleContent>
                 </Collapsible>
@@ -400,24 +434,26 @@ export function NavBarFooter({ data }: { data: UserAvatarProps }) {
             align="end"
             sideOffset={4}
           >
-            <DropdownMenuLabel>Min konto</DropdownMenuLabel>
             <DropdownMenuGroup>
-              <DropdownMenuItem render={<Link href="/profil" />}>
+              <DropdownMenuLabel>Min konto</DropdownMenuLabel>
+              <DropdownMenuItem render={<Link href="/account" />}>
                 <User className="size-4" />
-                Profil
+                Konto
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await authClient.signOut()
-                router.push("/login")
-                router.refresh()
-              }}
-            >
-              <LogOut className="size-4" />
-              Log ud
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                onClick={async () => {
+                  await authClient.signOut()
+                  router.push("/login")
+                  router.refresh()
+                }}
+              >
+                <LogOut className="size-4" />
+                Log ud
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

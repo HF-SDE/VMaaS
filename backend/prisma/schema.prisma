@@ -8,20 +8,22 @@ datasource db {
   schemas  = ["auth", "rbac", "public"]
 }
 
-
-#Der skal være en tabel til auditlog
+// #Der skal være en tabel til auditlog
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
   name          String
   emailVerified Boolean  @default(false)
   image         String?
+  isSuperAdmin  Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  userRoles UserRole[]
-  sessions  Session[]
-  accounts  Account[]
+  userRoles       UserRole[]
+  sessions        Session[]
+  accounts        Account[]
+  sentInvites     TenantInvite[] @relation("TenantInviteSender")
+  receivedInvites TenantInvite[] @relation("TenantInviteRecipient")
 
   @@map("users")
   @@schema("auth")
@@ -83,14 +85,16 @@ model Verification {
 }
 
 model Role {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @unique
-  description    String?
-  isPlatformRole Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  description String?
+  createdAt   DateTime @default(now())
 
   rolePermissions RolePermission[]
   userRoles       UserRole[]
+  tenantInvites   TenantInvite[]
 
   @@map("roles")
   @@schema("rbac")
@@ -140,6 +144,40 @@ model UserRole {
   @@schema("rbac")
 }
 
+enum invitation_status {
+  pending
+  accepted
+  expired
+  revoked
+  rejected
+
+  @@schema("rbac")
+}
+
+model TenantInvite {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  user        User              @relation("TenantInviteRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  tenantId    String            @db.Uuid
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleId      String            @db.Uuid
+  role        Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  invitedById String            @db.Uuid
+  invitedBy   User              @relation("TenantInviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  status      invitation_status @default(pending)
+  token       String            @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([userId, tenantId, status])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_invites")
+  @@schema("rbac")
+}
+
 enum machine_status {
   online
   offline
@@ -175,51 +213,91 @@ model Tenant {
   machines       Machine[]
   sales          Sale[]
   activeSessions Session[]
+  roles          Role[]
+  invites        TenantInvite[]
+  sites          Site[]
 
   @@map("tenants")
   @@schema("public")
 }
 
-model Product {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  price     Decimal
+model Site {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name String
+
+  addressLine1 String?
+  addressLine2 String?
+  postalCode   String?
+  city         String?
+  countryCode  String? // "DK"
+
+  latitude  Decimal?
+  longitude Decimal?
+
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+
+  machines Machine[]
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("sites")
+  @@schema("public")
+}
+
+model Product {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  price      Decimal
+  createdAt  DateTime  @default(now())
+  // Null means active. A timestamp rather than a flag, so the list can say when
+  // a product was taken out of use without a second column.
+  archivedAt DateTime?
 
   slots Slot[]
+  sales Sale[]
 
   @@index([tenantId])
   @@map("products")
   @@schema("public")
 }
 
-# Tenant skal være optional da en ny maskine ikke har nogle tenant til at starte med.
-# Det skal være muligt at give en grund til at man har disbaled maskinen fx for ikke at betale til os. Eller det skal ihvertfald være tydliget hvad det er disabled.
-# Der mangler en tabel med machine event
-# Der mangler en engangs aktiverings kode
+// # Tenant skal være optional da en ny maskine ikke har nogle tenant til at starte med.
+// # Det skal være muligt at give en grund til at man har disbaled maskinen fx for ikke at betale til os. Eller det skal ihvertfald være tydliget hvad det er disabled.
+// # Der mangler en tabel med machine event
+// # Der mangler en engangs aktiverings kode
 model Machine {
-  id        String         @id @default(uuid()) @db.Uuid
-  tenantId  String         @db.Uuid
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  location  String?
-  status    machine_status @default(online)
-  createdAt DateTime       @default(now())
-
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @db.Uuid
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  status         machine_status  @default(online)
+  createdAt      DateTime        @default(now())
+  siteId         String          @db.Uuid
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
   slots          Slot[]
   sales          Sale[]
   securityAlerts SecurityAlert[]
 
   @@index([tenantId])
+  @@index([siteId])
   @@map("machines")
   @@schema("public")
 }
 
 model Pin {
-  id         String   @id @default(uuid()) @db.Uuid
-  number Int
+  id          String  @id @default(uuid()) @db.Uuid
+  number      Int
   description String?
 
   @@map("pin")
@@ -233,15 +311,15 @@ model Slot {
   productId  String   @db.Uuid
   product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   slotNumber Int
-  beginX Int
-  endX Int
-  beginY Int
-  endY Int
+  beginX     Int
+  endX       Int
+  beginY     Int
+  endY       Int
   quantity   Int      @default(0)
   capacity   Int
   price      Decimal?
 
-  pins Pins[]
+  // pins Pins[] - Jeg har kommenteret dette ud, da det ikke er implementeret endnu.
   sales Sale[]
 
   @@unique([machineId, slotNumber])
@@ -250,7 +328,7 @@ model Slot {
   @@schema("public")
 }
 
-# Der skal være en tabel til sales events og inventory movements.
+// # Der skal være en tabel til sales events og inventory movements.
 model Sale {
   id          String      @id @default(uuid()) @db.Uuid
   tenantId    String      @db.Uuid
@@ -259,6 +337,8 @@ model Sale {
   machine     Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
   slotId      String      @db.Uuid
   slot        Slot        @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  productId   String?     @db.Uuid // SetNull, so a hard delete doesn't erase the sale
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: Restrict)
   status      sale_status @default(pending)
   price       Decimal
   createdAt   DateTime    @default(now())
@@ -267,6 +347,7 @@ model Sale {
   @@index([tenantId])
   @@index([machineId])
   @@index([slotId])
+  @@index([productId])
   @@map("sales")
   @@schema("public")
 }

@@ -1,0 +1,66 @@
+import "server-only"
+
+import { cacheLife } from "next/cache"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
+import type { PermissionKey } from "@vmaas/shared/types/permissions"
+
+import { forbiddenPath } from "./forbidden"
+import { hasPermission } from "./permissions"
+import { fetchSession, type Session } from "./session-fetch"
+import { getAuthCookie } from "./data/fetch-helpers"
+
+export type { Session }
+
+/** Reads the session cookie, so it cannot live in a plain `use cache` scope.
+ *  `use cache: private` lets it read cookies while staying out of the shared,
+ *  cross-request server cache. `stale` of at least 30s keeps it prefetchable. */
+export async function getSession(redirectOnNull: true): Promise<Session>
+export async function getSession(
+  redirectOnNull?: false
+): Promise<Session | null>
+export async function getSession(
+  redirectOnNull = false
+): Promise<Session | null> {
+  "use cache: private"
+  cacheLife({ stale: 60 })
+
+  const store = await cookies()
+
+  const session = await fetchSession(getAuthCookie(store.getAll()))
+
+  if (!session && redirectOnNull) redirect("/auth/welcome")
+
+  return session
+}
+
+export async function requireUser(): Promise<Session> {
+  const session = await getSession()
+  if (!session) redirect("/login")
+  return session
+}
+
+export async function requireTenant(): Promise<
+  Session & { activeTenantId: string }
+> {
+  const session = await requireUser()
+  if (!session.activeTenantId) redirect("/welcome")
+  return session as Session & { activeTenantId: string }
+}
+
+/**
+ * Sends a denied user to /forbidden, the same place <RoleGate> sends them, so
+ * a page-level and a component-level denial look alike. `reason` is plain
+ * Danish copy for that page; omit it for the generic wording.
+ *
+ * Use hasPermission() instead for conditional UI, where hiding one control
+ * should not take the whole page away.
+ */
+export async function requirePermission(
+  key: PermissionKey,
+  reason?: string
+): Promise<Session & { activeTenantId: string }> {
+  const session = await requireTenant()
+  if (!hasPermission(session, key)) redirect(forbiddenPath(reason))
+  return session
+}

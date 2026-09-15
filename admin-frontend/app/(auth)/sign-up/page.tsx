@@ -11,7 +11,7 @@ export default function SignupPage() {
           height={2880}
           src="/vending-machine1.jpg"
           alt="Image"
-          className="absolute inset-0 h-full w-full object-cover object-bottom dark:grayscale"
+          className="absolute inset-0 h-full w-full object-cover object-bottom hue-rotate-265 dark:grayscale"
         />
       </div>
       <div className="flex flex-col gap-4 p-6 md:p-10">

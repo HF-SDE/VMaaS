@@ -26,7 +26,7 @@ export default function LoginPage() {
           height={2880}
           src="/vending-machine1.jpg"
           alt="Image"
-          className="absolute inset-0 h-full w-full object-cover object-bottom dark:grayscale"
+          className="absolute inset-0 h-full w-full object-cover object-bottom hue-rotate-265 dark:grayscale"
         />
       </div>
     </div>

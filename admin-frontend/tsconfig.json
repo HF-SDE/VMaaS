@@ -19,7 +19,10 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*", "../backend/src/*"],
+      "@prisma": ["../backend/src/generated/prisma/browser"],
+      "@backend-responses": ["../backend/src/types/responses"],
+      "@shared": ["../shared"]
     }
   },
   "include": [
@@ -29,7 +32,9 @@
     "**/*.tsx",
     "**/*.mts",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "../backend/src/generated/prisma/browser.ts",
+    "../shared/lib/error-handling.ts"
   ],
   "exclude": ["node_modules"]
 }

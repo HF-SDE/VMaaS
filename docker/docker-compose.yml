@@ -4,8 +4,8 @@ services:
   backend:
     container_name: backend
     build:
-      context: ../backend/
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: backend/Dockerfile
       target: base
     expose:
       - "5000"
@@ -23,7 +23,8 @@ services:
       - ../config/environment-variables/.env.backend.dev
     volumes:
       - ../backend/src:/usr/src/app/src
-      - ../schemas:/usr/src/app/schemas
+      - ../shared:/usr/src/shared
+      - shared_node_modules:/usr/src/shared/node_modules
     networks:
       - internal
       - public
@@ -46,8 +47,8 @@ services:
   # admin-frontend:
   #   container_name: admin-frontend
   #   build:
-  #     context: ../admin-frontend/
-  #     dockerfile: Dockerfile
+  #     context: ..
+  #     dockerfile: admin-frontend/Dockerfile
   #   expose:
   #     - "3000"
   #   depends_on:
@@ -56,6 +57,8 @@ services:
   #     - ../config/environment-variables/.env.admin-frontend.dev
   #   volumes:
   #     - ../admin-frontend:/usr/src/app
+  #     - ../shared:/usr/src/shared
+  #     - shared_node_modules:/usr/src/shared/node_modules
   #     - admin-frontend_node_modules:/usr/src/app/node_modules
   #   networks:
   #     - internal
@@ -87,6 +90,7 @@ networks:
 volumes:
   postgres_data: {}
   admin-frontend_node_modules: {}
+  shared_node_modules: {}
 
 configs:
   nginx_config:

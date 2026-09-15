@@ -1,18 +1,47 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
+import { createMachineSchema, machineIdParamsSchema, updateMachineSchema } from "@vmaas/shared/schemas";
 import { Router } from "express";
 
-import { createMachineController, getMachinesController } from "../controllers/machines.controller";
+import {
+  createMachineController,
+  deleteMachineController,
+  getMachineController,
+  getMachinesController,
+  getMachinesPageController,
+  updateMachineController,
+} from "../controllers/machines.controller";
 
-/**
- * Reference implementation for a tenant-scoped, permission-checked resource.
- * Every query is filtered by `req.tenantId` so one tenant can never read or
- * mutate another tenant's rows.
- */
 export const machinesRouter = Router();
 
 machinesRouter.use(requireAuth, requireTenant);
 
 machinesRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
-machinesRouter.post("/", requirePermission(PERMISSIONS.MACHINE_WRITE), createMachineController);
+machinesRouter.get("/paginated", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesPageController);
+machinesRouter.post(
+  "/",
+  requirePermission(PERMISSIONS.MACHINE_WRITE),
+  validate(createMachineSchema),
+  createMachineController,
+);
+
+machinesRouter.get(
+  "/:id",
+  requirePermission(PERMISSIONS.MACHINE_READ),
+  validate(machineIdParamsSchema),
+  getMachineController,
+);
+machinesRouter.patch(
+  "/:id",
+  requirePermission(PERMISSIONS.MACHINE_WRITE),
+  validate(updateMachineSchema),
+  updateMachineController,
+);
+machinesRouter.delete(
+  "/:id",
+  requirePermission(PERMISSIONS.MACHINE_WRITE),
+  validate(machineIdParamsSchema),
+  deleteMachineController,
+);

@@ -7,8 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma skills sync || exit 0"
+    "postinstall": "prisma skills sync || exit 0",
+    "prisma:generate": "prisma generate"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@vmaas/shared": "file:../shared",
     "better-auth": "^1.7.3",
     "body-parser": "^2.3.0",
     "cors": "^2.8.6",
@@ -23,8 +27,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "pg": "^8.23.0",
-    "zod": "^4.5.4"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
@@ -35,6 +38,7 @@
     "prisma": "^7.10.0",
     "tsc-alias": "^1.9.4",
     "tsx": "^4.23.13",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }

@@ -1,32 +1,21 @@
+import { invitation_status } from "@/generated/prisma/client";
+
+import { PERMISSIONS, type PermissionKey } from "@vmaas/shared/types";
+
 import type { TenantModel } from "../generated/prisma/models";
 import { prisma } from "./prisma";
 
 /**
  * Grantable capabilities, namespaced as "resource:action".
- * Kept as the single source of truth for both the seed script and
- * runtime permission checks.
+ * Defined once in @vmaas/shared/types/permissions and re-exported here so this module
+ * stays the single import site for the seed script and runtime checks.
  */
-export const PERMISSIONS = {
-  TENANT_MANAGE: "tenant:manage",
-  TENANT_VIEW: "tenant:view",
-  USER_MANAGE: "user:manage",
-  USER_VIEW: "user:view",
-  MACHINE_READ: "machine:read",
-  MACHINE_WRITE: "machine:write",
-  PRODUCT_READ: "product:read",
-  PRODUCT_WRITE: "product:write",
-  SLOT_MANAGE: "slot:manage",
-  SALE_READ: "sale:read",
-  SALE_REFUND: "sale:refund",
-  ALERT_READ: "alert:read",
-  ALERT_RESOLVE: "alert:resolve",
-} as const;
-
-export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+export { PERMISSIONS };
+export type { PermissionKey };
 
 export const PLATFORM_ROLE = "superadmin";
 
-export const TENANT_ROLES = {
+export const DEFAULT_TENANT_ROLES = {
   OWNER: "owner",
   ADMIN: "admin",
   OPERATOR: "operator",
@@ -36,33 +25,54 @@ export const TENANT_ROLES = {
 /** Baseline role -> permission mapping used by the seed script. */
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   [PLATFORM_ROLE]: Object.values(PERMISSIONS),
-  [TENANT_ROLES.OWNER]: Object.values(PERMISSIONS),
-  [TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter((key) => key !== PERMISSIONS.TENANT_MANAGE),
-  [TENANT_ROLES.OPERATOR]: [
+  [DEFAULT_TENANT_ROLES.OWNER]: Object.values(PERMISSIONS),
+  [DEFAULT_TENANT_ROLES.ADMIN]: Object.values(PERMISSIONS).filter((key) => key !== PERMISSIONS.TENANT_MANAGE),
+  [DEFAULT_TENANT_ROLES.OPERATOR]: [
     PERMISSIONS.TENANT_VIEW,
     PERMISSIONS.MACHINE_READ,
+    PERMISSIONS.SITE_READ,
     PERMISSIONS.PRODUCT_READ,
     PERMISSIONS.SLOT_MANAGE,
     PERMISSIONS.SALE_READ,
     PERMISSIONS.ALERT_READ,
     PERMISSIONS.ALERT_RESOLVE,
   ],
-  [TENANT_ROLES.VIEWER]: [
+  [DEFAULT_TENANT_ROLES.VIEWER]: [
     PERMISSIONS.TENANT_VIEW,
     PERMISSIONS.USER_VIEW,
     PERMISSIONS.MACHINE_READ,
+    PERMISSIONS.SITE_READ,
     PERMISSIONS.PRODUCT_READ,
     PERMISSIONS.SALE_READ,
     PERMISSIONS.ALERT_READ,
   ],
 };
 
-/** All permission keys granted to `userId`, scoped to `tenantId` plus any platform-wide roles. */
+/** Creates `roleNames` for `tenantId` and grants each role the permissions from `ROLE_PERMISSIONS`. */
+export async function createRolesWithPermissions(tenantId: string, roleNames: string[]): Promise<void> {
+  await prisma.role.createMany({ data: roleNames.map((name) => ({ name, tenantId })) });
+
+  const roles = await prisma.role.findMany({ where: { tenantId, name: { in: roleNames } } });
+
+  for (const role of roles) {
+    const permissionKeys = ROLE_PERMISSIONS[role.name] ?? [];
+    if (permissionKeys.length === 0) continue;
+
+    const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } });
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })),
+      skipDuplicates: true,
+    });
+  }
+}
+
+/** All permission keys granted to `userId`, scoped to `tenantId`. Platform admins get every permission. */
 export async function getUserPermissions(userId: string, tenantId: string | null): Promise<Set<PermissionKey>> {
+  if (await isPlatformAdmin(userId)) return new Set(Object.values(PERMISSIONS));
+
   const userRoles = await prisma.userRole.findMany({
-    where: tenantId
-      ? { userId, OR: [{ role: { isPlatformRole: true } }, { tenantId }] }
-      : { userId, role: { isPlatformRole: true } },
+    where: tenantId ? { userId, tenantId } : { userId },
     include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
   });
 
@@ -85,9 +95,7 @@ export async function hasPermission(
 }
 
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
-  const count = await prisma.userRole.count({
-    where: { userId, role: { isPlatformRole: true } },
-  });
+  const count = await prisma.user.count({ where: { id: userId, isSuperAdmin: true } });
   return count > 0;
 }
 
@@ -109,4 +117,19 @@ export async function listTenantsForUser(userId: string): Promise<TenantModel[]>
     distinct: ["tenantId"],
   });
   return userRoles.map((userRole) => userRole.tenant!).filter(Boolean);
+}
+
+export async function getUserInvites(userId: string, status: invitation_status = "pending") {
+  const invites = await prisma.tenantInvite.findMany({
+    where: { userId, status },
+    include: { tenant: true, role: true },
+  });
+
+  return invites.map((invite) => ({
+    tenantId: invite.tenantId,
+    tenantName: invite.tenant.name,
+    token: invite.token,
+    roleName: invite.role?.name,
+    expiresAt: invite.expiresAt,
+  }));
 }
