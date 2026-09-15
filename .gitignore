@@ -47,3 +47,6 @@ skills-lock.json
 
 config/environment-variables/.env.*.dev*
 config/environment-variables/.env.*.prod*
+
+# doxygen output
+/docs/api/

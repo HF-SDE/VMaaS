@@ -1,0 +1,72 @@
+# Doxygen configuration for the VMaaS firmware (Main-Controller, Motorcontrol,
+# shared/vmaas-protocol). Run `doxygen` from the repo root; output lands in
+# docs/api/html (gitignored). Only keys that differ from the defaults are set.
+
+PROJECT_NAME           = "VMaaS Firmware"
+PROJECT_BRIEF          = "ESP32 firmware and UART protocol for the vending machine"
+OUTPUT_DIRECTORY       = docs/api
+CREATE_SUBDIRS         = NO
+
+# --- Input -------------------------------------------------------------------
+INPUT                  = shared/vmaas-protocol/src \
+                         Main-Controller/src \
+                         Motorcontrol/src
+FILE_PATTERNS          = *.h *.cpp
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */test/* */main.cpp
+STRIP_FROM_PATH        = .
+USE_MDFILE_AS_MAINPAGE =
+
+# --- What gets documented ----------------------------------------------------
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = NO
+HIDE_UNDOC_MEMBERS     = NO
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+INLINE_SIMPLE_STRUCTS  = NO
+SHOW_INCLUDE_FILES     = YES
+
+# --- Preprocessing -----------------------------------------------------------
+# uart_bus.h and friends are wrapped in #ifdef ESP_PLATFORM. Define it so the
+# ESP-only classes appear in the docs, and stub the vendor macros we reference.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = ESP_PLATFORM \
+                         "ESP_ERROR_CHECK(x)=" \
+                         "ESP_LOGE(tag, ...)=" \
+                         "ESP_LOGW(tag, ...)=" \
+                         "ESP_LOGI(tag, ...)=" \
+                         "ESP_LOGD(tag, ...)="
+SKIP_FUNCTION_MACROS   = YES
+
+# --- Warnings: fail loudly when something new goes undocumented -------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
+
+# --- Output ------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+SEARCHENGINE           = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+
+# --- Diagrams: Graphviz is not installed, keep everything off ----------------
+HAVE_DOT               = NO
+CLASS_GRAPH            = NO
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
