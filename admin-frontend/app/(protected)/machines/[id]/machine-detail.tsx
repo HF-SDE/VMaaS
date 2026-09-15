@@ -113,23 +113,17 @@ export async function MachineDetailLoader({
           </dl>
         </CardContent>
       </Card>
-      <VendingMachine
-        children={
-          <>
-            <StockGrid
-              stockRows={testData.map(
-                ({ beginX, beginY, endX, endY, ...row }) => ({
-                  ...row,
-                  x_start: beginX,
-                  y_start: beginY,
-                  x_end: endX,
-                  y_end: endY,
-                })
-              )}
-            />
-          </>
-        }
-      />
+      <VendingMachine>
+        <StockGrid
+          stockRows={testData.map(({ beginX, beginY, endX, endY, ...row }) => ({
+            ...row,
+            x_start: beginX,
+            y_start: beginY,
+            x_end: endX,
+            y_end: endY,
+          }))}
+        />
+      </VendingMachine>
     </>
   )
 }
