@@ -4,7 +4,7 @@ import { PERMISSIONS } from "../../../shared/types/permissions"
 import { getMachines, Machine } from "@/lib/data/machines"
 import { requirePermission } from "@/lib/dal"
 import { fetchData } from "@/lib/data/data-fetch"
-import { toast } from "sonner"
+import { ErrorToast } from "./error-toast"
 
 export default function DashboardPage() {
   return (
@@ -21,12 +21,7 @@ export default function DashboardPage() {
 async function MachineList() {
   // Gate first, then the read — never the other way around.
   const [error, machines] = await fetchData<Machine[]>("/api/machines")
-  if (error) {
-    toast.error("An error occurred while fetching machines.", {
-      duration: 20_000,
-    })
-    return null
-  }
+  if (error) return <ErrorToast message={error.reason} />
 
   return (
     <ul>
