@@ -20,7 +20,6 @@ type BentoGridProps = {
 function addressLines(site: SiteDetail): string[] {
   return [
     site.addressLine1,
-    site.addressLine2,
     [site.postalCode, site.city].filter(Boolean).join(" "),
     site.countryCode,
   ].filter((line): line is string => Boolean(line))

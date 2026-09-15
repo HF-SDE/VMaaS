@@ -65,13 +65,7 @@ const STEPS = [
   {
     value: "address",
     label: "Address",
-    fields: [
-      "addressLine1",
-      "addressLine2",
-      "postalCode",
-      "city",
-      "countryCode",
-    ],
+    fields: ["addressLine1", "postalCode", "city", "countryCode"],
   },
   { value: "confirm", label: "Confirm", fields: [] },
 ] as const satisfies readonly {
@@ -295,7 +289,6 @@ export function SiteStepperForm({
           const address = joinParts(
             [
               values.addressLine1,
-              values.addressLine2,
               joinParts([values.postalCode, values.city], " "),
               values.countryCode,
             ],
@@ -462,15 +455,7 @@ export function SiteStepperForm({
                       />
                     )}
                   </form.Field>
-                  <form.Field name="addressLine2">
-                    {(field) => (
-                      <TextField
-                        field={field}
-                        label="Address line 2"
-                        placeholder="Building B, 2nd floor"
-                      />
-                    )}
-                  </form.Field>
+
                   <div className="grid gap-4 @md/stepper:grid-cols-3">
                     <form.Field name="postalCode">
                       {(field) => (
