@@ -6,7 +6,6 @@ import {
   updateSiteSchema,
 } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
-import { z } from "zod/v4";
 
 import {
   createSiteService,
@@ -27,6 +26,12 @@ import {
  * Params and bodies reach the services through a schema parse of the request
  * rather than a cast: Express types a route param as `string | string[]`, so
  * the parse is what turns `req.params.id` into the uuid string a service takes.
+ *
+ * That parse throws rather than answering 400 itself. The router's
+ * `validate(schema)` middleware has already rejected a malformed request
+ * against the same schema, so a throw here means the two disagree — a bug, not
+ * bad input, and it belongs in the error handler rather than in a 400 the
+ * client can do nothing with.
  */
 export async function getSitesController(req: Request, res: Response) {
   const { tenantId } = req;
@@ -49,15 +54,9 @@ export async function getSitesController(req: Request, res: Response) {
 export async function getSitesPageController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  // This route has no `validate()` middleware — the query is parsed here.
-  const { data, error: parseError } = getSitesPageSchema.safeParse(req.query);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { query } = getSitesPageSchema.parse(req);
 
-  const [error, page] = await getSitesPageService(tenantId!, data);
+  const [error, page] = await getSitesPageService(tenantId!, query);
 
   if (error) {
     const reason = error.reason;
@@ -75,16 +74,15 @@ export async function getSitesPageController(req: Request, res: Response) {
 /**
  * The site picker's endpoint: a handful of matches for what the user typed.
  *
- * Like the paginated list, the query is parsed here rather than by `validate()`
- * middleware. A missing or blank `search` is a 400 — an empty query would list
- * the tenant's sites, which is what `GET /api/sites` is for.
+ * A missing or blank `search` is a 400 from `validate()` — an empty query would
+ * list the tenant's sites, which is what `GET /api/sites` is for.
  */
 export async function simpleSiteSearchController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const data = simpleSiteSearchSchema.parse(req.query);
+  const { query } = simpleSiteSearchSchema.parse(req);
 
-  const [error, sites] = await simpleSiteSearchService(tenantId!, data);
+  const [error, sites] = await simpleSiteSearchService(tenantId!, query);
 
   if (error) {
     const reason = error.reason;
@@ -102,14 +100,9 @@ export async function simpleSiteSearchController(req: Request, res: Response) {
 export async function createSiteController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = createSiteSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { body } = createSiteSchema.parse(req);
 
-  const [error, site] = await createSiteService(tenantId!, data.body);
+  const [error, site] = await createSiteService(tenantId!, body);
 
   if (error) {
     const reason = error.reason;
@@ -127,14 +120,9 @@ export async function createSiteController(req: Request, res: Response) {
 export async function getSiteController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = siteIdParamsSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params } = siteIdParamsSchema.parse(req);
 
-  const [error, site] = await getSiteByIdService(tenantId!, data.params.id);
+  const [error, site] = await getSiteByIdService(tenantId!, params.id);
 
   if (error) {
     const reason = error.reason;
@@ -154,14 +142,9 @@ export async function getSiteController(req: Request, res: Response) {
 export async function updateSiteController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = updateSiteSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params, body } = updateSiteSchema.parse(req);
 
-  const [error, site] = await updateSiteService(tenantId!, data.params.id, data.body);
+  const [error, site] = await updateSiteService(tenantId!, params.id, body);
 
   if (error) {
     const reason = error.reason;
@@ -181,14 +164,9 @@ export async function updateSiteController(req: Request, res: Response) {
 export async function deleteSiteController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = siteIdParamsSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params } = siteIdParamsSchema.parse(req);
 
-  const [error] = await deleteSiteService(tenantId!, data.params.id);
+  const [error] = await deleteSiteService(tenantId!, params.id);
 
   if (error) {
     const reason = error.reason;
