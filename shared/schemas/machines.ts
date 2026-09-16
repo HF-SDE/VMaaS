@@ -50,6 +50,18 @@ export const updateMachineSchema = z.object({
     }),
 });
 
+/**
+ * `GET /api/machines/simple-search`, the machine picker's endpoint.
+ *
+ * `search` is required and one character is enough — the picker searches from
+ * the first keystroke — while `limit` is only coerced here and clamped in the
+ * service, so a hand-edited `limit=9999` still answers a short list.
+ */
+export const simpleMachineSearchSchema = z.object({
+  search: z.string().trim().min(1, { message: "search is required" }),
+  limit: z.coerce.number().optional(),
+});
+
 export const getMachinesPageSchema = z.object({
   page: z.coerce.number().optional(),
   pageSize: z.coerce.number().optional(),
