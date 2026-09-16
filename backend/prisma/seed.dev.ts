@@ -42,7 +42,7 @@ async function seedTenant() {
   const tenant = await prisma.tenant.create({ data: { name: `${faker.company.name()} Vending` } });
   const roles = await createTenantRoles(tenant.id);
 
-  const owner = await createDevUser(faker.internet.email().toLowerCase(), faker.person.fullName());
+  const owner = await createDevUser("owner@mail.com", "Dev Tenant Owner");
   const members = await Promise.all(
     Array.from({ length: 4 }, () => createDevUser(faker.internet.email().toLowerCase(), faker.person.fullName())),
   );
@@ -159,12 +159,12 @@ async function seedTenant() {
 async function main() {
   await seedPermissions();
 
-  const superadmin = await createDevUser("admin@example.com", "Dev Superadmin");
+  const superadmin = await createDevUser("admin@mail.com", "Dev Superadmin");
   await prisma.user.update({ where: { id: superadmin.id }, data: { isSuperAdmin: true } });
 
   const tenants = await Promise.all(Array.from({ length: 2 }, () => seedTenant()));
 
-  console.log(`Seeded dev data: superadmin admin@example.com (password: ${DEV_PASSWORD})`);
+  console.log(`Seeded dev data: superadmin admin@mail.com (password: ${DEV_PASSWORD})`);
   for (const { tenant, owner } of tenants) {
     console.log(`  Tenant "${tenant.name}" — owner ${owner.email} (password: ${DEV_PASSWORD})`);
   }
