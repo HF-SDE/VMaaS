@@ -21,11 +21,15 @@ export async function main() {
   console.log(`Super admin ${admin.email}: ${outcome}.`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+/** Only run when executed directly (`prisma db seed`), never on import —
+ *  seed.dev.ts imports main() and calls it itself. */
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

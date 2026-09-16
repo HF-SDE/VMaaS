@@ -6,8 +6,7 @@ import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 import { requirePermission } from "@/lib/dal"
 import { fetchData } from "@/lib/data/data-fetch"
 
-import { memberWriteErrorMessage } from "./messages"
-import { err, ok } from "@vmaas/shared/lib/error-handling"
+import { err, HttpError, ok, Result } from "@vmaas/shared/lib/error-handling"
 
 const NO_WRITE_ACCESS = "You do not have permission to change members."
 
@@ -24,7 +23,11 @@ const NO_WRITE_ACCESS = "You do not have permission to change members."
  * a redirect from the gate still throws, which is what sends a denied user to
  * /forbidden.
  */
-export async function removeMember(userId: string) {
+export type RemoveMemberResult = Result<HttpError, unknown>
+
+export async function removeMember(
+  userId: string
+): Promise<RemoveMemberResult> {
   await requirePermission(PERMISSIONS.USER_MANAGE, NO_WRITE_ACCESS)
 
   const [error, data] = await fetchData(`/api/tenants/members/${userId}`, {

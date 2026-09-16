@@ -198,7 +198,7 @@ enum sale_status {
 enum alert_type {
   tamper
   offline
-  dispenseFail
+  error
 
   @@schema("public")
 }
