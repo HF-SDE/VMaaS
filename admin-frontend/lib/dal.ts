@@ -1,6 +1,6 @@
 import "server-only"
 
-import { cacheLife } from "next/cache"
+import { cacheLife, cacheTag } from "next/cache"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import type { PermissionKey } from "@vmaas/shared/types/permissions"
@@ -24,6 +24,7 @@ export async function getSession(
 ): Promise<Session | null> {
   "use cache: private"
   cacheLife({ stale: 60 })
+  cacheTag("tenants")
 
   const store = await cookies()
 

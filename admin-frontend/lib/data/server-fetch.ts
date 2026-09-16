@@ -9,7 +9,7 @@ export async function serverFetch<TResponse, TBody = unknown>(
 ): Promise<Result<HttpError, TResponse>> {
   const { method = "GET", query, body } = options
 
-  const url = new URL(path, config.NEXT_PUBLIC_BACKEND_URL)
+  const url = new URL(path, config.BACKEND_INTERNAL_URL)
 
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -26,6 +26,7 @@ export async function serverFetch<TResponse, TBody = unknown>(
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      origin: config.FRONTEND_URL,
       cookie: getAuthCookie(store.getAll()),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

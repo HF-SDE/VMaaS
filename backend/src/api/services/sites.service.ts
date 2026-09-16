@@ -38,7 +38,6 @@ export type SiteDetail = Site & SiteUsage;
 export type SiteWriteData = {
   name?: string;
   addressLine1?: string | null;
-  addressLine2?: string | null;
   postalCode?: string | null;
   city?: string | null;
   countryCode?: string | null;

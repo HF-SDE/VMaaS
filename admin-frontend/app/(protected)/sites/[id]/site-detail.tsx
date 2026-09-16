@@ -69,7 +69,6 @@ export async function SiteDetailLoader({
   const formValues: SiteFormValues = {
     name: site.name,
     addressLine1: site.addressLine1 ?? "",
-    addressLine2: site.addressLine2 ?? "",
     postalCode: site.postalCode ?? "",
     city: site.city ?? "",
     countryCode: site.countryCode ?? "",

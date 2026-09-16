@@ -16,11 +16,13 @@ import { Controller, useForm } from "react-hook-form"
 import * as z from "zod"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { createTenant } from "@/app/(protected)/actions"
+import {
+  createTenant,
+  switchTenant as switchTenantAction,
+} from "@/app/(protected)/actions"
 import { createTenantSchema } from "@vmaas/shared/schemas"
 
-import { backendPost } from "@/lib/data/post-wrapper"
-import { redirect } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Session } from "@/lib/session-fetch"
 import { fetchData } from "@/lib/data/data-fetch"
@@ -35,25 +37,34 @@ export default function WelcomePageClient({
   tenants: Session["tenants"]
   tenantInvites: Session["tenantInvites"]
 }) {
+  const router = useRouter()
+
   async function switchTenant(tenantId: string) {
-    const [error] = await backendPost("/api/auth/tenant/switch", { tenantId })
+    const [error] = await switchTenantAction(tenantId)
     if (error) {
-      // Handle the error appropriately, e.g., show a toast or log it
-      toast.error(error.message)
+      toast.error("Failed to switch tenant - status: " + error.status)
       return
-    } else redirect("/machines")
+    }
+    router.push("/machines")
   }
 
-  async function respondToInvite(token: string, status: InviteResponses) {
-    const [error] = await fetchData(`/api/tenants/respond-to-invite/${token}`, {
-      method: "POST",
-      body: { status },
-    })
+  async function respondToInvite(
+    invite: Session["tenantInvites"][number],
+    status: InviteResponses
+  ) {
+    const [error] = await fetchData(
+      `/api/tenants/respond-to-invite/${invite.token}`,
+      { method: "POST", body: { status } }
+    )
     if (error) {
-      // Handle the error appropriately, e.g., show a toast or log it
       toast.error(error.reason)
       return
-    } else redirect("/machines")
+    }
+
+    // Joining a tenant does not make it the active one — do that here, or
+    // /machines would send the user straight back to this page.
+    if (status === "accepted") await switchTenant(invite.tenantId)
+    else router.refresh()
   }
 
   return (
@@ -107,13 +118,13 @@ export default function WelcomePageClient({
             <Button
               key={invite.tenantId}
               variant="outline"
-              onClick={() => respondToInvite(invite.token, "accepted")}
+              onClick={() => respondToInvite(invite, "accepted")}
             >
               Accept
             </Button>
             <Button
               variant="destructive"
-              onClick={() => respondToInvite(invite.token, "rejected")}
+              onClick={() => respondToInvite(invite, "rejected")}
             >
               Reject
             </Button>
@@ -124,16 +135,33 @@ export default function WelcomePageClient({
   )
 }
 
+/** The action rejects with the HttpError from fetchData, not an Error instance. */
+function describeTenantError(error: unknown): string {
+  if (typeof error === "object" && error !== null) {
+    const { message, reason } = error as { message?: string; reason?: string }
+    if (message) return message
+    if (reason) return reason
+  }
+
+  return "Could not create the tenant. Please try again."
+}
+
 function NewTeneantForm() {
+  const router = useRouter()
   const form = useForm<CreateTenantFormData>({
     resolver: zodResolver(createTenantSchema),
     defaultValues: { name: "", description: "" },
   })
 
   async function onSubmit(data: CreateTenantFormData) {
-    await createTenant(data)
+    try {
+      await createTenant(data) // creates it and makes it the active tenant
+    } catch {
+      toast.error("Failed to create tenant")
+      return
+    }
 
-    redirect("/machines")
+    router.push("/machines")
   }
 
   return (
