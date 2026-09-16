@@ -33,13 +33,23 @@ export const updateProductSchema = z.object({
     }),
 });
 
+/**
+ * Request-shaped so it can run through `validate()` like every other products
+ * schema. Every field stays optional — a bare `/paginated` is a valid request —
+ * and the service is what clamps and whitelists the values it gets.
+ */
 export const getProductsPageSchema = z.object({
-  page: z.coerce.number().optional(),
-  pageSize: z.coerce.number().optional(),
-  sortBy: z.string().optional(),
-  sortOrder: z.enum(["asc", "desc"]).optional(),
-  search: z.string().optional(),
-  // A query param arrives as a string, and `z.coerce.boolean()` would read the
-  // string "false" as true — `stringbool` parses the word.
-  includeArchived: z.stringbool().optional(),
+  query: z.object({
+    page: z.coerce.number().optional(),
+    pageSize: z.coerce.number().optional(),
+    sortBy: z.string().optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
+    search: z.string().optional(),
+    // A query param arrives as a string, and `z.coerce.boolean()` would read
+    // the string "false" as true — `stringbool` parses the word. The `boolean`
+    // arm is what makes the schema idempotent: `validate()` writes the parsed
+    // query back onto the request, so the controller re-parses a value that is
+    // already a real boolean, which `stringbool` alone rejects.
+    includeArchived: z.union([z.boolean(), z.stringbool()]).optional(),
+  }),
 });

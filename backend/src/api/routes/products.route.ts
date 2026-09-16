@@ -2,7 +2,12 @@ import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
-import { createProductSchema, productIdParamsSchema, updateProductSchema } from "@vmaas/shared/schemas";
+import {
+  createProductSchema,
+  getProductsPageSchema,
+  productIdParamsSchema,
+  updateProductSchema,
+} from "@vmaas/shared/schemas";
 import { Router } from "express";
 
 import {
@@ -22,7 +27,12 @@ productsRouter.use(requireAuth, requireTenant);
 
 productsRouter.get("/", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.
-productsRouter.get("/paginated", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsPageController);
+productsRouter.get(
+  "/paginated",
+  requirePermission(PERMISSIONS.PRODUCT_READ),
+  validate(getProductsPageSchema),
+  getProductsPageController,
+);
 productsRouter.post(
   "/",
   requirePermission(PERMISSIONS.PRODUCT_WRITE),

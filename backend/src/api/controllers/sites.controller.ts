@@ -82,12 +82,7 @@ export async function getSitesPageController(req: Request, res: Response) {
 export async function simpleSiteSearchController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = simpleSiteSearchSchema.safeParse(req.query);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const data = simpleSiteSearchSchema.parse(req.query);
 
   const [error, sites] = await simpleSiteSearchService(tenantId!, data);
 

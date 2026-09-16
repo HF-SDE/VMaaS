@@ -38,9 +38,11 @@ export const updateMemberRoleSchema = z.object({
 
 /**
  * Parsed straight off `req.query` in the controller rather than through
- * `validate()`, the same way `getProductsPageSchema` is: every field stays
- * optional so a bare `/members/paginated` is a valid request, and the service
- * is what clamps and whitelists the values it gets.
+ * `validate()`: every field stays optional so a bare `/members/paginated` is a
+ * valid request, and the service is what clamps and whitelists the values it
+ * gets. `getProductsPageSchema` used to work this way too and has since moved
+ * to `validate()` — follow it when this one is touched, so a malformed query is
+ * a 400 from the middleware rather than a throw out of the controller.
  */
 export const getMembersPageSchema = z.object({
   page: z.coerce.number().optional(),
