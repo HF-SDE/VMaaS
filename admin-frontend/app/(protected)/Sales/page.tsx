@@ -1,35 +1,47 @@
+import { Suspense } from "react"
 import Loader from "@/components/loader/loader"
+import { RoleGate } from "@/components/role-gate"
+import { requirePermission } from "@/lib/dal"
 import { fetchData } from "@/lib/data/data-fetch"
 import { SalesResponse } from "@/types/responses"
-import { Suspense } from "react"
+import { PERMISSIONS } from "@vmaas/shared/types/permissions"
+
+import { SalesDataTable } from "./sales-table"
+
+const NO_READ_ACCESS = "You do not have access to sales."
+
+async function SalesTableLoader() {
+  // Re-checked here, not just in the <RoleGate> above: the gate decides what to
+  // render, this is what actually guards the data.
+  await requirePermission(PERMISSIONS.SALE_READ, NO_READ_ACCESS)
+
+  const [err, sales] = await fetchData<SalesResponse[]>("/api/sales")
+
+  if (err) {
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        Could not load sales: {err.reason}
+      </p>
+    )
+  }
+
+  return <SalesDataTable sales={sales} />
+}
 
 export default function SalesPage() {
   return (
-    <div>
-      <h1 className="text-2xl font-bold">Sales</h1>
+    <div className="container mx-auto py-10">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Sales</h1>
+        <p className="text-muted-foreground">
+          History of every sale across your machines.
+        </p>
+      </div>
       <Suspense fallback={<Loader />}>
-        <SalesList />
+        <RoleGate perms={[PERMISSIONS.SALE_READ]} reason={NO_READ_ACCESS}>
+          <SalesTableLoader />
+        </RoleGate>
       </Suspense>
     </div>
-  )
-}
-
-async function SalesList() {
-  const [err, sales] = await fetchData<SalesResponse[]>("/api/sales")
-
-  if (err) return <div>Error loading sales data: {err.reason}</div>
-
-  return (
-    <ul>
-      {sales.map((sale) => (
-        <li key={sale.id} className="mb-2 flex gap-3 rounded border p-4">
-          <p>{sale.product?.name}</p>
-          <p>{Number(sale.price)}</p>
-          <p>{new Date(sale.createdAt).toLocaleString()}</p>
-          <p>{sale.machine.name}</p>
-          <p>{sale.machine.siteId}</p>
-        </li>
-      ))}
-    </ul>
   )
 }

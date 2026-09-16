@@ -5,7 +5,7 @@ export async function getSalesService(tenantId: string) {
     where: { tenantId },
     orderBy: { createdAt: "desc" },
     include: {
-      machine: true,
+      machine: { include: { site: { select: { id: true, name: true } } } },
       product: true,
     },
   });
