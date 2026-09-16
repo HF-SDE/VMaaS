@@ -358,6 +358,7 @@ model SecurityAlert {
   type       alert_type
   message    String
   createdAt  DateTime   @default(now())
+  occurredAt DateTime   @default(now())
   resolvedAt DateTime?
 
   @@index([machineId])
