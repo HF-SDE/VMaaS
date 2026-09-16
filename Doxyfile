@@ -9,6 +9,7 @@ CREATE_SUBDIRS         = NO
 
 # --- Input -------------------------------------------------------------------
 INPUT                  = shared/vmaas-protocol/src \
+                         shared/vmaas-display/src \
                          Main-Controller/src \
                          Motorcontrol/src
 FILE_PATTERNS          = *.h *.cpp
