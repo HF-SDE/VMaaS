@@ -11,6 +11,7 @@ import {
   getMachineController,
   getMachinesController,
   getMachinesPageController,
+  simpleMachineSearchController,
   updateMachineController,
 } from "../controllers/machines.controller";
 
@@ -19,7 +20,10 @@ export const machinesRouter = Router();
 machinesRouter.use(requireAuth, requireTenant);
 
 machinesRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
+// Must stay above "/:id", which would otherwise match "paginated" as an id.
 machinesRouter.get("/paginated", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesPageController);
+// Same: a literal path above "/:id". Feeds the machine picker.
+machinesRouter.get("/simple-search", requirePermission(PERMISSIONS.MACHINE_READ), simpleMachineSearchController);
 machinesRouter.post(
   "/",
   requirePermission(PERMISSIONS.MACHINE_WRITE),

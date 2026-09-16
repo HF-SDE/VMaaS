@@ -2,6 +2,7 @@ import {
   createMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
+  simpleMachineSearchSchema,
   updateMachineSchema,
 } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
@@ -13,6 +14,7 @@ import {
   getMachineByIdService,
   getMachinesPageService,
   getMachinesService,
+  simpleMachineSearchService,
   updateMachineService,
 } from "../services/machines.service";
 
@@ -57,6 +59,38 @@ export async function getMachinesPageController(req: Request, res: Response) {
   }
 
   return res.status(200).json(page).end();
+}
+
+/**
+ * The machine picker's endpoint: a handful of matches for what the user typed.
+ *
+ * Like the paginated list, the query is parsed here rather than by `validate()`
+ * middleware. A missing or blank `search` is a 400 — an empty query would list
+ * the tenant's machines, which is what `GET /api/machines` is for.
+ */
+export async function simpleMachineSearchController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { data, error: parseError } = simpleMachineSearchSchema.safeParse(req.query);
+  if (parseError)
+    return res
+      .status(400)
+      .json({ error: z.treeifyError(parseError) })
+      .end();
+
+  const [error, machines] = await simpleMachineSearchService(tenantId!, data);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while searching the machines" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(machines).end();
 }
 
 export async function createMachineController(req: Request, res: Response) {
