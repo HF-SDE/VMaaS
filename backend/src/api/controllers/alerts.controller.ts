@@ -1,28 +1,26 @@
 import { getAlertsPageSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
-import { z } from "zod/v4";
 
 import { getAlertsPageService } from "../services/alerts.service";
 
 /**
  * One page of the tenant's machine alert log.
  *
- * Like the other paginated reads, the query is parsed here rather than by
- * `validate()` middleware, so this reads `req.query` directly. The tenant comes
- * from `req.tenantId` — set by `requireTenant` after it verified membership —
- * and never from the query, which only ever narrows within it.
+ * The tenant comes from `req.tenantId` — set by `requireTenant` after it
+ * verified membership — and never from the query, which only ever narrows
+ * within it.
+ *
+ * The parse throws rather than answering 400 itself: the router's
+ * `validate(getAlertsPageSchema)` has already rejected a malformed query
+ * against the same schema, so a throw here means the two disagree — a bug, not
+ * bad input.
  */
 export async function getAlertsPageController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = getAlertsPageSchema.safeParse(req.query);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { query } = getAlertsPageSchema.parse(req);
 
-  const [error, page] = await getAlertsPageService(tenantId!, data);
+  const [error, page] = await getAlertsPageService(tenantId!, query);
 
   if (error) {
     const reason = error.reason;
