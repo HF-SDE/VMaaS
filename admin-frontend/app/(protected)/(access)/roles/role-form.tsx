@@ -2,13 +2,18 @@
 
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
-import { PERMISSIONS, type PermissionKey } from "@vmaas/shared/types/permissions"
+import {
+  PERMISSIONS,
+  type PermissionKey,
+} from "@vmaas/shared/types/permissions"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createRoleSchema } from "@vmaas/shared/schemas"
+import { useTenantRoles } from "./tenant-roles.ctx"
 
 export type RoleFormValues = {
   name: string
@@ -39,6 +44,8 @@ export function RoleForm({
   onCancel,
   onSubmit,
 }: RoleFormProps) {
+  const tenant_roles = useTenantRoles()
+
   const [name, setName] = useState(defaultValues.name)
   const [permissions, setPermissions] = useState<Set<string>>(
     new Set(defaultValues.permissions)
@@ -57,17 +64,25 @@ export function RoleForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) {
-      setError("Name is required")
+
+    const { data, error } = createRoleSchema.safeParse({
+      name,
+      permissions: Array.from(permissions),
+    })
+
+    if (error || !data) {
+      setError(error?.issues[0].message ?? "Invalid input")
+      return
+    }
+
+    if (tenant_roles.some((role) => role.name === data.name)) {
+      setError("A role with this name already exists.")
       return
     }
 
     setIsSubmitting(true)
     setError(null)
-    const message = await onSubmit({
-      name: name.trim(),
-      permissions: Array.from(permissions),
-    })
+    const message = await onSubmit(data)
     setIsSubmitting(false)
     if (message) setError(message)
   }
@@ -91,7 +106,7 @@ export function RoleForm({
           <div className="grid gap-4 sm:grid-cols-2">
             {Object.entries(PERMISSION_GROUPS).map(([resource, keys]) => (
               <div key={resource} className="space-y-2">
-                <p className="text-sm font-medium capitalize text-muted-foreground">
+                <p className="text-sm font-medium text-muted-foreground capitalize">
                   {resource}
                 </p>
                 {keys.map((key) => (

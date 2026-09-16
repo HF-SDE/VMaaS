@@ -18,12 +18,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -47,7 +42,14 @@ export function RoleCard({
   const [editOpen, setEditOpen] = useState(false)
   const [isDeleting, startDeleting] = useTransition()
 
+  const cantDelete = role.name === "owner"
+
   async function handleDelete() {
+    if (cantDelete) {
+      toast.error("The owner role cannot be deleted.")
+      return
+    }
+
     const [error] = await fetchData(`/api/tenants/roles/${role.id}`, {
       method: "DELETE",
     })
@@ -66,7 +68,7 @@ export function RoleCard({
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span className="capitalize">{role.name}</span>
-          {canManage && (
+          {canManage && role.name !== "owner" && (
             <div className="flex gap-1">
               <Button
                 variant="ghost"
@@ -76,13 +78,19 @@ export function RoleCard({
                 <Pencil className="h-4 w-4" />
               </Button>
               <AlertDialog>
-                <AlertDialogTrigger
-                  render={
-                    <Button variant="ghost" size="icon" className="text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  }
-                />
+                {!cantDelete && (
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    }
+                  />
+                )}
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Delete {role.name}?</AlertDialogTitle>
@@ -98,9 +106,11 @@ export function RoleCard({
                     <AlertDialogAction
                       variant="destructive"
                       onClick={() => startDeleting(handleDelete)}
-                      disabled={isDeleting}
+                      disabled={isDeleting || cantDelete}
                     >
-                      {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {isDeleting && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
                       Delete role
                     </AlertDialogAction>
                   </AlertDialogFooter>
