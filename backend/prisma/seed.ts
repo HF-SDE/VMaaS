@@ -4,7 +4,7 @@ import { prisma } from "../src/lib/prisma";
 import { PERMISSIONS } from "../src/lib/rbac";
 import { parseSeedAdmin, seedSuperAdmin } from "../src/lib/seed-admin";
 
-async function main() {
+export async function main() {
   const permissionKeys = Object.values(PERMISSIONS);
   for (const key of permissionKeys) {
     await prisma.permission.upsert({ where: { key }, update: {}, create: { key } });

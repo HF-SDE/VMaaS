@@ -1,12 +1,11 @@
-import "dotenv/config";
-
 import { faker } from "@faker-js/faker";
+import "dotenv/config";
 
 import { auth } from "../src/lib/auth";
 import { config } from "../src/lib/config";
 import { prisma } from "../src/lib/prisma";
 import { DEFAULT_TENANT_ROLES, ROLE_PERMISSIONS } from "../src/lib/rbac";
-import { seedPermissions } from "./seed";
+import { main as seedPermissions } from "./seed";
 
 /** Fake data for local development only. Never wired into `prisma db seed` /
  *  prisma.config.ts, so it can't run against a production database by accident.
@@ -67,7 +66,11 @@ async function seedTenant() {
   const products = await Promise.all(
     Array.from({ length: 6 }, () =>
       prisma.product.create({
-        data: { tenantId: tenant.id, name: faker.commerce.productName(), price: faker.commerce.price({ min: 5, max: 50 }) },
+        data: {
+          tenantId: tenant.id,
+          name: faker.commerce.productName(),
+          price: faker.commerce.price({ min: 5, max: 50 }),
+        },
       }),
     ),
   );
