@@ -22,7 +22,7 @@ export const respondToInviteSchema = z.object({
 });
 
 export const createRoleSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().trim().toLowerCase().min(1, "Name is required"),
   permissions: z.array(z.string()).optional().default([]),
 });
 
