@@ -6,7 +6,6 @@ import {
   updateMachineSchema,
 } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
-import { z } from "zod/v4";
 
 import {
   createMachineService,
@@ -18,6 +17,22 @@ import {
   updateMachineService,
 } from "../services/machines.service";
 
+/**
+ * Every controller destructures the service's `Result` tuple and switches on
+ * the failure's `reason`. The `satisfies never` in each default arm is what
+ * makes it exhaustive: adding a reason to a service stops compiling until the
+ * status code and the wording for it are decided here.
+ *
+ * Params and bodies reach the services through a schema parse of the request
+ * rather than a cast: Express types a route param as `string | string[]`, so
+ * the parse is what turns `req.params.id` into the uuid string a service takes.
+ *
+ * That parse throws rather than answering 400 itself. The router's
+ * `validate(schema)` middleware has already rejected a malformed request
+ * against the same schema, so a throw here means the two disagree — a bug, not
+ * bad input, and it belongs in the error handler rather than in a 400 the
+ * client can do nothing with.
+ */
 export async function getMachinesController(req: Request, res: Response) {
   const { tenantId } = req;
 
@@ -39,14 +54,9 @@ export async function getMachinesController(req: Request, res: Response) {
 export async function getMachinesPageController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = getMachinesPageSchema.safeParse(req.query);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { query } = getMachinesPageSchema.parse(req);
 
-  const [error, page] = await getMachinesPageService(tenantId!, data);
+  const [error, page] = await getMachinesPageService(tenantId!, query);
 
   if (error) {
     const reason = error.reason;
@@ -64,21 +74,15 @@ export async function getMachinesPageController(req: Request, res: Response) {
 /**
  * The machine picker's endpoint: a handful of matches for what the user typed.
  *
- * Like the paginated list, the query is parsed here rather than by `validate()`
- * middleware. A missing or blank `search` is a 400 — an empty query would list
- * the tenant's machines, which is what `GET /api/machines` is for.
+ * A missing or blank `search` is a 400 from `validate()` — an empty query would
+ * list the tenant's machines, which is what `GET /api/machines` is for.
  */
 export async function simpleMachineSearchController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = simpleMachineSearchSchema.safeParse(req.query);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { query } = simpleMachineSearchSchema.parse(req);
 
-  const [error, machines] = await simpleMachineSearchService(tenantId!, data);
+  const [error, machines] = await simpleMachineSearchService(tenantId!, query);
 
   if (error) {
     const reason = error.reason;
@@ -96,14 +100,9 @@ export async function simpleMachineSearchController(req: Request, res: Response)
 export async function createMachineController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = createMachineSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { body } = createMachineSchema.parse(req);
 
-  const [error, machine] = await createMachineService(tenantId!, data.body);
+  const [error, machine] = await createMachineService(tenantId!, body);
 
   if (error) {
     const reason = error.reason;
@@ -127,14 +126,9 @@ export async function createMachineController(req: Request, res: Response) {
 export async function getMachineController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = machineIdParamsSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params } = machineIdParamsSchema.parse(req);
 
-  const [error, machine] = await getMachineByIdService(tenantId!, data.params.id);
+  const [error, machine] = await getMachineByIdService(tenantId!, params.id);
 
   if (error) {
     const reason = error.reason;
@@ -154,14 +148,9 @@ export async function getMachineController(req: Request, res: Response) {
 export async function updateMachineController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = updateMachineSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params, body } = updateMachineSchema.parse(req);
 
-  const [error, machine] = await updateMachineService(tenantId!, data.params.id, data.body);
+  const [error, machine] = await updateMachineService(tenantId!, params.id, body);
 
   if (error) {
     const reason = error.reason;
@@ -185,14 +174,9 @@ export async function updateMachineController(req: Request, res: Response) {
 export async function deleteMachineController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { data, error: parseError } = machineIdParamsSchema.safeParse(req);
-  if (parseError)
-    return res
-      .status(400)
-      .json({ error: z.treeifyError(parseError) })
-      .end();
+  const { params } = machineIdParamsSchema.parse(req);
 
-  const [error] = await deleteMachineService(tenantId!, data.params.id);
+  const [error] = await deleteMachineService(tenantId!, params.id);
 
   if (error) {
     const reason = error.reason;
