@@ -1,3 +1,4 @@
+import { alertsRouter } from "@/api/routes/alerts.route";
 import { machinesRouter } from "@/api/routes/machines.route";
 import {productsRouter} from "@/api/routes/products.route";
 import { sitesRouter } from "@/api/routes/sites.route";
@@ -37,6 +38,7 @@ api.use(express.json());
 
 api.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+api.use("/alerts", alertsRouter);
 api.use("/tenants", tenantsRouter);
 api.use("/machines", machinesRouter);
 api.use("/products", productsRouter);
