@@ -1,12 +1,14 @@
 // Main-Controller: smoke test for the UART command protocol and the Grove-LCD.
-// Sends RUN 1 every 2 seconds, logs every reply from Motorcontrol, shows a
-// static and a scrolling line on the display and cycles the backlight.
-// See shared/vmaas-protocol/PROTOCOL.md and shared/vmaas-display/README.md.
+// Loads /storage/config.json (pins, bus speeds) over the factory defaults,
+// then sends RUN 1 every 2 seconds, logs every reply from Motorcontrol, shows
+// a static and a scrolling line on the display and cycles the backlight.
+// See shared/vmaas-protocol/PROTOCOL.md, shared/vmaas-display/README.md and
+// shared/vmaas-config/README.md.
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "pins.h"
-#include "config.h"
+#include "defaults.h"
+#include "config_store.h"
 #include "motor_client.h"
 #include "uart_bus.h"
 #include "esp_i2c_port.h"
@@ -17,12 +19,6 @@ namespace
     constexpr const char* TAG = "MainController";
     constexpr uint8_t SMOKE_TEST_SLOT = 1;
     constexpr TickType_t SMOKE_TEST_INTERVAL = pdMS_TO_TICKS(2000);
-
-    vmaas::UartBus bus(UART_NUM_1, Pins::UART_TX, Pins::UART_RX, Config::baud_rate);
-    MotorClient motor(bus);
-
-    vmaas::EspI2cPort i2c(I2C_NUM_0, Pins::I2C_SDA, Pins::I2C_SCL, Config::i2c_clock_hz);
-    vmaas::GroveLcdRgb lcd(i2c);
 
     struct Rgb { uint8_t r, g, b; };
     constexpr Rgb BACKLIGHT_CYCLE[] = {
@@ -44,6 +40,17 @@ namespace
 
 extern "C" void app_main()
 {
+    // Config first: everything below is built from it.
+    config_store::mount_storage(); // failure is logged; load_config then reports "not found"
+    const vmaas::Config cfg = config_store::load_config(DEFAULTS);
+
+    // These live for the whole run: app_main never returns (loop below), and
+    // MotorClient/GroveLcdRgb hold references to bus/i2c.
+    vmaas::UartBus bus(UART_NUM_1, cfg.pins.uart_tx, cfg.pins.uart_rx, cfg.uart.baud_rate);
+    MotorClient motor(bus);
+    vmaas::EspI2cPort i2c(I2C_NUM_0, cfg.pins.i2c_sda, cfg.pins.i2c_scl, cfg.i2c.clock_hz);
+    vmaas::GroveLcdRgb lcd(i2c);
+
     bus.begin();
     motor.begin();
 

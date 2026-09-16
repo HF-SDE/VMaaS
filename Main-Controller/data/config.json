@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "pins": {
+    "uart_rx": 32,
+    "uart_tx": 33,
+    "i2c_sda": 21,
+    "i2c_scl": 22
+  },
+  "uart": { "baud_rate": 115200 },
+  "i2c": { "clock_hz": 100000 }
+}

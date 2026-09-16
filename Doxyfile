@@ -11,10 +11,11 @@ CREATE_SUBDIRS         = NO
 INPUT                  = shared/vmaas-protocol/src \
                          shared/vmaas-display/src \
                          Main-Controller/src \
-                         Motorcontrol/src
+                         Motorcontrol/src \
+                         shared/vmaas-config/src
 FILE_PATTERNS          = *.h *.cpp
 RECURSIVE              = YES
-EXCLUDE_PATTERNS       = */test/* */main.cpp
+EXCLUDE_PATTERNS       = */test/* */main.cpp */cJSON.*
 STRIP_FROM_PATH        = .
 USE_MDFILE_AS_MAINPAGE =
 

@@ -1,0 +1,6 @@
+# Applied when sdkconfig.<env> is regenerated. Keep in sync with sdkconfig.main-controller.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+# Headroom for cJSON recursion while parsing config.json (default 3584 is tight).
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

@@ -1,6 +1,6 @@
 #pragma once
 /**
- * @file config.h
+ * @file settings.h
  * @brief Compile-time settings for the Main-Controller firmware.
  */
 #include <cstdint>
