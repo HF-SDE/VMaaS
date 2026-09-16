@@ -19,6 +19,12 @@ export async function switchTenant(
     method: "POST",
     body: { tenantId },
   })
+  if (error) return err(error)
+
+  updateTag("tenants") // the session's activeTenantId changed
+  refresh() // refresh current client route
+
+  return ok(data)
 }
 
 export async function createTenant(data: CreateTenantFormData): Promise<void> {
