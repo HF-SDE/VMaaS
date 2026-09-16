@@ -319,7 +319,6 @@ model Slot {
   price      Decimal?
 
   // pins Pins[] - Jeg har kommenteret dette ud, da det ikke er implementeret endnu.
-  sales Sale[]
 
   @@unique([machineId, slotNumber])
   @@index([productId])
@@ -333,9 +332,7 @@ model Sale {
   tenantId    String      @db.Uuid
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   machineId   String      @db.Uuid
-  machine     Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
-  slotId      String      @db.Uuid
-  slot        Slot        @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  machine     Machine     @relation(fields: [machineId], references: [id], onDelete: NoAction)
   productId   String?     @db.Uuid // SetNull, so a hard delete doesn't erase the sale
   product     Product?    @relation(fields: [productId], references: [id], onDelete: Restrict)
   status      sale_status @default(pending)
@@ -345,7 +342,6 @@ model Sale {
 
   @@index([tenantId])
   @@index([machineId])
-  @@index([slotId])
   @@index([productId])
   @@map("sales")
   @@schema("public")
