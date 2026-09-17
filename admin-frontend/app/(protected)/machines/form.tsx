@@ -15,18 +15,22 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createMachineSchema } from "@vmaas/shared/schemas"
 import { fetchData } from "@/lib/data/data-fetch"
-import { MachineSite, MachineUsage } from "@vmaas/shared/types/machine"
+import {
+  MachineKpis,
+  MachineSite,
+  MachineUsage,
+} from "@vmaas/shared/types/machine"
 import { Machine } from "@prisma"
 import { SitePicker } from "@/components/site-picker"
 import { machineWriteErrorMessage } from "./messages"
 
 /**
  * What `GET`/`PATCH /api/machines/:id` answer with — the row, the site it stands
- * at, and its usage flags. Composed here rather than in
- * `@vmaas/shared/types/machine`, because the `@prisma` alias that `Machine` comes
- * from only exists in this package.
+ * at, its usage flags and the KPI block the overview cards read. Composed here
+ * rather than in `@vmaas/shared/types/machine`, because the `@prisma` alias that
+ * `Machine` comes from only exists in this package.
  */
-export type MachineDetail = Machine & MachineSite & MachineUsage
+export type MachineDetail = Machine & MachineSite & MachineUsage & MachineKpis
 
 /** A machine as the list returns it: the row plus its site, no usage flags. */
 export type MachineListItem = Machine & MachineSite

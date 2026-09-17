@@ -74,3 +74,18 @@ export function requirePermission(permission: PermissionKey) {
     next();
   };
 }
+
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  const session = req.session;
+  if (!session) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  if (!session.user.isSuperAdmin) {
+    res.status(403).json({ error: "Not a super admin" });
+    return;
+  }
+
+  next();
+}

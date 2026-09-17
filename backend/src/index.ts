@@ -3,6 +3,7 @@ import { machinesRouter } from "@/api/routes/machines.route";
 import { productsRouter } from "@/api/routes/products.route";
 import { salesRouter } from "@/api/routes/sales.route";
 import { sitesRouter } from "@/api/routes/sites.route";
+import { slotsRouter } from "@/api/routes/slots.route";
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
@@ -44,6 +45,7 @@ api.use("/tenants", tenantsRouter);
 api.use("/machines", machinesRouter);
 api.use("/products", productsRouter);
 api.use("/sites", sitesRouter);
+api.use("/slots", slotsRouter);
 api.use("/sales", salesRouter);
 
 app.use("/api", api);

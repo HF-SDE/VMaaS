@@ -29,6 +29,7 @@ const options = {
   emailAndPassword: { enabled: true },
   plugins: [multiTenant()],
   socialProviders,
+  user: { additionalFields: { isSuperAdmin: { type: "boolean", defaultValue: false, input: false } } },
   databaseHooks: {
     session: {
       create: {

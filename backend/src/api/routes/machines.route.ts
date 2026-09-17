@@ -1,11 +1,13 @@
-import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { requireAuth, requirePermission, requireSuperAdmin, requireTenant } from "@/api/middleware/auth";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
 import {
   createMachineSchema,
+  getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
+  saveSlotLayoutSchema,
   simpleMachineSearchSchema,
   updateMachineSchema,
 } from "@vmaas/shared/schemas";
@@ -15,13 +17,32 @@ import {
   createMachineController,
   deleteMachineController,
   getMachineController,
+  getMachineWithoutTenantController,
   getMachinesController,
   getMachinesPageController,
+  getMachinesWithoutTenantController,
+  saveSlotLayoutController,
   simpleMachineSearchController,
   updateMachineController,
 } from "../controllers/machines.controller";
 
 export const machinesRouter = Router();
+
+machinesRouter.get("/without-tenant", requireAuth, requireSuperAdmin, getMachinesWithoutTenantController);
+machinesRouter.get(
+  "/without-tenant/:id",
+  requireAuth,
+  requireSuperAdmin,
+  validate(machineIdParamsSchema),
+  getMachineWithoutTenantController,
+);
+machinesRouter.post(
+  "/save-slot-layout",
+  requireAuth,
+  requireSuperAdmin,
+  validate(saveSlotLayoutSchema),
+  saveSlotLayoutController,
+);
 
 machinesRouter.use(requireAuth, requireTenant);
 
@@ -50,7 +71,7 @@ machinesRouter.post(
 machinesRouter.get(
   "/:id",
   requirePermission(PERMISSIONS.MACHINE_READ),
-  validate(machineIdParamsSchema),
+  validate(getMachineSchema),
   getMachineController,
 );
 machinesRouter.patch(

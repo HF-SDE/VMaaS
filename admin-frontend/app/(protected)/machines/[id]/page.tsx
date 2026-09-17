@@ -24,7 +24,7 @@ export default async function MachinePage({
   params: Promise<{ id: string }>
 }) {
   return (
-    <div className="container mx-auto py-10">
+    <div className="container mx-auto pt-5 pb-10">
       <Link
         href="/machines"
         className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"

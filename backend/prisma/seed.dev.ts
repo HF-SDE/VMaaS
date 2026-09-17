@@ -1,6 +1,8 @@
 import { faker } from "@faker-js/faker";
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 
+import type { Prisma, Slot } from "../src/generated/prisma/client";
 import { auth } from "../src/lib/auth";
 import { config } from "../src/lib/config";
 import { prisma } from "../src/lib/prisma";
@@ -33,6 +35,105 @@ async function createTenantRoles(tenantId: string) {
   return roles;
 }
 
+const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
+
+type SlotHistory = {
+  sales: Prisma.SaleCreateManyInput[];
+  movements: Prisma.InventoryMovementCreateManyInput[];
+  /** Balance the movements add up to — what the slot's `quantity` must be. */
+  quantity: number;
+};
+
+/** Walks a slot's sales in chronological order and writes the inventory movement
+ *  that explains each one, so `sum(movements.quantity) === slot.quantity` holds.
+ *  The slot is restocked whenever it would otherwise sell below zero. */
+function planSlotHistory(slot: Slot, tenantId: string, machineId: string, staffIds: string[]): SlotHistory {
+  const sales: Prisma.SaleCreateManyInput[] = [];
+  const movements: Prisma.InventoryMovementCreateManyInput[] = [];
+  const restocker = () => faker.helpers.arrayElement(staffIds);
+
+  const openedAt = new Date(Date.now() - 31 * DAY_MS);
+  movements.push({
+    tenantId,
+    slotId: slot.id,
+    type: "restock",
+    quantity: slot.capacity,
+    userId: restocker(),
+    occurredAt: openedAt,
+    note: "Initial stocking",
+  });
+  let quantity = slot.capacity;
+
+  const saleDates = Array.from({ length: faker.number.int({ min: 3, max: 8 }) }, () =>
+    faker.date.recent({ days: 30 }),
+  ).sort((a, b) => a.getTime() - b.getTime());
+
+  for (const createdAt of saleDates) {
+    const status = faker.helpers.arrayElement(["completed", "completed", "completed", "failed", "refunded"] as const);
+    const saleId = randomUUID();
+    sales.push({
+      id: saleId,
+      tenantId,
+      machineId,
+      productId: slot.productId,
+      status,
+      price: slot.price ?? 10,
+      createdAt,
+      completedAt: status === "completed" || status === "refunded" ? createdAt : null,
+    });
+
+    // The motor ran but nothing dropped, so the product is still in the slot:
+    // the movement records the attempt without moving stock.
+    if (status === "failed") {
+      movements.push({
+        tenantId,
+        slotId: slot.id,
+        saleId,
+        type: "dispense_failure",
+        quantity: 0,
+        occurredAt: createdAt,
+        note: "Motor ran, nothing dropped",
+      });
+      continue;
+    }
+
+    if (quantity === 0) {
+      const refill = slot.capacity;
+      movements.push({
+        tenantId,
+        slotId: slot.id,
+        type: "restock",
+        quantity: refill,
+        userId: restocker(),
+        occurredAt: new Date(createdAt.getTime() - 30 * MINUTE_MS),
+        note: "Route refill",
+      });
+      quantity += refill;
+    }
+
+    // A refunded sale still left the machine — the money came back, the product didn't.
+    movements.push({ tenantId, slotId: slot.id, saleId, type: "sale", quantity: -1, occurredAt: createdAt });
+    quantity -= 1;
+  }
+
+  // Shrinkage is only ever observed as a recount that disagrees with the ledger.
+  if (quantity > 0 && faker.datatype.boolean({ probability: 0.2 })) {
+    movements.push({
+      tenantId,
+      slotId: slot.id,
+      type: "correction",
+      quantity: -1,
+      userId: restocker(),
+      occurredAt: new Date(Date.now() - faker.number.int({ min: 1, max: 48 }) * 60 * MINUTE_MS),
+      note: "Physical recount was one short",
+    });
+    quantity -= 1;
+  }
+
+  return { sales, movements, quantity };
+}
+
 async function createDevUser(email: string, name: string) {
   const { user } = await auth.api.signUpEmail({ body: { email, password: DEV_PASSWORD, name } });
   return prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
@@ -62,6 +163,8 @@ async function seedTenant(tenantNumber: number) {
       }),
     ),
   );
+
+  const staffIds = [owner.id, ...members.map((member) => member.id)];
 
   const products = await Promise.all(
     Array.from({ length: 6 }, () =>
@@ -104,18 +207,18 @@ async function seedTenant(tenantNumber: number) {
       const machineProducts = faker.helpers.arrayElements(products, 5);
       const slots = await Promise.all(
         machineProducts.map((product, slotNumber) => {
-          const beginX = (slotNumber % 3) * 100;
-          const beginY = Math.floor(slotNumber / 3) * 100;
+          const beginX = faker.number.int({ min: 0, max: 3 });
+          const beginY = faker.number.int({ min: 0, max: 3 });
           return prisma.slot.create({
             data: {
               machineId: machine.id,
               productId: product.id,
               slotNumber,
               beginX,
-              endX: beginX + 90,
+              endX: beginX + 1,
               beginY,
-              endY: beginY + 90,
-              quantity: faker.number.int({ min: 0, max: 10 }),
+              endY: beginY + 1,
+              quantity: 0,
               capacity: 10,
               price: product.price,
             },
@@ -123,22 +226,17 @@ async function seedTenant(tenantNumber: number) {
         }),
       );
 
-      await prisma.sale.createMany({
-        data: Array.from({ length: faker.number.int({ min: 5, max: 20 }) }, () => {
-          const slot = faker.helpers.arrayElement(slots);
-          const status = faker.helpers.arrayElement(["completed", "completed", "completed", "failed", "refunded"]);
-          const createdAt = faker.date.recent({ days: 30 });
-          return {
-            tenantId: tenant.id,
-            machineId: machine.id,
-            productId: slot.productId,
-            status,
-            price: slot.price ?? 10,
-            createdAt,
-            completedAt: status === "completed" || status === "refunded" ? createdAt : null,
-          };
-        }),
-      });
+      // Sales and movements are written from one plan per slot, so the ledger and
+      // the slot's quantity can't drift apart.
+      const histories = slots.map((slot) => planSlotHistory(slot, tenant.id, machine.id, staffIds));
+
+      await prisma.sale.createMany({ data: histories.flatMap((history) => history.sales) });
+      await prisma.inventoryMovement.createMany({ data: histories.flatMap((history) => history.movements) });
+      await Promise.all(
+        slots.map((slot, index) =>
+          prisma.slot.update({ where: { id: slot.id }, data: { quantity: histories[index]!.quantity } }),
+        ),
+      );
 
       if (machine.status !== "online") {
         await prisma.securityAlert.create({
@@ -155,6 +253,38 @@ async function seedTenant(tenantNumber: number) {
   return { tenant, owner };
 }
 
+/**
+ * Machines that haven't been given to a tenant yet, for the superadmin's slot layout editor.
+ *
+ * A site always belongs to a tenant, so these stand at one of the seeded tenant's sites.
+ * Slots have no product: the tenant picks those once the machine is theirs.
+ */
+async function seedMachinesWithoutTenant(siteId: string) {
+  // A valid layout (no overlaps, nothing floating) on a 3x3 grid; y = 0 is the bottom row:
+  //   y=2  [4] [3 3]
+  //   y=1  [2] [3 3]
+  //   y=0  [0 0] [1]
+  const layout = [
+    { beginX: 0, endX: 1, beginY: 0, endY: 0 },
+    { beginX: 2, endX: 2, beginY: 0, endY: 0 },
+    { beginX: 0, endX: 0, beginY: 1, endY: 1 },
+    { beginX: 1, endX: 2, beginY: 1, endY: 2 },
+    { beginX: 0, endX: 0, beginY: 2, endY: 2 },
+  ];
+
+  const withLayout = await prisma.machine.create({
+    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+  });
+  await prisma.slot.createMany({
+    data: layout.map((rect, slotNumber) => ({ machineId: withLayout.id, slotNumber, ...rect, capacity: 10 })),
+  });
+
+  // And one with no slots at all, to start a layout from scratch
+  await prisma.machine.create({
+    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+  });
+}
+
 async function main() {
   await seedPermissions();
 
@@ -163,7 +293,11 @@ async function main() {
 
   const tenants = await Promise.all(Array.from({ length: 2 }, (_, index) => seedTenant(index + 1)));
 
+  const site = await prisma.site.findFirstOrThrow({ where: { tenantId: tenants[0]!.tenant.id } });
+  await seedMachinesWithoutTenant(site.id);
+
   console.log(`Seeded dev data: superadmin admin@mail.com (password: ${DEV_PASSWORD})`);
+  console.log("  2 machines without a tenant, for the slot layout editor");
   for (const { tenant, owner } of tenants) {
     console.log(`  Tenant "${tenant.name}" — owner ${owner.email} (password: ${DEV_PASSWORD})`);
   }

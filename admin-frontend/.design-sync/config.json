@@ -1,0 +1,45 @@
+{
+  "projectId": "e6485901-876c-4ab3-86b3-daf13f936085",
+  "shape": "package",
+  "pkg": "admin-frontend",
+  "globalName": "VmaasAdminUi",
+  "entry": ".design-sync/pkg-entry.mjs",
+  "srcDir": "components/ui",
+  "tsconfig": "tsconfig.json",
+  "buildCmd": "node .design-sync/tw-compile.mjs",
+  "readmeHeader": ".design-sync/conventions.md",
+  "cssEntry": ".design-sync/.cache/compiled-tailwind.css",
+  "extraFonts": [".design-sync/fonts-src/fonts.css"],
+  "componentSrcMap": {
+    "Button": "components/ui/button.tsx",
+    "Input": "components/ui/input.tsx",
+    "Label": "components/ui/label.tsx",
+    "Textarea": "components/ui/textarea.tsx",
+    "Checkbox": "components/ui/checkbox.tsx",
+    "Switch": "components/ui/switch.tsx",
+    "Badge": "components/ui/badge.tsx",
+    "Card": "components/ui/card.tsx",
+    "Separator": "components/ui/separator.tsx",
+    "Avatar": "components/ui/avatar.tsx",
+    "Select": "components/ui/select.tsx",
+    "Dialog": "components/ui/dialog.tsx"
+  },
+  "dtsPropsFor": {
+    "Button": "variant?: \"default\" | \"outline\" | \"secondary\" | \"ghost\" | \"destructive\" | \"link\";\n  size?: \"default\" | \"xs\" | \"sm\" | \"lg\" | \"icon\" | \"icon-xs\" | \"icon-sm\" | \"icon-lg\";\n  disabled?: boolean;\n  type?: \"button\" | \"submit\" | \"reset\";\n  onClick?: React.MouseEventHandler<HTMLButtonElement>;\n  children?: React.ReactNode;\n  className?: string;",
+    "Input": "type?: React.HTMLInputTypeAttribute;\n  placeholder?: string;\n  value?: string;\n  defaultValue?: string;\n  disabled?: boolean;\n  required?: boolean;\n  onChange?: React.ChangeEventHandler<HTMLInputElement>;\n  className?: string;",
+    "Label": "htmlFor?: string;\n  children?: React.ReactNode;\n  className?: string;",
+    "Textarea": "placeholder?: string;\n  value?: string;\n  defaultValue?: string;\n  disabled?: boolean;\n  rows?: number;\n  onChange?: React.ChangeEventHandler<HTMLTextAreaElement>;\n  className?: string;",
+    "Checkbox": "checked?: boolean;\n  defaultChecked?: boolean;\n  disabled?: boolean;\n  onCheckedChange?: (checked: boolean) => void;\n  className?: string;",
+    "Switch": "checked?: boolean;\n  defaultChecked?: boolean;\n  disabled?: boolean;\n  size?: \"default\" | \"sm\";\n  onCheckedChange?: (checked: boolean) => void;\n  className?: string;",
+    "Badge": "variant?: \"default\" | \"secondary\" | \"destructive\" | \"outline\" | \"ghost\" | \"link\";\n  children?: React.ReactNode;\n  className?: string;",
+    "Card": "size?: \"default\" | \"sm\";\n  children?: React.ReactNode;\n  className?: string;",
+    "Separator": "orientation?: \"horizontal\" | \"vertical\";\n  className?: string;",
+    "Avatar": "size?: \"default\" | \"sm\" | \"lg\";\n  children?: React.ReactNode;\n  className?: string;",
+    "Select": "defaultValue?: string;\n  value?: string;\n  onValueChange?: (value: string) => void;\n  defaultOpen?: boolean;\n  disabled?: boolean;\n  children?: React.ReactNode;",
+    "Dialog": "open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  children?: React.ReactNode;"
+  },
+  "overrides": {
+    "Select": { "cardMode": "single", "viewport": "320x300", "primaryStory": "Open" },
+    "Dialog": { "cardMode": "single", "viewport": "420x320", "primaryStory": "Open" }
+  }
+}

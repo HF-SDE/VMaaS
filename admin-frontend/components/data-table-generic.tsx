@@ -236,6 +236,15 @@ export function DataTable<TData extends RowData>({
           pageSize: pageSize ?? 10,
         },
       }),
+      // Client-side with the controls hidden means one page holding everything.
+      // The paginated row model is registered for every table (see
+      // `dataTableFeatures`), so without this tanstack's default page size would
+      // quietly cut the table off at ten rows — with no controls on screen to
+      // page past them.
+      ...(!isServerSide &&
+        !showPagination && {
+          pagination: { pageIndex: 0, pageSize: Math.max(data.length, 1) },
+        }),
     },
     enableRowSelection,
 
@@ -335,7 +344,7 @@ export function DataTable<TData extends RowData>({
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  Ingen resultater.
+                  No results.
                 </TableCell>
               </TableRow>
             )}

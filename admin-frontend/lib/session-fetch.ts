@@ -2,7 +2,7 @@ import type { PermissionKey } from "../../shared/types/permissions"
 import { config } from "./config"
 
 export type Session = {
-  user: { id: string; name: string; email: string }
+  user: { id: string; name: string; email: string; isSuperAdmin?: boolean }
   activeTenantId: string | null
   tenants: { id: string; name: string }[]
   tenantInvites: TenantInvite[]
@@ -10,7 +10,7 @@ export type Session = {
 }
 
 type SessionResponse = {
-  user: { id: string; name: string; email: string }
+  user: { id: string; name: string; email: string; isSuperAdmin?: boolean }
   session: { activeTenantId?: string | null }
   tenants?: { id: string; name: string }[]
   tenantInvites?: TenantInvite[]
