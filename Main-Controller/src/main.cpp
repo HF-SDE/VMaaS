@@ -1,11 +1,3 @@
-// Main-Controller: slot entry on the keypad, shown on the Grove-LCD.
-// A dedicated task scans the COM-14662 matrix every 5 ms; the main loop drains
-// its queue, feeds SlotEntry and redraws only when the entry state changes.
-// A STATUS frame every 2 seconds keeps the link to Motorcontrol observed: when
-// it reports no valid slot configuration the display switches to a red
-// "MOTOR CONFIG ERR" screen until a normal reply arrives again.
-// See shared/vmaas-keypad/README.md, shared/vmaas-entry/README.md,
-// shared/vmaas-protocol/PROTOCOL.md and shared/vmaas-display/README.md.
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -21,15 +13,16 @@
 #include "keypad.h"
 #include "keypad_task.h"
 #include "slot_entry.h"
+#include <WiFi.h>
 
 namespace
 {
-    constexpr const char* TAG = "MainController";
+    constexpr const char *TAG = "MainController";
     constexpr TickType_t STATUS_INTERVAL = pdMS_TO_TICKS(2000);
 
-    constexpr const char* PROMPT_ROW0 = "VMaaS - vaelg slot";
-    constexpr const char* ERROR_ROW0 = "MOTOR CONFIG ERR";
-    constexpr const char* ERROR_ROW1 = "check slot config on Motorcontrol";
+    constexpr const char *PROMPT_ROW0 = "VMaaS - vaelg slot";
+    constexpr const char *ERROR_ROW0 = "MOTOR CONFIG ERR";
+    constexpr const char *ERROR_ROW1 = "check slot config on Motorcontrol";
 
     vmaas::UartBus bus(UART_NUM_1, Pins::UART_TX, Pins::UART_RX, Config::baud_rate);
     MotorClient motor(bus);
@@ -45,20 +38,20 @@ namespace
     bool backlight_ok = false;
     bool motor_error_shown = false;
     char last_row1[17] = {};
-    uint32_t result_hold_until_ms = 0;   // see render()
+    uint32_t result_hold_until_ms = 0; // see render()
 
     uint32_t now_ms()
     {
         return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
     }
 
-    void log_lcd(const char* what, vmaas::LcdError err)
+    void log_lcd(const char *what, vmaas::LcdError err)
     {
         if (err != vmaas::LcdError::None)
             ESP_LOGW(TAG, "display %s: %s", what, vmaas::to_string(err));
     }
 
-    void show_rows(const char* row0, const char* row1)
+    void show_rows(const char *row0, const char *row1)
     {
         if (!display_ok)
             return;
@@ -67,7 +60,7 @@ namespace
         log_lcd("row 1", lcd.print_at(0, 1, row1, vmaas::Overflow::Scroll));
     }
 
-    void show_row1(const char* text)
+    void show_row1(const char *text)
     {
         if (!display_ok)
             return;
@@ -112,7 +105,7 @@ namespace
     // run will call render() with an empty Editing state roughly 50 ms later.
     // Without the hold below, "Slot 12 valgt" would be overwritten by "> _"
     // long before anyone could read it.
-    void render(const vmaas::EntryState& st)
+    void render(const vmaas::EntryState &st)
     {
         if (motor_error_shown)
             return;
@@ -154,6 +147,24 @@ namespace
             show_row1(line);
             break;
         }
+    }
+
+    void startWifi()
+    {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(Config::wifi_ssid, Config::wifi_password);
+        show_row1("Connecting to WiFi...");
+        set_rgb(255, 255, 0); // Yellow backlight for WiFi connection
+        ESP_LOGI(TAG, "Connecting to WiFi SSID '%s'...", Config::wifi_ssid);
+        while (WiFi.status() != WL_CONNECTED)
+        {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            set_rgb(255, 0, 0); // Red backlight while waiting for WiFi
+            ESP_LOGI(TAG, "Waiting for WiFi connection...");
+        }
+        show_row1("Connected to WiFi");
+        set_rgb(0, 255, 0); // Green backlight when connected
+        ESP_LOGI(TAG, "WiFi connected");
     }
 }
 
@@ -201,25 +212,24 @@ extern "C" void app_main()
 
     show_prompt();
 
-    motor.on_ack([](vmaas::Cmd cmd) {
+    motor.on_ack([](vmaas::Cmd cmd)
+                 {
         ESP_LOGI(TAG, "ACK for cmd 0x%02X", (unsigned)cmd);
-        clear_motor_error();
-    });
-    motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err) {
+        clear_motor_error(); });
+    motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err)
+                 {
         ESP_LOGW(TAG, "NAK for cmd 0x%02X, error %u", (unsigned)cmd, (unsigned)err);
         if (err == vmaas::ErrorCode::CONFIG_ERROR)
-            show_motor_error();
-    });
-    motor.on_done([](uint8_t slot) {
-        ESP_LOGI(TAG, "slot %u dispensed", slot);
-    });
-    motor.on_status([](vmaas::State state, uint8_t slot) {
+            show_motor_error(); });
+    motor.on_done([](uint8_t slot)
+                  { ESP_LOGI(TAG, "slot %u dispensed", slot); });
+    motor.on_status([](vmaas::State state, uint8_t slot)
+                    {
         ESP_LOGI(TAG, "status: state=%u current_slot=%u", (unsigned)state, slot);
         if (state == vmaas::State::ERROR)
             show_motor_error();
         else
-            clear_motor_error();
-    });
+            clear_motor_error(); });
 
     TickType_t last_status = xTaskGetTickCount();
     while (true)
