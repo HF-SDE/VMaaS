@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-keypad",
+  "version": "0.1.0",
+  "description": "Passive 4x3 matrix keypad driver (SparkFun COM-14662) for VMaaS Main-Controller",
+  "keywords": ["keypad", "matrix", "gpio", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["keypad.h", "keypad_port.h", "keypad_error.h", "key_event.h", "esp_keypad_port.h"]
+}

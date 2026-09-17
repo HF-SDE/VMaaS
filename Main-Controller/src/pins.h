@@ -12,4 +12,9 @@ namespace Pins
 
     constexpr int I2C_SDA = 21; ///< Grove-LCD SDA. ESP32 default I2C SDA.
     constexpr int I2C_SCL = 22; ///< Grove-LCD SCL. ESP32 default I2C SCL.
+
+    /// Keypad matrix rows, driven low one at a time. Header pins 3, 6, 1, 4.
+    constexpr int KEYPAD_ROWS[4] = {26, 19, 14, 27};
+    /// Keypad matrix columns, inputs with internal pull-ups. Header pins 7, 2, 5.
+    constexpr int KEYPAD_COLS[3] = {23, 25, 18};
 }

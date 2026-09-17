@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-entry",
+  "version": "0.1.0",
+  "description": "Hardware-free slot-number entry state machine for VMaaS",
+  "keywords": ["entry", "keypad", "ui", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["slot_entry.h", "entry_state.h"]
+}

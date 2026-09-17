@@ -52,6 +52,8 @@ namespace vmaas
     private:
         static constexpr size_t MAX_DEVICES = 4;
         static constexpr int XFER_TIMEOUT_MS = 50;
+        /// Timeout for the throwaway probe that primes the bus in begin().
+        static constexpr int PROBE_TIMEOUT_MS = 10;
 
         i2c_master_dev_handle_t device_for(uint8_t addr);
 
