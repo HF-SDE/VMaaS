@@ -41,4 +41,9 @@ namespace Config
 
     /// Priority of the keypad scan task. Above the idle work, below the UART.
     constexpr int keypad_task_priority = 5;
+
+    /// @brief WiFi SSID
+    constexpr const char* wifi_ssid = "VMaaS";
+    /// @brief WiFi password
+    constexpr const char* wifi_password = "VMaaS123";
 }
