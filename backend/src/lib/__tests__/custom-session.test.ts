@@ -4,6 +4,7 @@ vi.mock("@/lib/rbac", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/rbac")>()),
   listTenantsForUser: vi.fn(async () => [{ id: "t1", name: "Tenant One" }]),
   getUserPermissions: vi.fn(async () => new Set(["machine:read"])),
+  getUserInvites: vi.fn(async () => []),
 }))
 
 import { enrichSession } from "@/lib/auth"
