@@ -1,4 +1,4 @@
-import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
+import { getSlotsSchema, slotWriteSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -52,8 +52,39 @@ describe("updateSlotSchema", () => {
     expect(update({ quantity: 10, capacity: 2 }).success).toBe(true);
   });
 
-  it("coerces the numbers a form sends as strings", () => {
-    const result = update({ quantity: "3", capacity: "8" });
-    expect(result.data?.body).toEqual({ quantity: 3, capacity: 8 });
+  // Not coerced: a slot write only ever arrives as a JSON body, where the
+  // numbers are already numbers. A coerced schema's input type is `unknown`,
+  // which the admin's edit form could not be validated against — and it is
+  // validated against `slotWriteSchema`, which shares these fields.
+  it("rejects a number sent as a string", () => {
+    expect(update({ quantity: "3" }).success).toBe(false);
+  });
+});
+
+/**
+ * The same fields, all three required, as the admin's edit form sends them.
+ *
+ * It is the one schema that can judge the pair: the form always sends both
+ * numbers, where a partial body carries only the one that changed.
+ */
+describe("slotWriteSchema", () => {
+  const full = { quantity: 3, capacity: 8, price: null };
+
+  it("requires every field", () => {
+    expect(slotWriteSchema.safeParse(full).success).toBe(true);
+    expect(slotWriteSchema.safeParse({ quantity: 3 }).success).toBe(false);
+  });
+
+  it("rejects a quantity above the capacity", () => {
+    const result = slotWriteSchema.safeParse({ ...full, quantity: 10, capacity: 2 });
+    expect(result.success).toBe(false);
+    // On the quantity rather than on the object, so the form shows it under the
+    // field the user has to change.
+    expect(result.error?.issues[0]?.path).toEqual(["quantity"]);
+  });
+
+  it("takes a price of null as the slot not overriding the product", () => {
+    expect(slotWriteSchema.safeParse({ ...full, price: null }).success).toBe(true);
+    expect(slotWriteSchema.safeParse({ ...full, price: 12.5 }).success).toBe(true);
   });
 });

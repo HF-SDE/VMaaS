@@ -32,11 +32,13 @@ export async function getSlotsController(req: Request, res: Response) {
 }
 
 export async function updateSlotController(req: Request, res: Response) {
-  const { tenantId } = req;
+  const { tenantId, session } = req;
 
   const { params, body } = updateSlotSchema.parse(req);
 
-  const [error, slot] = await updateSlotService(tenantId!, params.id, body);
+  // The stock movement is credited to the signed-in user, taken from the session
+  // `requireAuth` put on the request — never from the body.
+  const [error, slot] = await updateSlotService(tenantId!, params.id, body, session!.user.id);
 
   if (error) {
     const reason = error.reason;

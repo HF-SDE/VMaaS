@@ -18,6 +18,30 @@ export function machinesErrorMessage(status: number): string {
   }
 }
 
+/**
+ * Wording for a slot write, which lives on a machine's page but answers with
+ * codes of its own: a 400 is the product the body named being gone rather than
+ * a malformed request, and a 409 is a quantity that no longer fits the capacity.
+ */
+export function slotWriteErrorMessage(status: number): string {
+  switch (status) {
+    case 401:
+      return "Your session has expired. Sign in again."
+    case 403:
+      return "You do not have permission to change slots."
+    case 404:
+      return "That slot no longer exists."
+    case 409:
+      return "The stock does not fit the slot's capacity."
+    case 400:
+      return "Check the fields and try again."
+    case 500:
+      return "An unexpected error occurred. Please try again."
+    default:
+      throw new Error(`Unexpected error - status: ${status}`)
+  }
+}
+
 /** What the user was trying to do, used to word a failed write. */
 export type MachineWriteAction = "create" | "save" | "delete" | "archive"
 

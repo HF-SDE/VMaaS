@@ -1,4 +1,4 @@
-import type { Slot } from "@/generated/prisma/client";
+import { type Prisma, type Slot, inventory_movement_type } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
@@ -38,15 +38,14 @@ const SLOT_OVERFILLED: SlotOverfilledError = {
   message: "The quantity does not fit the capacity.",
 };
 
-/**
- * Whether the tenant owns the product a write named.
- *
- * `productId` is the one field on a slot that points at another row the caller
- * chose, so it is the one field that could reach across tenants — the same
- * reasoning as `tenantOwnsSite` in the machines service.
- */
-async function tenantOwnsProduct(tenantId: string, productId: string): Promise<boolean> {
-  return (await prisma.product.count({ where: { id: productId, tenantId } })) > 0;
+async function tenantOwnsProduct(tx: Prisma.TransactionClient, tenantId: string, productId: string): Promise<boolean> {
+  return (await tx.product.count({ where: { id: productId, tenantId } })) > 0;
+}
+
+class SlotWriteRejected extends Error {
+  constructor(readonly failure: SlotNotFoundError | SlotProductNotFoundError | SlotOverfilledError) {
+    super(failure.message);
+  }
 }
 
 function unknownError(action: string, cause: unknown): Result<UnknownSlotError, never> {
@@ -58,18 +57,6 @@ function unknownError(action: string, cause: unknown): Result<UnknownSlotError, 
   });
 }
 
-/**
- * Every slot cut into one machine, in slot-number order.
- *
- * Not paginated: a machine holds a few dozen slots at most, and the table that
- * reads this sorts and filters them in the browser. There is no page to clamp
- * and no count to run.
- *
- * A `Slot` carries no `tenantId` of its own — it hangs off the machine — so the
- * machine is what the tenant is checked against. That check is its own query
- * rather than a filter on the slots: a machine of another tenant would otherwise
- * answer an empty table, which reads as "no slots yet" instead of "not yours".
- */
 export async function getMachineSlotsService(
   tenantId: string,
   machineId: string,
@@ -93,35 +80,49 @@ export async function updateSlotService(
   tenantId: string,
   id: string,
   data: SlotWriteData,
+  userId: string,
 ): Promise<
   Result<SlotNotFoundError | SlotProductNotFoundError | SlotOverfilledError | UnknownSlotError, SlotListItem>
 > {
   try {
-    // Scoped through the machine, as the list above is: the relation is what
-    // keeps one tenant out of another's slots.
-    const slot = await prisma.slot.findFirst({
-      where: { id, machine: { tenantId } },
-      select: { quantity: true, capacity: true },
-    });
+    return ok(
+      await prisma.$transaction(async (tx) => {
+        const slot = await tx.slot.findFirst({
+          where: { id, machine: { tenantId } },
+          select: { quantity: true, capacity: true },
+        });
 
-    if (!slot) return err(SLOT_NOT_FOUND);
+        if (!slot) throw new SlotWriteRejected(SLOT_NOT_FOUND);
 
-    // Both halves as they will stand after the write, not only the one that
-    // changed: raising the quantity and lowering the capacity in one request has
-    // to be judged together, and either alone can break the pair.
-    if ((data.quantity ?? slot.quantity) > (data.capacity ?? slot.capacity)) return err(SLOT_OVERFILLED);
+        if ((data.quantity ?? slot.quantity) > (data.capacity ?? slot.capacity)) {
+          throw new SlotWriteRejected(SLOT_OVERFILLED);
+        }
 
-    // Only when the write moves the slot to another product: an update that just
-    // restocks it should not pay for a lookup, and has no product to vouch for.
-    if (data.productId !== undefined && !(await tenantOwnsProduct(tenantId, data.productId))) {
-      return err(PRODUCT_NOT_FOUND);
-    }
+        if (data.productId !== undefined && !(await tenantOwnsProduct(tx, tenantId, data.productId))) {
+          throw new SlotWriteRejected(PRODUCT_NOT_FOUND);
+        }
+        const updated = await tx.slot.update({ where: { id }, data, include: { product: PRODUCT_SELECT } });
+        const delta = updated.quantity - slot.quantity;
 
-    // A plain `update` is safe here where the machines service needs
-    // `updateMany`: the `findFirst` above already matched this id against the
-    // tenant, so the row is known to be theirs.
-    return ok(await prisma.slot.update({ where: { id }, data, include: { product: PRODUCT_SELECT } }));
+        if (delta !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId,
+              slotId: id,
+              userId,
+              type: inventory_movement_type.correction,
+              quantity: delta,
+              note: "Slot edited in the admin",
+            },
+          });
+        }
+
+        return updated;
+      }),
+    );
   } catch (error) {
+    if (error instanceof SlotWriteRejected) return err(error.failure);
+
     return unknownError("updating", error);
   }
 }

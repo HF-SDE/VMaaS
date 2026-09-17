@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import type { ColumnDef } from "@tanstack/react-table"
 import { MoreHorizontal } from "lucide-react"
@@ -9,6 +10,13 @@ import { Badge } from "@/components/ui/badge"
 import type { DataTableFeatures } from "@/components/data-table-generic"
 import { Button } from "@/components/ui/button"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,35 +29,69 @@ import { formatPrice } from "@/lib/utils"
 import type { Slot } from "@prisma"
 import type { SlotProduct } from "@vmaas/shared/types/slot"
 
+import { EditSlotForm } from "./slot-form"
+
 /** One row of the slots table — a slot with the product loaded in it, as
  *  `GET /api/slots` returns it. */
 export type SlotListItem = Slot & { product: SlotProduct }
 
 function SlotActionsCell({ slot }: { slot: SlotListItem }) {
+  const [editOpen, setEditOpen] = React.useState(false)
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button variant="ghost" className="h-8 w-8 p-0" />}
-      >
-        <span className="sr-only">Open menu</span>
-        <MoreHorizontal className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuItem
-            render={
-              <Link href={`/products/${slot.product.id}`}>View product</Link>
-            }
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" className="h-8 w-8 p-0" />}
+        >
+          <span className="sr-only">Open menu</span>
+          <MoreHorizontal className="h-4 w-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => setEditOpen(true)}>
+              Edit slot
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              render={
+                <Link href={`/products/${slot.product.id}`}>View product</Link>
+              }
+            />
+            <DropdownMenuItem
+              onClick={() => navigator.clipboard.writeText(slot.id)}
+            >
+              Copy ID
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Outside the menu rather than inside the item: the item closes the menu
+          when it is clicked, which would take a dialog rendered under it with
+          it. The item only flips the state this dialog is controlled by. */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit slot {slot.slotNumber}</DialogTitle>
+            <DialogDescription>
+              Change what slot {slot.slotNumber} holds of {slot.product.name},
+              how much fits, and what it costs.
+            </DialogDescription>
+          </DialogHeader>
+          <EditSlotForm
+            id={slot.id}
+            defaultValues={{
+              quantity: slot.quantity,
+              capacity: slot.capacity,
+              price: slot.price === null ? null : Number(slot.price),
+            }}
+            onSaved={() => setEditOpen(false)}
+            onCancel={() => setEditOpen(false)}
           />
-          <DropdownMenuItem
-            onClick={() => navigator.clipboard.writeText(slot.id)}
-          >
-            Copy ID
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
