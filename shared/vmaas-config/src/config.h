@@ -1,20 +1,22 @@
 #pragma once
 /**
  * @file config.h
- * @brief Device configuration schema for VMaaS controllers.
+ * @brief Slot configuration schema for the VMaaS Motorcontrol.
  *
- * A Config is plain data. The firmware builds one from its compile-time
- * defaults, and parse_config() (config_parser.h) merges /storage/config.json
- * over it. The library never logs; every problem is reported as a
- * ConfigIssue and the caller decides what to print.
+ * The cabinet wiring (protocol slot number -> motor GPIO) lives in
+ * /storage/config.json on Motorcontrol. There is no default wiring in
+ * firmware: parse_config() (config_parser.h) either yields a complete,
+ * validated slot table (ok == true) or a list of issues that make the file
+ * unusable. The library never logs; the caller decides what to print.
  *
  * Schema version 1 (config.json):
  * @code
  * {
  *   "version": 1,
- *   "pins": { "uart_rx": 32, "uart_tx": 33, "i2c_sda": 21, "i2c_scl": 22 },
- *   "uart": { "baud_rate": 115200 },
- *   "i2c":  { "clock_hz": 100000 }
+ *   "slots": [
+ *     { "slot": 1, "pin": 18 },
+ *     { "slot": 2, "pin": 19 }
+ *   ]
  * }
  * @endcode
  */
@@ -26,60 +28,56 @@ namespace vmaas
     /// Schema version this library understands. Files with a higher version parse with a NewerVersion issue.
     constexpr int CONFIG_SCHEMA_VERSION = 1;
 
-    /// Effective device configuration. Every field has a firmware default.
+    /// Largest slot table accepted. Bounds the fixed arrays below; no heap is used.
+    constexpr size_t MAX_SLOTS = 32;
+
+    /// One row of the wiring table.
+    struct SlotEntry
+    {
+        uint8_t slot; ///< Slot number as sent by Main-Controller in RUN. 1-255.
+        int pin;      ///< GPIO that drives this slot's motor. 0-33 (output-capable).
+    };
+
+    /// Validated slot table. slot_count is 0 unless ParseResult::ok is true.
     struct Config
     {
-        /// GPIO assignment for the two buses.
-        struct Pins
-        {
-            int uart_rx; ///< GPIO receiving from Motorcontrol. Any GPIO 0-39.
-            int uart_tx; ///< GPIO transmitting to Motorcontrol. Output-capable GPIO (0-33).
-            int i2c_sda; ///< Grove-LCD SDA. Output-capable GPIO (0-33).
-            int i2c_scl; ///< Grove-LCD SCL. Output-capable GPIO (0-33).
-        } pins; ///< GPIO numbers for the UART link and the I2C bus.
-
-        /// UART link towards Motorcontrol.
-        struct Uart
-        {
-            int baud_rate; ///< bit/s towards Motorcontrol. Positive.
-        } uart; ///< Settings of the UART link towards Motorcontrol.
-
-        /// I2C bus towards the Grove-LCD.
-        struct I2c
-        {
-            uint32_t clock_hz; ///< SCL frequency for the Grove-LCD. Positive.
-        } i2c; ///< Settings of the I2C bus towards the Grove-LCD.
+        size_t slot_count;           ///< Number of valid entries in slots.
+        SlotEntry slots[MAX_SLOTS];  ///< Entries in file order.
     };
 
     /// What went wrong with one field, or with the file as a whole.
     enum class ConfigIssueKind : uint8_t
     {
-        None = 0,     ///< No issue (never stored; keeps 0 meaningful).
-        InvalidJson,  ///< The text is not valid JSON. Whole file ignored.
-        WrongType,    ///< Field present but not an integer number (or object where one is expected).
-        OutOfRange,   ///< Integer outside the allowed range (pin 0-39, positive baud/clock).
-        InputOnlyPin, ///< GPIO 34-39 used for an output role (uart_tx, i2c_sda, i2c_scl).
-        DuplicatePin, ///< Two pins resolve to the same GPIO on the merged result.
-        NewerVersion, ///< "version" is higher than CONFIG_SCHEMA_VERSION. Parsing continued.
+        None = 0,      ///< No issue (never stored; keeps 0 meaningful).
+        InvalidJson,   ///< Not valid JSON, not an object, or nested deeper than the limit. Whole file ignored.
+        MissingField,  ///< "slots" absent/not an array/empty, or an entry lacks "slot" or "pin".
+        WrongType,     ///< Field present but not an integer number, or an entry is not an object.
+        OutOfRange,    ///< slot outside 1-255 or pin outside 0-39.
+        InputOnlyPin,  ///< pin 34-39: no output driver on the ESP32, cannot drive a motor.
+        DuplicateSlot, ///< The same slot number appears twice. Reported on the later entry.
+        DuplicatePin,  ///< The same GPIO appears twice. Reported on the later entry.
+        TooManySlots,  ///< More than MAX_SLOTS entries.
+        NewerVersion,  ///< "version" is higher than CONFIG_SCHEMA_VERSION. Parsing continued; file still usable.
     };
 
     /// One rejected field or file-level problem.
     struct ConfigIssue
     {
         ConfigIssueKind kind; ///< What went wrong.
-        const char* field;    ///< Dotted path such as "pins.uart_tx"; "" for file-level issues. Static storage.
+        char field[20];       ///< Dotted path such as "slots[3].pin"; "" for file-level issues.
     };
 
     /// Output of parse_config(). Fixed size, no heap.
     struct ParseResult
     {
-        static constexpr size_t MAX_ISSUES = 8; ///< One per field plus file-level. Schema v1 has 7 fields that can each raise one issue; grow this when adding fields. Excess issues are dropped.
+        static constexpr size_t MAX_ISSUES = 8; ///< Issues kept; further ones are dropped (count saturates).
 
-        Config config;             ///< Defaults merged with every accepted field.
-        bool json_valid;           ///< false means the text was not JSON and config equals the defaults.
-        size_t json_error_offset;  ///< Byte offset cJSON reported when json_valid is false; 0 otherwise.
-        size_t issue_count;        ///< Number of valid entries in issues.
-        ConfigIssue issues[MAX_ISSUES]; ///< The first issue_count entries are valid; the rest is unspecified.
+        Config config;             ///< Slot table. Empty (slot_count 0) unless ok.
+        bool ok;                   ///< json_valid and no issue other than NewerVersion: the table may be used.
+        bool json_valid;           ///< false means the text was not a JSON object (or too deep).
+        size_t json_error_offset;  ///< Byte offset of the JSON error when json_valid is false; 0 otherwise.
+        size_t issue_count;        ///< Number of valid entries in issues, at most MAX_ISSUES.
+        ConfigIssue issues[MAX_ISSUES]; ///< The first issue_count entries are valid.
     };
 
     /**

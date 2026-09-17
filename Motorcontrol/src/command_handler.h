@@ -10,7 +10,13 @@
 #include "freertos/FreeRTOS.h"
 #include "protocol.h"
 #include "uart_bus.h"
-#include "slot_map.h"
+
+/// One row of the slot table: which GPIO drives which protocol slot.
+struct SlotPin
+{
+    uint8_t slot;   ///< Slot number as sent by Main-Controller in RUN.
+    gpio_num_t pin; ///< GPIO that drives this slot's motor.
+};
 
 /**
  * @brief Executes RUN/STOP/STATUS/CONFIG requests against the slot pins.

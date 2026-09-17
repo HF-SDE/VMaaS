@@ -1,6 +1,6 @@
 #include "config_parser.h"
 
-#include <climits>
+#include <cstdio>
 #include <cstring>
 #include "cJSON.h"
 
@@ -8,46 +8,51 @@ namespace vmaas
 {
     namespace
     {
-        // Field names used in issues. Static storage so ConfigIssue::field can point at them.
-        constexpr const char* F_VERSION   = "version";
-        constexpr const char* F_PINS      = "pins";
-        constexpr const char* F_UART_RX   = "pins.uart_rx";
-        constexpr const char* F_UART_TX   = "pins.uart_tx";
-        constexpr const char* F_I2C_SDA   = "pins.i2c_sda";
-        constexpr const char* F_I2C_SCL   = "pins.i2c_scl";
-        constexpr const char* F_UART      = "uart";
-        constexpr const char* F_BAUD      = "uart.baud_rate";
-        constexpr const char* F_I2C       = "i2c";
-        constexpr const char* F_CLOCK     = "i2c.clock_hz";
+        constexpr long long SLOT_MIN = 1;
+        constexpr long long SLOT_MAX = 255;
+        constexpr long long GPIO_MIN = 0;
+        constexpr long long GPIO_MAX = 39;
+        constexpr long long INPUT_ONLY_MIN = 34; // GPIO 34-39 have no output driver on the ESP32.
+
+        // Schema v1 is depth 3 (object > array > object). Anything deeper than this is
+        // rejected before cJSON recurses, so a hostile file cannot exhaust the stack.
+        constexpr int MAX_NESTING_DEPTH = 8;
 
         void add_issue(ParseResult& r, ConfigIssueKind kind, const char* field)
         {
-            if (r.issue_count < ParseResult::MAX_ISSUES)
-                r.issues[r.issue_count++] = ConfigIssue{kind, field};
+            if (r.issue_count >= ParseResult::MAX_ISSUES)
+                return;
+            ConfigIssue& issue = r.issues[r.issue_count++];
+            issue.kind = kind;
+            std::snprintf(issue.field, sizeof(issue.field), "%s", field);
         }
 
-        // One integer field read from the file. Holds a 64-bit value so range checks
-        // (Task 4) can see values that do not fit the destination type.
-        struct Candidate
+        // Builds "slots[i]" or "slots[i].key" into buf. buf must hold at least 20 chars.
+        const char* entry_field(char* buf, size_t cap, size_t index, const char* key)
         {
-            long long value;
-            bool from_file;
-        };
+            if (key == nullptr)
+                std::snprintf(buf, cap, "slots[%u]", static_cast<unsigned>(index));
+            else
+                std::snprintf(buf, cap, "slots[%u].%s", static_cast<unsigned>(index), key);
+            return buf;
+        }
 
-        // Reads parent[key] as an integer. Absent: candidate untouched. Present but not an
-        // integer number: WrongType issue, candidate untouched.
-        void read_int(const cJSON* parent, const char* key, const char* field,
-                      Candidate& out, ParseResult& r)
+        // Reads parent[key] as an integer into out. Returns false (with an issue) when the
+        // key is absent or not an integer number; true when out holds the value.
+        bool read_int(const cJSON* parent, const char* key, const char* field, bool required,
+                      long long& out, ParseResult& r)
         {
-            if (parent == nullptr)
-                return;
             const cJSON* item = cJSON_GetObjectItemCaseSensitive(parent, key);
             if (item == nullptr)
-                return;
+            {
+                if (required)
+                    add_issue(r, ConfigIssueKind::MissingField, field);
+                return false;
+            }
             if (!cJSON_IsNumber(item))
             {
                 add_issue(r, ConfigIssueKind::WrongType, field);
-                return;
+                return false;
             }
             const double d = cJSON_GetNumberValue(item);
             // Range check before the cast: converting an out-of-range double to
@@ -57,106 +62,14 @@ namespace vmaas
                 d != static_cast<double>(static_cast<long long>(d)))
             {
                 add_issue(r, ConfigIssueKind::WrongType, field);
-                return;
+                return false;
             }
-            out.value = static_cast<long long>(d);
-            out.from_file = true;
+            out = static_cast<long long>(d);
+            return true;
         }
 
-        // Returns root[key] if it is an object; nullptr if absent; nullptr plus a
-        // WrongType issue if present with another type.
-        const cJSON* read_section(const cJSON* root, const char* key, const char* field, ParseResult& r)
-        {
-            const cJSON* item = cJSON_GetObjectItemCaseSensitive(root, key);
-            if (item == nullptr)
-                return nullptr;
-            if (!cJSON_IsObject(item))
-            {
-                add_issue(r, ConfigIssueKind::WrongType, field);
-                return nullptr;
-            }
-            return item;
-        }
-
-        constexpr long long GPIO_MIN = 0;
-        constexpr long long GPIO_MAX = 39;
-        constexpr long long INPUT_ONLY_MIN = 34; // GPIO 34-39 have no output driver on the ESP32.
-
-        // Rejects a pin candidate that is outside 0-39, or input-only in an output role.
-        // A rejected candidate reverts to its default so it still takes part in the duplicate check.
-        void validate_pin(Candidate& c, long long default_value, bool output_role,
-                          const char* field, ParseResult& r)
-        {
-            if (!c.from_file)
-                return;
-            if (c.value < GPIO_MIN || c.value > GPIO_MAX)
-                add_issue(r, ConfigIssueKind::OutOfRange, field);
-            else if (output_role && c.value >= INPUT_ONLY_MIN)
-                add_issue(r, ConfigIssueKind::InputOnlyPin, field);
-            else
-                return;
-            c.value = default_value;
-            c.from_file = false;
-        }
-
-        // Rejects a positive-integer candidate outside 1..max.
-        void validate_positive(Candidate& c, long long default_value, long long max,
-                               const char* field, ParseResult& r)
-        {
-            if (!c.from_file)
-                return;
-            if (c.value < 1 || c.value > max)
-            {
-                add_issue(r, ConfigIssueKind::OutOfRange, field);
-                c.value = default_value;
-                c.from_file = false;
-            }
-        }
-
-        // OWNER DECISION default: on a collision the later file-provided field loses.
-        // Order is uart_rx, uart_tx, i2c_sda, i2c_scl. A default never loses to a file value.
-        // A reverted pin gets its default back, which may collide with a pair already
-        // checked, so the scan restarts after every revert. Each revert clears one
-        // from_file flag, so it runs at most five passes.
-        void reject_duplicates(Candidate* pins[4], const long long defaults[4],
-                               const char* fields[4], ParseResult& r)
-        {
-            bool changed = true;
-            while (changed)
-            {
-                changed = false;
-                for (int j = 1; j < 4 && !changed; ++j)
-                {
-                    for (int i = 0; i < j && !changed; ++i)
-                    {
-                        if (pins[i]->value != pins[j]->value)
-                            continue;
-                        int loser = -1;
-                        if (pins[j]->from_file)
-                            loser = j;
-                        else if (pins[i]->from_file)
-                            loser = i;
-                        if (loser < 0)
-                            continue; // two defaults colliding is a firmware bug, not a file issue
-                        add_issue(r, ConfigIssueKind::DuplicatePin, fields[loser]);
-                        pins[loser]->value = defaults[loser];
-                        pins[loser]->from_file = false;
-                        changed = true;
-                    }
-                }
-            }
-        }
-
-        // cJSON recurses once per nesting level, so the depth of the file decides how
-        // much stack the parse needs. Schema v1 is two levels deep ({"pins": {...}});
-        // 8 leaves room for the file to grow. Anything deeper is rejected here, before
-        // cJSON recurses, so a hostile ~70-byte file cannot exhaust the caller's stack.
-        constexpr int MAX_NESTING_DEPTH = 8;
-
-        // Walks @p text counting brackets outside string literals. Returns true and
-        // sets @p offset to the index of the offending byte if a '{' or '[' would take
-        // the nesting past MAX_NESTING_DEPTH. Never reports a depth error for text that
-        // stays inside the limit; unbalanced or otherwise broken text is left to cJSON.
+        // Scans bracket depth outside string literals. Returns true and the offending
+        // byte offset when the text nests deeper than MAX_NESTING_DEPTH.
         bool nesting_too_deep(const char* text, size_t& offset)
         {
             int depth = 0;
@@ -196,90 +109,136 @@ namespace vmaas
             return false;
         }
 
-        ParseResult invalid(const Config& defaults, size_t error_offset)
+        ParseResult invalid(size_t error_offset)
         {
             ParseResult r{};
-            r.config = defaults;
             r.json_valid = false;
             r.json_error_offset = error_offset;
             add_issue(r, ConfigIssueKind::InvalidJson, "");
             return r;
         }
+
+        // Validates one entry and appends it to r.config when it is well formed on its own.
+        // Cross-entry rules (duplicates) run afterwards over the appended entries.
+        void read_entry(const cJSON* item, size_t index, ParseResult& r)
+        {
+            char field[20];
+            if (!cJSON_IsObject(item))
+            {
+                add_issue(r, ConfigIssueKind::WrongType, entry_field(field, sizeof(field), index, nullptr));
+                return;
+            }
+
+            long long slot = 0, pin = 0;
+            const bool have_slot = read_int(item, "slot", entry_field(field, sizeof(field), index, "slot"), true, slot, r);
+            const bool have_pin  = read_int(item, "pin",  entry_field(field, sizeof(field), index, "pin"),  true, pin,  r);
+            bool valid = have_slot && have_pin;
+
+            if (have_slot && (slot < SLOT_MIN || slot > SLOT_MAX))
+            {
+                add_issue(r, ConfigIssueKind::OutOfRange, entry_field(field, sizeof(field), index, "slot"));
+                valid = false;
+            }
+            if (have_pin)
+            {
+                if (pin < GPIO_MIN || pin > GPIO_MAX)
+                {
+                    add_issue(r, ConfigIssueKind::OutOfRange, entry_field(field, sizeof(field), index, "pin"));
+                    valid = false;
+                }
+                else if (pin >= INPUT_ONLY_MIN)
+                {
+                    add_issue(r, ConfigIssueKind::InputOnlyPin, entry_field(field, sizeof(field), index, "pin"));
+                    valid = false;
+                }
+            }
+            if (!valid || r.config.slot_count >= MAX_SLOTS)
+                return;
+
+            // Duplicates are checked against the entries accepted so far, so the later one is named.
+            for (size_t j = 0; j < r.config.slot_count; ++j)
+            {
+                if (r.config.slots[j].slot == static_cast<uint8_t>(slot))
+                {
+                    add_issue(r, ConfigIssueKind::DuplicateSlot, entry_field(field, sizeof(field), index, "slot"));
+                    return;
+                }
+                if (r.config.slots[j].pin == static_cast<int>(pin))
+                {
+                    add_issue(r, ConfigIssueKind::DuplicatePin, entry_field(field, sizeof(field), index, "pin"));
+                    return;
+                }
+            }
+            r.config.slots[r.config.slot_count++] = SlotEntry{static_cast<uint8_t>(slot), static_cast<int>(pin)};
+        }
+
+        bool only_newer_version_issues(const ParseResult& r)
+        {
+            for (size_t i = 0; i < r.issue_count; ++i)
+                if (r.issues[i].kind != ConfigIssueKind::NewerVersion)
+                    return false;
+            return true;
+        }
     }
 
-    ParseResult parse_config(const char* json_text, const Config& defaults)
+    ParseResult parse_config(const char* json_text)
     {
         if (json_text == nullptr)
-            return invalid(defaults, 0);
+            return invalid(0);
 
         size_t deep_offset = 0;
         if (nesting_too_deep(json_text, deep_offset))
-            return invalid(defaults, deep_offset);
+            return invalid(deep_offset);
 
         cJSON* root = cJSON_Parse(json_text);
         if (root == nullptr)
         {
             const char* err = cJSON_GetErrorPtr();
             const size_t offset = (err != nullptr && err >= json_text) ? static_cast<size_t>(err - json_text) : 0;
-            return invalid(defaults, offset);
+            return invalid(offset);
         }
         if (!cJSON_IsObject(root))
         {
             cJSON_Delete(root);
-            return invalid(defaults, 0);
+            return invalid(0);
         }
 
         ParseResult r{};
-        r.config = defaults;
         r.json_valid = true;
 
-        Candidate version  = {CONFIG_SCHEMA_VERSION, false};
-        Candidate uart_rx  = {defaults.pins.uart_rx, false};
-        Candidate uart_tx  = {defaults.pins.uart_tx, false};
-        Candidate i2c_sda  = {defaults.pins.i2c_sda, false};
-        Candidate i2c_scl  = {defaults.pins.i2c_scl, false};
-        Candidate baud     = {defaults.uart.baud_rate, false};
-        Candidate clock_hz = {static_cast<long long>(defaults.i2c.clock_hz), false};
+        long long version = CONFIG_SCHEMA_VERSION;
+        if (read_int(root, "version", "version", false, version, r) && version > CONFIG_SCHEMA_VERSION)
+            add_issue(r, ConfigIssueKind::NewerVersion, "version");
 
-        read_int(root, "version", F_VERSION, version, r);
+        const cJSON* slots = cJSON_GetObjectItemCaseSensitive(root, "slots");
+        if (slots == nullptr || !cJSON_IsArray(slots) || cJSON_GetArraySize(slots) == 0)
+        {
+            add_issue(r, ConfigIssueKind::MissingField, "slots");
+        }
+        else
+        {
+            const int count = cJSON_GetArraySize(slots);
+            if (static_cast<size_t>(count) > MAX_SLOTS)
+                add_issue(r, ConfigIssueKind::TooManySlots, "slots");
 
-        const cJSON* pins = read_section(root, "pins", F_PINS, r);
-        read_int(pins, "uart_rx", F_UART_RX, uart_rx, r);
-        read_int(pins, "uart_tx", F_UART_TX, uart_tx, r);
-        read_int(pins, "i2c_sda", F_I2C_SDA, i2c_sda, r);
-        read_int(pins, "i2c_scl", F_I2C_SCL, i2c_scl, r);
-
-        const cJSON* uart = read_section(root, "uart", F_UART, r);
-        read_int(uart, "baud_rate", F_BAUD, baud, r);
-
-        const cJSON* i2c = read_section(root, "i2c", F_I2C, r);
-        read_int(i2c, "clock_hz", F_CLOCK, clock_hz, r);
-
+            size_t index = 0;
+            const cJSON* item = nullptr;
+            cJSON_ArrayForEach(item, slots)
+            {
+                if (index >= MAX_SLOTS)
+                    break;
+                read_entry(item, index, r);
+                ++index;
+            }
+        }
         cJSON_Delete(root);
 
-        if (version.from_file && version.value > CONFIG_SCHEMA_VERSION)
-            add_issue(r, ConfigIssueKind::NewerVersion, F_VERSION);
-
-        validate_pin(uart_rx, defaults.pins.uart_rx, false, F_UART_RX, r);
-        validate_pin(uart_tx, defaults.pins.uart_tx, true,  F_UART_TX, r);
-        validate_pin(i2c_sda, defaults.pins.i2c_sda, true,  F_I2C_SDA, r);
-        validate_pin(i2c_scl, defaults.pins.i2c_scl, true,  F_I2C_SCL, r);
-
-        Candidate* pin_table[4] = {&uart_rx, &uart_tx, &i2c_sda, &i2c_scl};
-        const long long pin_defaults[4] = {defaults.pins.uart_rx, defaults.pins.uart_tx,
-                                           defaults.pins.i2c_sda, defaults.pins.i2c_scl};
-        const char* pin_fields[4] = {F_UART_RX, F_UART_TX, F_I2C_SDA, F_I2C_SCL};
-        reject_duplicates(pin_table, pin_defaults, pin_fields, r);
-
-        validate_positive(baud, defaults.uart.baud_rate, INT_MAX, F_BAUD, r);
-        validate_positive(clock_hz, static_cast<long long>(defaults.i2c.clock_hz), UINT32_MAX, F_CLOCK, r);
-
-        r.config.pins.uart_rx   = static_cast<int>(uart_rx.value);
-        r.config.pins.uart_tx   = static_cast<int>(uart_tx.value);
-        r.config.pins.i2c_sda   = static_cast<int>(i2c_sda.value);
-        r.config.pins.i2c_scl   = static_cast<int>(i2c_scl.value);
-        r.config.uart.baud_rate = static_cast<int>(baud.value);
-        r.config.i2c.clock_hz   = static_cast<uint32_t>(clock_hz.value);
+        r.ok = only_newer_version_issues(r);
+        if (!r.ok)
+        {
+            r.config.slot_count = 0;
+            std::memset(r.config.slots, 0, sizeof(r.config.slots));
+        }
         return r;
     }
 }

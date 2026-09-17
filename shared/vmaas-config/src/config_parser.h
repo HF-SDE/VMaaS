@@ -1,33 +1,35 @@
 #pragma once
 /**
  * @file config_parser.h
- * @brief Merge a config.json text over firmware defaults.
+ * @brief Parse and validate a Motorcontrol config.json text.
  */
 #include "config.h"
 
 namespace vmaas
 {
     /**
-     * @brief Parse @p json_text and merge accepted fields over @p defaults.
+     * @brief Parse @p json_text into a validated slot table.
      *
-     * - Every field is optional; absent fields keep their default.
-     * - Unknown keys are ignored.
-     * - A field that is not an integer, out of range, an input-only GPIO in an
-     *   output role, or a duplicate of another pin is rejected on its own: the
-     *   default is used for that field and one ConfigIssue is recorded.
-     * - Invalid JSON (or a nullptr, or a non-object root) yields the defaults
-     *   unchanged, json_valid == false and one InvalidJson issue.
-     * - Text nested more than 8 levels deep in objects or arrays counts as
-     *   invalid JSON. A non-recursive pre-scan rejects it before the underlying
-     *   parser recurses, so a small hostile file cannot exhaust the caller's
-     *   stack. Schema v1 nests two levels; json_error_offset then points at the
-     *   bracket that crossed the limit.
+     * - "slots" is required: an array of objects, each with integer "slot"
+     *   (1-255) and "pin" (0-33). Absent, empty or not an array gives
+     *   MissingField.
+     * - Slot numbers and pins must each be unique across the table
+     *   (DuplicateSlot / DuplicatePin on the later entry).
+     * - At most MAX_SLOTS entries (TooManySlots). The first MAX_SLOTS are
+     *   still validated so the log can name every problem it can see.
+     * - Unknown keys are ignored. "version" higher than
+     *   CONFIG_SCHEMA_VERSION gives NewerVersion and parsing continues.
+     * - Invalid JSON, a nullptr, a non-object root, or nesting deeper than 8
+     *   levels (checked before the recursive parser runs, so a hostile file
+     *   cannot exhaust the stack) gives json_valid == false and one
+     *   InvalidJson issue with json_error_offset set.
      *
-     * Allocation happens only inside cJSON while parsing; the result is plain data.
+     * The result is usable (ok == true, slot_count > 0) only when the text is
+     * valid JSON and no issue other than NewerVersion was found. Otherwise
+     * slot_count is 0. Allocation happens only inside cJSON while parsing.
      *
      * @param json_text NUL-terminated JSON text, or nullptr.
-     * @param defaults Firmware defaults, normally built from pins.h/config.h.
-     * @return Effective config plus issues. Never fails.
+     * @return Slot table plus issues. Never fails.
      */
-    ParseResult parse_config(const char* json_text, const Config& defaults);
+    ParseResult parse_config(const char* json_text);
 }

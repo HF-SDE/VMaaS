@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "slots": [
+    { "slot": 1, "pin": 18 },
+    { "slot": 2, "pin": 19 },
+    { "slot": 3, "pin": 21 },
+    { "slot": 4, "pin": 22 }
+  ]
+}

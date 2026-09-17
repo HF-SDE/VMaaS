@@ -82,9 +82,27 @@ void test_builder_replies()
     TEST_ASSERT_EQUAL_UINT8(2, s.payload[1]);
 }
 
+// Motorcontrol without a valid slot configuration refuses requests with
+// CONFIG_ERROR (code 6) and reports State::ERROR in STATUS_REPLY.
+void test_config_error_code_and_error_state_match_spec()
+{
+    TEST_ASSERT_EQUAL_UINT8(6, static_cast<uint8_t>(ErrorCode::CONFIG_ERROR));
+
+    Frame n = frames::nak(Cmd::RUN, ErrorCode::CONFIG_ERROR);
+    TEST_ASSERT_EQUAL(Cmd::NAK, n.cmd);
+    TEST_ASSERT_EQUAL_UINT8(2, n.len);
+    TEST_ASSERT_EQUAL_HEX8(0x10, n.payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, n.payload[1]);
+
+    Frame s = frames::status_reply(State::ERROR, 0);
+    TEST_ASSERT_EQUAL_UINT8(2, s.payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, s.payload[1]);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_config_error_code_and_error_state_match_spec);
     RUN_TEST(test_constants);
     RUN_TEST(test_command_ids_match_spec);
     RUN_TEST(test_is_reply);
