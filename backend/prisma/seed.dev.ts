@@ -104,17 +104,17 @@ async function seedTenant(tenantNumber: number) {
       const machineProducts = faker.helpers.arrayElements(products, 5);
       const slots = await Promise.all(
         machineProducts.map((product, slotNumber) => {
-          const beginX = (slotNumber % 3) * 100;
-          const beginY = Math.floor(slotNumber / 3) * 100;
+          const beginX = faker.number.int({ min: 0, max: 3 });
+          const beginY = faker.number.int({ min: 0, max: 3 });
           return prisma.slot.create({
             data: {
               machineId: machine.id,
               productId: product.id,
               slotNumber,
               beginX,
-              endX: beginX + 90,
+              endX: beginX + 1,
               beginY,
-              endY: beginY + 90,
+              endY: beginY + 1,
               quantity: faker.number.int({ min: 0, max: 10 }),
               capacity: 10,
               price: product.price,
@@ -155,6 +155,38 @@ async function seedTenant(tenantNumber: number) {
   return { tenant, owner };
 }
 
+/**
+ * Machines that haven't been given to a tenant yet, for the superadmin's slot layout editor.
+ *
+ * A site always belongs to a tenant, so these stand at one of the seeded tenant's sites.
+ * Slots have no product: the tenant picks those once the machine is theirs.
+ */
+async function seedMachinesWithoutTenant(siteId: string) {
+  // A valid layout (no overlaps, nothing floating) on a 3x3 grid; y = 0 is the bottom row:
+  //   y=2  [4] [3 3]
+  //   y=1  [2] [3 3]
+  //   y=0  [0 0] [1]
+  const layout = [
+    { beginX: 0, endX: 1, beginY: 0, endY: 0 },
+    { beginX: 2, endX: 2, beginY: 0, endY: 0 },
+    { beginX: 0, endX: 0, beginY: 1, endY: 1 },
+    { beginX: 1, endX: 2, beginY: 1, endY: 2 },
+    { beginX: 0, endX: 0, beginY: 2, endY: 2 },
+  ];
+
+  const withLayout = await prisma.machine.create({
+    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+  });
+  await prisma.slot.createMany({
+    data: layout.map((rect, slotNumber) => ({ machineId: withLayout.id, slotNumber, ...rect, capacity: 10 })),
+  });
+
+  // And one with no slots at all, to start a layout from scratch
+  await prisma.machine.create({
+    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+  });
+}
+
 async function main() {
   await seedPermissions();
 
@@ -163,7 +195,11 @@ async function main() {
 
   const tenants = await Promise.all(Array.from({ length: 2 }, (_, index) => seedTenant(index + 1)));
 
+  const site = await prisma.site.findFirstOrThrow({ where: { tenantId: tenants[0]!.tenant.id } });
+  await seedMachinesWithoutTenant(site.id);
+
   console.log(`Seeded dev data: superadmin admin@mail.com (password: ${DEV_PASSWORD})`);
+  console.log("  2 machines without a tenant, for the slot layout editor");
   for (const { tenant, owner } of tenants) {
     console.log(`  Tenant "${tenant.name}" — owner ${owner.email} (password: ${DEV_PASSWORD})`);
   }

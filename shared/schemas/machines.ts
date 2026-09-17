@@ -1,5 +1,7 @@
 import { z } from "zod/v4";
 
+import { findFloatingSlots, hasOverlappingSlots } from "../lib/slot-layout";
+
 /** The wording a form shows when the site picker was left empty: a blank picker
  *  sends `""`, which fails the uuid check, so this is what the user reads. */
 const SITE_ID_MESSAGE = { message: "site is required" };
@@ -80,4 +82,70 @@ export const getMachinesPageSchema = z.object({
     sortOrder: z.enum(["asc", "desc"]).optional(),
     search: z.string().optional(),
   }),
+});
+
+/** A grid coordinate: 0-based, so the bottom row and the left column are 0 */
+const coordinate = z.number().int().min(0);
+
+const slotLayoutSlotSchema = z
+  .object({
+    id: z.uuid({ message: "slot id must be a uuid" }).optional(),
+    slotNumber: z.number().int().min(0),
+    beginX: coordinate,
+    endX: coordinate,
+    beginY: coordinate,
+    endY: coordinate,
+    capacity: z.number().int().min(0),
+  })
+  .refine((slot) => slot.endX >= slot.beginX && slot.endY >= slot.beginY, {
+    message: "a slot must end on or after where it begins",
+  });
+
+/**
+ * `POST /api/machines/save-slot-layout`, the slot layout editor's save.
+ *
+ * Checks every rule the layout has to follow, not only the shape of the body, so a
+ * request that skips the editor still can't store an impossible layout. The rules
+ * the editor checks too (overlaps, floating slots) come from the same shared helpers.
+ *
+ * Whether the slot ids belong to the machine can't be told from the body alone;
+ * the service checks that.
+ */
+export const saveSlotLayoutSchema = z.object({
+  body: z
+    .object({
+      machineId: z.uuid({ message: "machineId must be a uuid" }),
+      columns: z.number().int().min(1),
+      rows: z.number().int().min(1),
+      slots: z.array(slotLayoutSlotSchema),
+    })
+    .superRefine(({ columns, rows, slots }, ctx) => {
+      if (slots.some((slot) => slot.endX >= columns || slot.endY >= rows)) {
+        ctx.addIssue({ code: "custom", path: ["slots"], message: "every slot must be inside the grid" });
+      }
+
+      const slotNumbers = slots.map((slot) => slot.slotNumber);
+      if (new Set(slotNumbers).size !== slotNumbers.length) {
+        ctx.addIssue({ code: "custom", path: ["slots"], message: "slot numbers must be unique" });
+      }
+
+      const ids = slots.flatMap((slot) => (slot.id ? [slot.id] : []));
+      if (new Set(ids).size !== ids.length) {
+        ctx.addIssue({ code: "custom", path: ["slots"], message: "a slot can only appear once" });
+      }
+
+      if (hasOverlappingSlots(slots)) {
+        ctx.addIssue({ code: "custom", path: ["slots"], message: "slots must not overlap" });
+      }
+
+      const floating = findFloatingSlots(slots);
+      if (floating.length > 0) {
+        const numbers = floating.map((slot) => `#${slot.slotNumber}`).join(", ");
+        ctx.addIssue({
+          code: "custom",
+          path: ["slots"],
+          message: `slots must not have empty space below them: ${numbers}`,
+        });
+      }
+    }),
 });
