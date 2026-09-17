@@ -62,6 +62,7 @@ namespace vmaas
         BUSY = 3,         ///< RUN received while a motor is already running.
         UNKNOWN_SLOT = 4, ///< Slot is not present in Motorcontrol's slot map.
         BAD_PARAM = 5,    ///< CONFIG param id is not recognised.
+        CONFIG_ERROR = 6, ///< Motorcontrol has no valid slot configuration (config.json) and refuses RUN/STOP/CONFIG.
     };
 
     /**
@@ -71,7 +72,7 @@ namespace vmaas
     {
         IDLE = 0,  ///< No motor running. STATUS_REPLY reports current_slot 0.
         BUSY = 1,  ///< A motor is running; current_slot names it.
-        ERROR = 2, ///< Reserved. Never emitted by v1 firmware.
+        ERROR = 2, ///< Motorcontrol has no valid slot configuration. current_slot is 0. Every RUN/STOP/CONFIG is answered NAK CONFIG_ERROR.
     };
 
     /**

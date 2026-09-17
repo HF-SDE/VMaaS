@@ -1,0 +1,58 @@
+#pragma once
+/**
+ * @file config_store.h
+ * @brief LittleFS mount and slot-config loading for Motorcontrol.
+ *
+ * The only firmware module that touches the filesystem. Parsing and
+ * validation live in the shared vmaas-config library; this module reads
+ * bytes, logs, and hands main.cpp a yes/no plus the slot table.
+ */
+#include <cstddef>
+#include "config.h"
+
+namespace config_store
+{
+    constexpr const char* MOUNT_POINT = "/storage";               ///< VFS mount point.
+    constexpr const char* PARTITION_LABEL = "storage";            ///< Name in partitions.csv.
+    constexpr const char* CONFIG_PATH = "/storage/config.json";   ///< Slot wiring file.
+
+    /// Largest config.json accepted, in bytes including the NUL. Bigger files are rejected.
+    constexpr size_t MAX_CONFIG_BYTES = 2048;
+
+    /// Outcome of load_config().
+    struct LoadResult
+    {
+        vmaas::Config config; ///< Validated slot table. Only meaningful when ok.
+        bool ok;              ///< true: the table may drive motors. false: see reason.
+        char reason[40];      ///< Short cause for logs, e.g. "config.json missing" or "slots[2].pin OutOfRange".
+    };
+
+    /**
+     * @brief Mount the LittleFS partition at MOUNT_POINT.
+     *
+     * Never formats. On failure the error is logged and false returned.
+     * @return true if the filesystem is mounted.
+     */
+    bool mount_storage();
+
+    /**
+     * @brief Read a whole text file into a buffer and NUL-terminate it.
+     * @param path Absolute VFS path.
+     * @param buf Destination buffer.
+     * @param capacity Size of @p buf in bytes, including room for the NUL.
+     * @return Bytes read (>= 0); -1 if the file cannot be opened; -2 if it does not fit or the arguments are invalid.
+     */
+    int read_text_file(const char* path, char* buf, size_t capacity);
+
+    /**
+     * @brief Read, parse and log the slot configuration.
+     *
+     * Reads CONFIG_PATH and runs vmaas::parse_config(). Logs one warning per
+     * issue and, on success, the slot table at INFO level. There is no
+     * default wiring: when the file is missing or invalid, ok is false and
+     * the caller must not drive any motor.
+     *
+     * @return Slot table and verdict.
+     */
+    LoadResult load_config();
+}

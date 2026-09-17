@@ -53,8 +53,11 @@ table below. DONE and STATUS_REPLY are the two replies that carry data.
 
 State: `0` IDLE, `1` BUSY, `2` ERROR.
 
-`current_slot` in STATUS_REPLY is 0 when the state is IDLE. `State::ERROR` is
-reserved and never emitted by v1 firmware.
+`current_slot` in STATUS_REPLY is 0 when the state is IDLE or ERROR. ERROR means
+Motorcontrol has no valid slot configuration (`/storage/config.json` missing or
+invalid, see `shared/vmaas-config/README.md`); it answers STATUS normally but
+refuses every RUN, STOP and CONFIG with `NAK CONFIG_ERROR`, and restarts every
+30 s (at most 100 times per power-on) to pick up a corrected file.
 
 NAK error codes:
 
@@ -65,6 +68,7 @@ NAK error codes:
 | 3    | BUSY         | RUN while a motor is already running |
 | 4    | UNKNOWN_SLOT | slot not present in Motorcontrol's slot map |
 | 5    | BAD_PARAM    | CONFIG param id not recognised |
+| 6    | CONFIG_ERROR | Motorcontrol has no valid slot configuration; RUN/STOP/CONFIG refused |
 
 CONFIG params:
 
@@ -91,6 +95,17 @@ Motor -> Main  : NAK RUN UNKNOWN_SLOT
 ```
 
 STOP while running: `ACK STOP`, pin goes low, no DONE for the interrupted slot.
+
+Motorcontrol without a valid slot configuration:
+
+```
+Main  -> Motor : RUN 3
+Motor -> Main  : NAK RUN CONFIG_ERROR
+Main  -> Motor : STATUS
+Motor -> Main  : STATUS_REPLY ERROR 0
+```
+
+Main-Controller shows `MOTOR CONFIG ERR` on its display while it sees either reply.
 
 STATUS: `STATUS_REPLY` is sent immediately. No ACK.
 
