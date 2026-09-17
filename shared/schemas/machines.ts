@@ -31,6 +31,20 @@ export const machineIdParamsSchema = z.object({
 });
 
 /**
+ * `GET /api/machines/:id`, which answers the machine plus its KPI block.
+ *
+ * `days` is the KPI window and is optional — the service defaults it to 30 and
+ * clamps what it gets, so a hand-edited `days=99999` still answers a window
+ * rather than a 400. Coerced only here, like the paging schemas above.
+ */
+export const getMachineSchema = z.object({
+  params: machineIdParamsSchema.shape.params,
+  query: z.object({
+    days: z.coerce.number().optional(),
+  }),
+});
+
+/**
  * Both fields are optional so the form can send only what changed, but an
  * entirely empty body is rejected — it would be a write that silently does
  * nothing while answering 200.
