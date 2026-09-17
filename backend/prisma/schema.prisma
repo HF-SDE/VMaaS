@@ -25,6 +25,8 @@ model User {
   sentInvites     TenantInvite[] @relation("TenantInviteSender")
   receivedInvites TenantInvite[] @relation("TenantInviteRecipient")
 
+  inventoryMovements InventoryMovement[]
+
   @@map("users")
   @@schema("auth")
 }
@@ -203,6 +205,18 @@ enum alert_type {
   @@schema("public")
 }
 
+// Why a slot's stock changed. There is deliberately no "missing" member: shrinkage
+// is never observed directly, it is inferred from a physical recount, which lands
+// here as a `correction` with a note.
+enum inventory_movement_type {
+  restock
+  sale
+  correction // manual recount adjustment
+  dispense_failure // motor ran, nothing dropped
+
+  @@schema("public")
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -216,6 +230,8 @@ model Tenant {
   roles          Role[]
   invites        TenantInvite[]
   sites          Site[]
+
+  inventoryMovements InventoryMovement[]
 
   @@map("tenants")
   @@schema("public")
@@ -320,13 +336,15 @@ model Slot {
 
   // pins Pins[] - Jeg har kommenteret dette ud, da det ikke er implementeret endnu.
 
+  inventoryMovements InventoryMovement[]
+
   @@unique([machineId, slotNumber])
   @@index([productId])
   @@map("slots")
   @@schema("public")
 }
 
-// # Der skal være en tabel til sales events og inventory movements.
+// # Der skal være en tabel til sales events.
 model Sale {
   id          String      @id @default(uuid()) @db.Uuid
   tenantId    String      @db.Uuid
@@ -340,10 +358,38 @@ model Sale {
   createdAt   DateTime    @default(now())
   completedAt DateTime?
 
+  inventoryMovements InventoryMovement[]
+
   @@index([tenantId])
   @@index([machineId])
   @@index([productId])
   @@map("sales")
+  @@schema("public")
+}
+
+model InventoryMovement {
+  id       String                  @id @default(uuid()) @db.Uuid
+  tenantId String                  @db.Uuid
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slotId   String?                 @db.Uuid
+  slot     Slot?                   @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  type     inventory_movement_type
+  // Signed: +5 for a restock, -1 for a sale. The sum over a slot is its balance.
+  quantity Int
+
+  saleId String? @db.Uuid // set when type = sale
+  sale   Sale?   @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  note       String?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([slotId, occurredAt])
+  @@index([saleId])
+  @@map("inventory_movements")
   @@schema("public")
 }
 

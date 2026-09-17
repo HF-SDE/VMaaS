@@ -25,6 +25,7 @@ export default async function AlertLogsPage() {
         <Suspense fallback={<Loader />}>
           <RoleGate perms={[PERMISSIONS.MACHINE_READ]}>
             <Button
+              nativeButton={false}
               render={<Link href="/machines">Go to machines</Link>}
               size="lg"
             />

@@ -4,6 +4,7 @@ import { PERMISSIONS } from "@/lib/rbac";
 
 import {
   createMachineSchema,
+  getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
   saveSlotLayoutSchema,
@@ -70,7 +71,7 @@ machinesRouter.post(
 machinesRouter.get(
   "/:id",
   requirePermission(PERMISSIONS.MACHINE_READ),
-  validate(machineIdParamsSchema),
+  validate(getMachineSchema),
   getMachineController,
 );
 machinesRouter.patch(

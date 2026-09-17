@@ -1,5 +1,6 @@
 import {
   createMachineSchema,
+  getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
   saveSlotLayoutSchema,
@@ -184,9 +185,11 @@ export async function createMachineController(req: Request, res: Response) {
 export async function getMachineController(req: Request, res: Response) {
   const { tenantId } = req;
 
-  const { params } = machineIdParamsSchema.parse(req);
+  // `query` carries the KPI window; the service defaults and clamps it, so an
+  // absent `days` is a request for the standard 30 rather than for no KPIs.
+  const { params, query } = getMachineSchema.parse(req);
 
-  const [error, machine] = await getMachineByIdService(tenantId!, params.id);
+  const [error, machine] = await getMachineByIdService(tenantId!, params.id, query);
 
   if (error) {
     const reason = error.reason;

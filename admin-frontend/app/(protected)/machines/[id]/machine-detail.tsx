@@ -4,18 +4,29 @@ import { notFound } from "next/navigation"
 import testData from "./test-data.json"
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { machinesErrorMessage } from "../messages"
+import { MachineCards } from "./cards/card-container"
 import { MachineActions } from "./machine-actions"
 import { fetchData } from "@/lib/data/data-fetch"
 import type { MachineDetail } from "../form"
 import { STATUS_LABEL, STATUS_VARIANT } from "../status"
+import type { SlotListItem } from "./slot-columns"
+import { SlotsTable } from "./slots-table"
 import { StockGrid } from "./stock-row-grid"
 import { VendingMachine } from "./vending-machine"
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export const NO_READ_ACCESS = "You do not have access to machines."
 
@@ -35,7 +46,12 @@ export async function MachineDetailLoader({
   const { id } = await params
   await requirePermission(PERMISSIONS.MACHINE_READ, NO_READ_ACCESS)
 
-  const [error, machine] = await fetchData<MachineDetail>(`/api/machines/${id}`)
+  // Together rather than one after the other: the slots belong to the same
+  // machine and neither read depends on the other's answer.
+  const [[error, machine], [slotsError, slots]] = await Promise.all([
+    fetchData<MachineDetail>(`/api/machines/${id}`),
+    fetchData<SlotListItem[]>("/api/slots", { query: { machineId: id } }),
+  ])
 
   if (error) {
     // Branching on the status rather than on `reason`: the fetch layer fills
@@ -67,6 +83,7 @@ export async function MachineDetailLoader({
             {`Placed at ${site.name} — created ${formatDate(machine.createdAt)}`}
           </p>
         </div>
+
         {/* Hiding the buttons for a read-only user must not take the page away,
             hence performRedirect={false}. */}
         <Suspense>
@@ -80,50 +97,45 @@ export async function MachineDetailLoader({
           </RoleGate>
         </Suspense>
       </div>
+      {/* Full width, not the 400px the tabs shipped with: the KPI row below
+          needs four columns to lay out on a wide screen. */}
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardContent>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-muted-foreground">Site</dt>
-              <dd>
-                <Link href={`/sites/${site.id}`} className="hover:underline">
-                  {site.name}
-                </Link>
-                {site.city && (
-                  <span className="text-muted-foreground"> — {site.city}</span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Created</dt>
-              <dd>{formatDate(machine.createdAt)}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Status</dt>
-              <dd>{STATUS_LABEL[machine.status]}</dd>
-            </div>
+        <TabsContent value="overview" className="flex flex-col gap-4">
+          {/* The KPI block rides along with the machine — no second request,
+              so the cards cannot show a different machine than the panel. */}
+          <MachineCards machine={machine} />
 
-            <div className="sm:col-span-2">
-              <dt className="text-sm text-muted-foreground">ID</dt>
-              <dd className="font-mono text-xs text-muted-foreground">
-                {machine.id}
-              </dd>
-            </div>
-          </dl>
-        </CardContent>
-      </Card>
-      <VendingMachine>
-        <StockGrid
-          stockRows={testData.map(({ beginX, beginY, endX, endY, ...row }) => ({
-            ...row,
-            x_start: beginX,
-            y_start: beginY,
-            x_end: endX,
-            y_end: endY,
-          }))}
-        />
-      </VendingMachine>
+          {/* A failed slot read costs the table, not the page: the machine and
+              its cards are already here and still worth showing. */}
+          {slotsError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {machinesErrorMessage(slotsError.status)}
+            </p>
+          ) : (
+            <SlotsTable slots={slots} />
+          )}
+        </TabsContent>
+        <TabsContent value="preview">
+          <VendingMachine>
+            <StockGrid
+              stockRows={testData.map(
+                ({ beginX, beginY, endX, endY, ...row }) => ({
+                  ...row,
+                  x_start: beginX,
+                  y_start: beginY,
+                  x_end: endX,
+                  y_end: endY,
+                })
+              )}
+            />
+          </VendingMachine>
+        </TabsContent>
+      </Tabs>
     </>
   )
 }

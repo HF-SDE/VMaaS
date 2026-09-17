@@ -1,0 +1,16 @@
+/* Fetched from Google Fonts (Inter: SIL OFL 1.1, JetBrains Mono: Apache 2.0), latin subset, variable-weight woff2. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./inter-variable.woff2) format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./jetbrains-mono-variable.woff2) format("woff2");
+}
