@@ -1,6 +1,8 @@
 import { faker } from "@faker-js/faker";
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 
+import type { Prisma, Slot } from "../src/generated/prisma/client";
 import { auth } from "../src/lib/auth";
 import { config } from "../src/lib/config";
 import { prisma } from "../src/lib/prisma";
@@ -33,6 +35,105 @@ async function createTenantRoles(tenantId: string) {
   return roles;
 }
 
+const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
+
+type SlotHistory = {
+  sales: Prisma.SaleCreateManyInput[];
+  movements: Prisma.InventoryMovementCreateManyInput[];
+  /** Balance the movements add up to — what the slot's `quantity` must be. */
+  quantity: number;
+};
+
+/** Walks a slot's sales in chronological order and writes the inventory movement
+ *  that explains each one, so `sum(movements.quantity) === slot.quantity` holds.
+ *  The slot is restocked whenever it would otherwise sell below zero. */
+function planSlotHistory(slot: Slot, tenantId: string, machineId: string, staffIds: string[]): SlotHistory {
+  const sales: Prisma.SaleCreateManyInput[] = [];
+  const movements: Prisma.InventoryMovementCreateManyInput[] = [];
+  const restocker = () => faker.helpers.arrayElement(staffIds);
+
+  const openedAt = new Date(Date.now() - 31 * DAY_MS);
+  movements.push({
+    tenantId,
+    slotId: slot.id,
+    type: "restock",
+    quantity: slot.capacity,
+    userId: restocker(),
+    occurredAt: openedAt,
+    note: "Initial stocking",
+  });
+  let quantity = slot.capacity;
+
+  const saleDates = Array.from({ length: faker.number.int({ min: 3, max: 8 }) }, () =>
+    faker.date.recent({ days: 30 }),
+  ).sort((a, b) => a.getTime() - b.getTime());
+
+  for (const createdAt of saleDates) {
+    const status = faker.helpers.arrayElement(["completed", "completed", "completed", "failed", "refunded"] as const);
+    const saleId = randomUUID();
+    sales.push({
+      id: saleId,
+      tenantId,
+      machineId,
+      productId: slot.productId,
+      status,
+      price: slot.price ?? 10,
+      createdAt,
+      completedAt: status === "completed" || status === "refunded" ? createdAt : null,
+    });
+
+    // The motor ran but nothing dropped, so the product is still in the slot:
+    // the movement records the attempt without moving stock.
+    if (status === "failed") {
+      movements.push({
+        tenantId,
+        slotId: slot.id,
+        saleId,
+        type: "dispense_failure",
+        quantity: 0,
+        occurredAt: createdAt,
+        note: "Motor ran, nothing dropped",
+      });
+      continue;
+    }
+
+    if (quantity === 0) {
+      const refill = slot.capacity;
+      movements.push({
+        tenantId,
+        slotId: slot.id,
+        type: "restock",
+        quantity: refill,
+        userId: restocker(),
+        occurredAt: new Date(createdAt.getTime() - 30 * MINUTE_MS),
+        note: "Route refill",
+      });
+      quantity += refill;
+    }
+
+    // A refunded sale still left the machine — the money came back, the product didn't.
+    movements.push({ tenantId, slotId: slot.id, saleId, type: "sale", quantity: -1, occurredAt: createdAt });
+    quantity -= 1;
+  }
+
+  // Shrinkage is only ever observed as a recount that disagrees with the ledger.
+  if (quantity > 0 && faker.datatype.boolean({ probability: 0.2 })) {
+    movements.push({
+      tenantId,
+      slotId: slot.id,
+      type: "correction",
+      quantity: -1,
+      userId: restocker(),
+      occurredAt: new Date(Date.now() - faker.number.int({ min: 1, max: 48 }) * 60 * MINUTE_MS),
+      note: "Physical recount was one short",
+    });
+    quantity -= 1;
+  }
+
+  return { sales, movements, quantity };
+}
+
 async function createDevUser(email: string, name: string) {
   const { user } = await auth.api.signUpEmail({ body: { email, password: DEV_PASSWORD, name } });
   return prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
@@ -62,6 +163,8 @@ async function seedTenant(tenantNumber: number) {
       }),
     ),
   );
+
+  const staffIds = [owner.id, ...members.map((member) => member.id)];
 
   const products = await Promise.all(
     Array.from({ length: 6 }, () =>
@@ -115,7 +218,7 @@ async function seedTenant(tenantNumber: number) {
               endX: beginX + 90,
               beginY,
               endY: beginY + 90,
-              quantity: faker.number.int({ min: 0, max: 10 }),
+              quantity: 0,
               capacity: 10,
               price: product.price,
             },
@@ -123,22 +226,17 @@ async function seedTenant(tenantNumber: number) {
         }),
       );
 
-      await prisma.sale.createMany({
-        data: Array.from({ length: faker.number.int({ min: 5, max: 20 }) }, () => {
-          const slot = faker.helpers.arrayElement(slots);
-          const status = faker.helpers.arrayElement(["completed", "completed", "completed", "failed", "refunded"]);
-          const createdAt = faker.date.recent({ days: 30 });
-          return {
-            tenantId: tenant.id,
-            machineId: machine.id,
-            productId: slot.productId,
-            status,
-            price: slot.price ?? 10,
-            createdAt,
-            completedAt: status === "completed" || status === "refunded" ? createdAt : null,
-          };
-        }),
-      });
+      // Sales and movements are written from one plan per slot, so the ledger and
+      // the slot's quantity can't drift apart.
+      const histories = slots.map((slot) => planSlotHistory(slot, tenant.id, machine.id, staffIds));
+
+      await prisma.sale.createMany({ data: histories.flatMap((history) => history.sales) });
+      await prisma.inventoryMovement.createMany({ data: histories.flatMap((history) => history.movements) });
+      await Promise.all(
+        slots.map((slot, index) =>
+          prisma.slot.update({ where: { id: slot.id }, data: { quantity: histories[index]!.quantity } }),
+        ),
+      );
 
       if (machine.status !== "online") {
         await prisma.securityAlert.create({
