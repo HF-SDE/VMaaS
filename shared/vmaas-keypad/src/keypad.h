@@ -84,6 +84,15 @@ namespace vmaas
          */
         bool next_event(KeyEvent& out);
 
+        /**
+         * @brief Change the debounce window after construction.
+         *
+         * The Main-Controller reads this from config.json, which is not
+         * available when the object is constructed at file scope.
+         * @param debounce_ms How long a raw state must hold before it is accepted.
+         */
+        void set_debounce_ms(uint32_t debounce_ms) { debounce_ms_ = debounce_ms; }
+
         /// @brief True once begin() has succeeded.
         bool ready() const { return ready_; }
 

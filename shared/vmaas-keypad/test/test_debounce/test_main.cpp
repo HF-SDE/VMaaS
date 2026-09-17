@@ -146,6 +146,24 @@ void test_debounce_window_is_configurable()
     TEST_ASSERT_EQUAL_CHAR('1', ev.key);
 }
 
+// The window can also be set after construction: main.cpp builds the object at
+// file scope, long before config.json has been read off the filesystem.
+void test_debounce_window_can_be_changed_after_construction()
+{
+    FakeKeypadPort port;
+    Keypad kp(port, 1000);
+    kp.set_debounce_ms(4);
+    kp.begin(ROWS, 4, COLS, 3);
+
+    kp.tick(0);
+    port.press(0, 0);
+    kp.tick(10);
+    kp.tick(14);
+    KeyEvent ev{};
+    TEST_ASSERT_TRUE(kp.next_event(ev));
+    TEST_ASSERT_EQUAL_CHAR('1', ev.key);
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -155,5 +173,6 @@ int main()
     RUN_TEST(test_release_produces_exactly_one_released_with_the_same_key);
     RUN_TEST(test_event_timestamp_is_the_acceptance_time);
     RUN_TEST(test_debounce_window_is_configurable);
+    RUN_TEST(test_debounce_window_can_be_changed_after_construction);
     return UNITY_END();
 }

@@ -12,8 +12,9 @@
 #include "esp_keypad_port.h"
 #include "keypad.h"
 #include "keypad_task.h"
+#include "config_store.h"
+#include "wifi_sta.h"
 #include "slot_entry.h"
-#include <WiFi.h>
 
 namespace
 {
@@ -31,14 +32,15 @@ namespace
     vmaas::GroveLcdRgb lcd(i2c);
 
     vmaas::EspKeypadPort keypad_port;
-    vmaas::Keypad keypad(keypad_port, Config::keypad_debounce_ms);
-    vmaas::SlotEntry entry(vmaas::SLOT_ENTRY_MAX_DIGITS, Config::slot_entry_timeout_ms);
+    vmaas::Keypad keypad(keypad_port);
+    vmaas::SlotEntry entry(vmaas::SLOT_ENTRY_MAX_DIGITS);
 
     bool display_ok = false;
     bool backlight_ok = false;
     bool motor_error_shown = false;
     char last_row1[17] = {};
     uint32_t result_hold_until_ms = 0; // see render()
+    uint32_t result_hold_ms = 0;       // from config.json, set in app_main()
 
     uint32_t now_ms()
     {
@@ -62,10 +64,10 @@ namespace
 
     void show_row1(const char *text)
     {
-        if (!display_ok)
-            return;
-        if (std::strncmp(text, last_row1, sizeof(last_row1)) == 0)
-            return;
+        if (!display_ok) return;
+
+        if (std::strncmp(text, last_row1, sizeof(last_row1)) == 0) return;
+
         std::snprintf(last_row1, sizeof(last_row1), "%s", text);
         log_lcd("clear row 1", lcd.clear_row(1));
         log_lcd("row 1", lcd.print_at(0, 1, text));
@@ -80,35 +82,36 @@ namespace
 
     void show_motor_error()
     {
-        if (motor_error_shown)
-            return;
+        if (motor_error_shown) return;
+
         motor_error_shown = true;
         ESP_LOGE(TAG, "Motorcontrol has no valid slot configuration, showing error screen");
         show_rows(ERROR_ROW0, ERROR_ROW1);
-        if (backlight_ok)
+        if (backlight_ok) {
             log_lcd("set_rgb", lcd.set_rgb(255, 0, 0));
+        }
     }
 
     void clear_motor_error()
     {
-        if (!motor_error_shown)
-            return;
+        if (!motor_error_shown) return;
+
         motor_error_shown = false;
         ESP_LOGI(TAG, "Motorcontrol back to normal, restoring display");
-        if (backlight_ok)
+        if (backlight_ok) {
             log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
+        }
         show_prompt();
     }
 
     // A result line has to survive being immediately contradicted: SlotEntry
     // resets itself the moment it reports Confirmed, so the very next loop
     // run will call render() with an empty Editing state roughly 50 ms later.
-    // Without the hold below, "Slot 12 valgt" would be overwritten by "> _"
+    // Without the hold below, "Slot 12 chosen" would be overwritten by "> _"
     // long before anyone could read it.
     void render(const vmaas::EntryState &st)
     {
-        if (motor_error_shown)
-            return;
+        if (motor_error_shown) return;
 
         char line[17];
         switch (st.status)
@@ -118,7 +121,7 @@ namespace
             uint8_t slot = 0;
             if (vmaas::slot_number(st, slot))
             {
-                std::snprintf(line, sizeof(line), "Slot %u selected", (unsigned)slot);
+                std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
                 ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
             }
             else
@@ -126,13 +129,13 @@ namespace
                 std::snprintf(line, sizeof(line), "Unknown slot");
             }
             show_row1(line);
-            result_hold_until_ms = now_ms() + Config::slot_entry_result_hold_ms;
+            result_hold_until_ms = now_ms() + result_hold_ms;
             break;
         }
         case vmaas::EntryStatus::Cancelled:
             ESP_LOGI(TAG, "entry cancelled");
             show_row1("Cancelled");
-            result_hold_until_ms = now_ms() + Config::slot_entry_result_hold_ms;
+            result_hold_until_ms = now_ms() + result_hold_ms;
             break;
         case vmaas::EntryStatus::TimedOut:
             ESP_LOGI(TAG, "entry timed out, clearing");
@@ -148,28 +151,24 @@ namespace
             break;
         }
     }
-
-    void startWifi()
-    {
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(Config::wifi_ssid, Config::wifi_password);
-        show_row1("Connecting to WiFi...");
-        set_rgb(255, 255, 0); // Yellow backlight for WiFi connection
-        ESP_LOGI(TAG, "Connecting to WiFi SSID '%s'...", Config::wifi_ssid);
-        while (WiFi.status() != WL_CONNECTED)
-        {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            set_rgb(255, 0, 0); // Red backlight while waiting for WiFi
-            ESP_LOGI(TAG, "Waiting for WiFi connection...");
-        }
-        show_row1("Connected to WiFi");
-        set_rgb(0, 255, 0); // Green backlight when connected
-        ESP_LOGI(TAG, "WiFi connected");
-    }
 }
 
 extern "C" void app_main()
 {
+    // Mounts LittleFS, so it runs before anything else touches storage.
+    const vmaas::DeviceConfig cfg = config_store::load();
+    keypad.set_debounce_ms(cfg.keypad_debounce_ms);
+    entry.set_timeout_ms(cfg.slot_entry_timeout_ms);
+    result_hold_ms = cfg.slot_entry_result_hold_ms;
+
+    const esp_err_t wifi_err = wifi_sta::init();
+    if (wifi_err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi init failed: %s, continuing offline", esp_err_to_name(wifi_err));
+    }
+    else {
+        wifi_sta::connect();
+    }
+
     bus.begin();
     motor.begin();
 
@@ -177,20 +176,20 @@ extern "C" void app_main()
     const vmaas::LcdError lcd_err = lcd.begin();
     display_ok = lcd.ready();
     backlight_ok = (lcd_err == vmaas::LcdError::None);
-    if (!display_ok)
-        ESP_LOGE(TAG, "display init failed: %s, continuing without display",
-                 vmaas::to_string(lcd_err));
-    else if (!backlight_ok)
-        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only",
-                 vmaas::to_string(lcd_err));
+    if (!display_ok) {
+        ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
+    }
+    else if (!backlight_ok) {
+        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
+    }
 
-    const vmaas::KeypadError kp_err =
-        keypad.begin(Pins::KEYPAD_ROWS, 4, Pins::KEYPAD_COLS, 3);
-    if (kp_err != vmaas::KeypadError::None)
-        ESP_LOGE(TAG, "keypad init failed: %s, continuing without keypad",
-                 vmaas::to_string(kp_err));
-    else if (!keypad_task_start(keypad))
+    const vmaas::KeypadError kp_err = keypad.begin(Pins::KEYPAD_ROWS, 4, Pins::KEYPAD_COLS, 3);
+    if (kp_err != vmaas::KeypadError::None) {
+        ESP_LOGE(TAG, "keypad init failed: %s, continuing without keypad", vmaas::to_string(kp_err));
+    }
+    else if (!keypad_task_start(keypad)) {
         ESP_LOGE(TAG, "keypad scan task did not start, continuing without keypad");
+    }
 
     // Boot self-check for keyboard matrix wiring, drive each row low and read the columns.
     // A column stuck low means a wiring or pull-up fault rather than a scan fault.
@@ -205,31 +204,34 @@ extern "C" void app_main()
             const int c1 = keypad_port.read_col(1) ? 1 : 0;
             const int c2 = keypad_port.read_col(2) ? 1 : 0;
             keypad_port.drive_row(r, true);
-            ESP_LOGI(TAG, "selftest row %u (GPIO%d): cols = %d %d %d",
-                     (unsigned)r, Pins::KEYPAD_ROWS[r], c0, c1, c2);
+            ESP_LOGI(TAG, "selftest row %u (GPIO%d): cols = %d %d %d", (unsigned)r, Pins::KEYPAD_ROWS[r], c0, c1, c2);
         }
     }
 
     show_prompt();
 
-    motor.on_ack([](vmaas::Cmd cmd)
-                 {
+    motor.on_ack([](vmaas::Cmd cmd) {
         ESP_LOGI(TAG, "ACK for cmd 0x%02X", (unsigned)cmd);
-        clear_motor_error(); });
-    motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err)
-                 {
+        clear_motor_error();
+    });
+    motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err) {
         ESP_LOGW(TAG, "NAK for cmd 0x%02X, error %u", (unsigned)cmd, (unsigned)err);
-        if (err == vmaas::ErrorCode::CONFIG_ERROR)
-            show_motor_error(); });
-    motor.on_done([](uint8_t slot)
-                  { ESP_LOGI(TAG, "slot %u dispensed", slot); });
-    motor.on_status([](vmaas::State state, uint8_t slot)
-                    {
+        if (err == vmaas::ErrorCode::CONFIG_ERROR) {
+            show_motor_error(); 
+        }
+    });
+    motor.on_done([](uint8_t slot){ 
+        ESP_LOGI(TAG, "slot %u dispensed", slot);
+    });
+    motor.on_status([](vmaas::State state, uint8_t slot) {
         ESP_LOGI(TAG, "status: state=%u current_slot=%u", (unsigned)state, slot);
-        if (state == vmaas::State::ERROR)
+        if (state == vmaas::State::ERROR) {
             show_motor_error();
-        else
-            clear_motor_error(); });
+        }
+        else {
+            clear_motor_error();
+        }
+    });
 
     TickType_t last_status = xTaskGetTickCount();
     while (true)
@@ -239,25 +241,28 @@ extern "C" void app_main()
         vmaas::KeyEvent ev{};
         while (keypad_task_next(ev))
         {
-            if (ev.type == vmaas::KeyEventType::Pressed)
+            if (ev.type == vmaas::KeyEventType::Pressed) {
                 ESP_LOGI(TAG, "key '%c'", ev.key);
+            }
             render(entry.handle(ev));
         }
 
         render(entry.tick(now_ms()));
 
-        if (display_ok)
+        if (display_ok) {
             lcd.tick(now_ms());
+        }
 
         const TickType_t now = xTaskGetTickCount();
         if (static_cast<TickType_t>(now - last_status) >= STATUS_INTERVAL)
         {
             last_status = now;
-            if (bus.dropped_frames() > 0)
+            if (bus.dropped_frames() > 0) {
                 ESP_LOGW(TAG, "dropped frames so far: %lu", (unsigned long)bus.dropped_frames());
-            if (keypad.dropped_events() > 0)
-                ESP_LOGW(TAG, "dropped key events so far: %lu",
-                         (unsigned long)keypad.dropped_events());
+            }
+            if (keypad.dropped_events() > 0) {
+                ESP_LOGW(TAG, "dropped key events so far: %lu", (unsigned long)keypad.dropped_events());
+            }
             motor.request_status();
         }
     }

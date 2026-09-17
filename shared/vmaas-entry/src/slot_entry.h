@@ -47,6 +47,15 @@ namespace vmaas
         /// @brief Current buffer with status Editing. Never reports a transient status.
         EntryState state() const;
 
+        /**
+         * @brief Change the inactivity timeout after construction.
+         *
+         * The Main-Controller reads this from config.json, which is not
+         * available when the object is constructed at file scope.
+         * @param timeout_ms Inactivity before a partial entry is discarded. 0 disables the timeout.
+         */
+        void set_timeout_ms(uint32_t timeout_ms) { timeout_ms_ = timeout_ms; }
+
         /// @brief Empty the buffer and stop the timeout.
         void reset();
 

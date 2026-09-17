@@ -12,6 +12,7 @@
 #include "esp_system.h"
 #include "pins.h"
 #include "config_store.h"
+#include "storage.h"
 #include "config_error_responder.h"
 #include "command_handler.h"
 #include "uart_bus.h"
@@ -27,13 +28,13 @@ namespace
 
     vmaas::UartBus bus(UART_NUM_1, Pins::UART_TX, Pins::UART_RX);
 
-    [[noreturn]] void run_with_slots(const vmaas::Config& cfg)
+    [[noreturn]] void run_with_slots(const vmaas::SlotConfig& cfg)
     {
-        // Locals live for the whole run: this function never returns and the
-        // handler keeps a pointer to the table.
         SlotPin table[vmaas::MAX_SLOTS];
         for (size_t i = 0; i < cfg.slot_count; ++i)
+        {
             table[i] = SlotPin{cfg.slots[i].slot, static_cast<gpio_num_t>(cfg.slots[i].pin)};
+        }
 
         CommandHandler handler(bus, table, cfg.slot_count);
         handler.begin();
@@ -41,9 +42,6 @@ namespace
 
         while (true)
         {
-            // One FreeRTOS tick (CONFIG_FREERTOS_HZ=100, so 10 ms). With no UART
-            // traffic this timeout sets how late handler.tick() can end a RUN, so
-            // keeping it at one tick bounds the motor pulse overrun to one tick.
             bus.poll(pdMS_TO_TICKS(10));
             handler.tick();
         }
@@ -53,9 +51,7 @@ namespace
     {
         ++s_error_boots;
         const bool restart_armed = s_error_boots < MAX_ERROR_RESTARTS;
-        ESP_LOGE(TAG, "config error: %s (error boot %lu of %lu%s)", reason,
-                 (unsigned long)s_error_boots, (unsigned long)MAX_ERROR_RESTARTS,
-                 restart_armed ? ", restarting in 30 s" : ", restart budget spent, staying up");
+        ESP_LOGE(TAG, "config error: %s (error boot %lu of %lu%s)", reason, (unsigned long)s_error_boots, (unsigned long)MAX_ERROR_RESTARTS, restart_armed ? ", restarting in 30 s" : ", restart budget spent, staying up");
 
         ConfigErrorResponder responder(bus);
         responder.begin();
@@ -75,11 +71,12 @@ namespace
 
 extern "C" void app_main()
 {
-    if (esp_reset_reason() == ESP_RST_POWERON)
-        s_error_boots = 0; // RTC memory is garbage after power-on
+    if (esp_reset_reason() == ESP_RST_POWERON) {
+        s_error_boots = 0; // Empty the RTC memory after power-on
+    }
 
     bus.begin();
-    config_store::mount_storage(); // failure is logged; load_config then reports "missing"
+    vmaas::fs::mount(config_store::PARTITION_LABEL, config_store::MOUNT_POINT);
     const config_store::LoadResult cfg = config_store::load_config();
 
     if (cfg.ok)

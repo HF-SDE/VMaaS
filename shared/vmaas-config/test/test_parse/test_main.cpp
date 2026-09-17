@@ -1,6 +1,6 @@
 /**
  * @file test_main.cpp
- * @brief Host tests for parse_config() structure handling.
+ * @brief Host tests for parse_slot_config() structure handling.
  *
  * The contract under test: a well-formed file yields the slot table in file
  * order and ok == true; anything that is not a JSON object with a "slots"
@@ -10,8 +10,8 @@
 #include <unity.h>
 #include <cstring>
 #include <string>
-#include "config.h"
-#include "config_parser.h"
+#include "slot_config.h"
+#include "slot_config_parser.h"
 
 using namespace vmaas;
 
@@ -27,7 +27,7 @@ namespace
         ]
     })";
 
-    bool has_issue(const ParseResult& r, ConfigIssueKind kind, const char* field)
+    bool has_issue(const SlotParseResult& r, ConfigIssueKind kind, const char* field)
     {
         for (size_t i = 0; i < r.issue_count; ++i)
             if (r.issues[i].kind == kind && std::strcmp(r.issues[i].field, field) == 0)
@@ -41,7 +41,7 @@ void tearDown() {}
 
 void test_valid_file_gives_slots_in_file_order()
 {
-    const ParseResult r = parse_config(FOUR_SLOTS);
+    const SlotParseResult r = parse_slot_config(FOUR_SLOTS);
     TEST_ASSERT_TRUE(r.json_valid);
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.issue_count);
@@ -54,7 +54,7 @@ void test_valid_file_gives_slots_in_file_order()
 
 void test_single_slot_file_is_ok()
 {
-    const ParseResult r = parse_config(R"({"slots": [{"slot": 7, "pin": 5}]})");
+    const SlotParseResult r = parse_slot_config(R"({"slots": [{"slot": 7, "pin": 5}]})");
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.config.slot_count);
     TEST_ASSERT_EQUAL_UINT8(7, r.config.slots[0].slot);
@@ -64,7 +64,7 @@ void test_single_slot_file_is_ok()
 // There is no default wiring: a file without "slots" is unusable.
 void test_empty_object_is_missing_slots()
 {
-    const ParseResult r = parse_config("{}");
+    const SlotParseResult r = parse_slot_config("{}");
     TEST_ASSERT_TRUE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.config.slot_count);
@@ -73,7 +73,7 @@ void test_empty_object_is_missing_slots()
 
 void test_nullptr_is_invalid_json()
 {
-    const ParseResult r = parse_config(nullptr);
+    const SlotParseResult r = parse_slot_config(nullptr);
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::InvalidJson, ""));
@@ -82,7 +82,7 @@ void test_nullptr_is_invalid_json()
 void test_invalid_json_gives_offset()
 {
     const char* json = R"({"slots": [{"slot": 1,)";
-    const ParseResult r = parse_config(json);
+    const SlotParseResult r = parse_slot_config(json);
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.issue_count);
@@ -93,7 +93,7 @@ void test_invalid_json_gives_offset()
 
 void test_non_object_root_is_invalid_json()
 {
-    const ParseResult r = parse_config(R"([{"slot": 1, "pin": 18}])");
+    const SlotParseResult r = parse_slot_config(R"([{"slot": 1, "pin": 18}])");
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::InvalidJson, ""));
@@ -107,7 +107,7 @@ void test_deeply_nested_json_is_rejected_before_parsing()
     json += "1";
     for (int i = 0; i < 20; ++i) json += "]";
     json += "}";
-    const ParseResult r = parse_config(json.c_str());
+    const SlotParseResult r = parse_slot_config(json.c_str());
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.issue_count);
@@ -119,7 +119,7 @@ void test_deeply_nested_json_is_rejected_before_parsing()
 // The schema itself is depth 3 (object > array > object) and must stay well inside the limit.
 void test_schema_depth_is_within_limit()
 {
-    const ParseResult r = parse_config(R"({"slots": [{"slot": 1, "pin": 18, "meta": {"a": [1]}}]})");
+    const SlotParseResult r = parse_slot_config(R"({"slots": [{"slot": 1, "pin": 18, "meta": {"a": [1]}}]})");
     TEST_ASSERT_TRUE(r.ok);
 }
 
@@ -131,7 +131,7 @@ void test_unknown_keys_are_ignored_everywhere()
         "slots": [{"slot": 1, "pin": 18, "label": "cola"}],
         "notes": [1, 2, 3]
     })";
-    const ParseResult r = parse_config(json);
+    const SlotParseResult r = parse_slot_config(json);
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.issue_count);
     TEST_ASSERT_EQUAL_UINT32(1, r.config.slot_count);
@@ -140,7 +140,7 @@ void test_unknown_keys_are_ignored_everywhere()
 // A file from a newer firmware still applies; the caller gets a hint.
 void test_newer_version_is_flagged_but_ok()
 {
-    const ParseResult r = parse_config(R"({"version": 2, "slots": [{"slot": 1, "pin": 18}]})");
+    const SlotParseResult r = parse_slot_config(R"({"version": 2, "slots": [{"slot": 1, "pin": 18}]})");
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.issue_count);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::NewerVersion, "version"));
@@ -149,12 +149,12 @@ void test_newer_version_is_flagged_but_ok()
 
 void test_current_version_gives_no_issue()
 {
-    TEST_ASSERT_EQUAL_UINT32(0, parse_config(R"({"version": 1, "slots": [{"slot": 1, "pin": 18}]})").issue_count);
+    TEST_ASSERT_EQUAL_UINT32(0, parse_slot_config(R"({"version": 1, "slots": [{"slot": 1, "pin": 18}]})").issue_count);
 }
 
 void test_non_numeric_version_is_wrong_type_and_not_ok()
 {
-    const ParseResult r = parse_config(R"({"version": "1", "slots": [{"slot": 1, "pin": 18}]})");
+    const SlotParseResult r = parse_slot_config(R"({"version": "1", "slots": [{"slot": 1, "pin": 18}]})");
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::WrongType, "version"));
 }
