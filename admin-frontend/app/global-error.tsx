@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-
+import * as Sentry from "@sentry/nextjs"
 import "./globals.css"
 
 /**
@@ -19,7 +19,7 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error("Unhandled error rendering the root layout:", error)
+    Sentry.captureException(error)
   }, [error])
 
   return (
@@ -27,19 +27,19 @@ export default function GlobalError({
       <body>
         <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
           <h1 className="text-lg font-semibold">Something went wrong</h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             The application failed to load. Please try again.
           </p>
 
           <button
             onClick={reset}
-            className="bg-primary text-primary-foreground h-9 rounded-md px-4 text-sm font-medium"
+            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
           >
             Try again
           </button>
 
           {error.digest ? (
-            <p className="text-muted-foreground font-mono text-xs">
+            <p className="font-mono text-xs text-muted-foreground">
               Reference: {error.digest}
             </p>
           ) : null}
