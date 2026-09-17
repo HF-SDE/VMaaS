@@ -8,6 +8,21 @@ export interface GetMachinesParams {
   search?: string;
 }
 
+/** What a machine picker sends to `GET /api/machines/simple-search`. `search` is
+ *  required: the endpoint exists to answer a typed query, never to list. */
+export interface SimpleMachineSearchParams {
+  search: string;
+  limit?: number;
+}
+
+/** The minimum a machine picker needs — the id it submits, plus the site that
+ *  tells two machines of the same name apart. */
+export interface SimpleMachine {
+  id: string;
+  name: string;
+  site: SimpleSite;
+}
+
 export interface MachineUsage {
   canDelete: boolean;
 }

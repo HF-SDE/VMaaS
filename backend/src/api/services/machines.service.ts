@@ -9,10 +9,14 @@ import {
   type MachineSite,
   type MachineSortField,
   type MachineUsage,
+  type SimpleMachine,
+  type SimpleMachineSearchParams,
 } from "@vmaas/shared/types/machine";
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 25;
 const DEFAULT_SORT_BY: MachineSortField = "createdAt";
 const DEFAULT_SORT_ORDER = "desc" as const;
 
@@ -133,6 +137,41 @@ export async function getMachinesPageService(
     });
   } catch (error) {
     return unknownError("listing", error);
+  }
+}
+
+/**
+ * A short list of matching machines for a picker — id, name and site only.
+ *
+ * Deliberately not a page: a picker shows the first handful and asks the user to
+ * type more, so there is no count to run and no offset to carry. `limit` is
+ * clamped rather than rejected for the same reason the paginated list clamps.
+ * The site is searched alongside the name, as it is in the paginated list.
+ */
+export async function simpleMachineSearchService(
+  tenantId: string,
+  params: SimpleMachineSearchParams,
+): Promise<Result<UnknownMachineError, SimpleMachine[]>> {
+  const search = params.search.trim();
+  const limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(params.limit ?? DEFAULT_SEARCH_LIMIT)));
+
+  try {
+    return ok(
+      await prisma.machine.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { site: { name: { contains: search, mode: "insensitive" } } },
+          ],
+        },
+        select: { id: true, name: true, site: SITE_SELECT },
+        orderBy: { name: "asc" },
+        take: limit,
+      }),
+    );
+  } catch (error) {
+    return unknownError("searching", error);
   }
 }
 

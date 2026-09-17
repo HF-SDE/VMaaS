@@ -131,7 +131,6 @@ async function seedTenant(tenantNumber: number) {
           return {
             tenantId: tenant.id,
             machineId: machine.id,
-            slotId: slot.id,
             productId: slot.productId,
             status,
             price: slot.price ?? 10,

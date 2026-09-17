@@ -23,7 +23,16 @@ export function validate<T extends ZodType>(schema: T) {
 
     const parsed = result.data as { body?: unknown; query?: unknown; params?: unknown };
     if (parsed.body !== undefined) req.body = parsed.body;
-    if (parsed.query !== undefined) req.query = parsed.query as typeof req.query;
+    // Express 5 defines `query` as a getter-only accessor on the request
+    // prototype, so assigning to it throws. Defining an own data property
+    // shadows the accessor, which is what leaves the coerced query in place.
+    if (parsed.query !== undefined)
+      Object.defineProperty(req, "query", {
+        value: parsed.query,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
     if (parsed.params !== undefined) req.params = parsed.params as typeof req.params;
 
     next();

@@ -2,7 +2,13 @@ import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
-import { createSiteSchema, siteIdParamsSchema, updateSiteSchema } from "@vmaas/shared/schemas";
+import {
+  createSiteSchema,
+  getSitesPageSchema,
+  simpleSiteSearchSchema,
+  siteIdParamsSchema,
+  updateSiteSchema,
+} from "@vmaas/shared/schemas";
 import { Router } from "express";
 
 import {
@@ -21,9 +27,19 @@ sitesRouter.use(requireAuth, requireTenant);
 
 sitesRouter.get("/", requirePermission(PERMISSIONS.SITE_READ), getSitesController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.
-sitesRouter.get("/paginated", requirePermission(PERMISSIONS.SITE_READ), getSitesPageController);
+sitesRouter.get(
+  "/paginated",
+  requirePermission(PERMISSIONS.SITE_READ),
+  validate(getSitesPageSchema),
+  getSitesPageController,
+);
 // Same: a literal path above "/:id". Feeds the site picker.
-sitesRouter.get("/simple-search", requirePermission(PERMISSIONS.SITE_READ), simpleSiteSearchController);
+sitesRouter.get(
+  "/simple-search",
+  requirePermission(PERMISSIONS.SITE_READ),
+  validate(simpleSiteSearchSchema),
+  simpleSiteSearchController,
+);
 sitesRouter.post("/", requirePermission(PERMISSIONS.SITE_WRITE), validate(createSiteSchema), createSiteController);
 
 sitesRouter.get("/:id", requirePermission(PERMISSIONS.SITE_READ), validate(siteIdParamsSchema), getSiteController);

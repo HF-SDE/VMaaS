@@ -21,16 +21,19 @@ import {
   CollapsibleTrigger,
 } from "./ui/collapsible"
 import {
-  ArrowRightLeft,
+  Coins,
   ChevronRight,
   LayoutDashboard,
   LogOut,
   MoreHorizontal,
-  ScanBarcode,
-  ScrollText,
   ShelvingUnit,
-  TableProperties,
   User,
+  Siren,
+  Blocks,
+  ShoppingBasket,
+  MapPinned,
+  UserRound,
+  ShieldCog,
 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
@@ -50,7 +53,6 @@ import { UserAvatarProps, UserAvatar } from "./user-avatar"
 import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
 import { PermissionKey } from "@vmaas/shared/types"
-import { Separator } from "./ui/separator"
 
 interface NavItem {
   title: string
@@ -83,7 +85,7 @@ const data: AppSidebarProps = {
     {
       title: "Sales",
       url: "/sales",
-      icon: <ScanBarcode />,
+      icon: <Coins />,
     },
     {
       title: "Management",
@@ -94,24 +96,24 @@ const data: AppSidebarProps = {
           title: "Machines",
           url: "/machines",
 
-          icon: <TableProperties />,
+          icon: <Blocks />,
         },
         {
           title: "Products",
           url: "/products",
 
-          icon: <ArrowRightLeft />,
+          icon: <ShoppingBasket />,
         },
         {
           title: "Sites",
           url: "/sites",
 
-          icon: <ArrowRightLeft />,
+          icon: <MapPinned />,
         },
         {
-          title: "History",
-          url: "/history",
-          icon: <ScrollText />,
+          title: "Machine alerts",
+          url: "/machines/alerts",
+          icon: <Siren />,
         },
       ],
     },
@@ -124,7 +126,7 @@ const data: AppSidebarProps = {
           title: "Users",
           url: "/users",
           requiredPermission: "user:view",
-          icon: <TableProperties />,
+          icon: <UserRound />,
         },
         // {
         //   title: "Permissions",
@@ -135,7 +137,7 @@ const data: AppSidebarProps = {
           title: "Roles",
           url: "/roles",
           requiredPermission: "role:view",
-          icon: <ScrollText />,
+          icon: <ShieldCog />,
         },
       ],
     },

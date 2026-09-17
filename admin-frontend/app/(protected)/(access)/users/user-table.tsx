@@ -24,9 +24,9 @@ import { toast } from "sonner"
 import { GetPaginatedResult } from "@vmaas/shared/types/data-table"
 import { fetchData } from "@/lib/data/data-fetch"
 import type { MembersResponse } from "@backend-responses"
-import type { RemoveMemberResult } from "./actions"
 import type { TenantRole } from "./page"
 import { membersErrorMessage } from "./messages"
+import { RemoveMemberResult } from "./actions"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -237,10 +237,10 @@ export function UsersDataTable({
     async (userId: string) => {
       if (!onRemoveMember) return
 
-      const [error, data] = await onRemoveMember(userId)
+      const [error] = await onRemoveMember(userId)
 
       if (error) {
-        toast.error(error)
+        toast.error(error.reason)
         return
       }
 
