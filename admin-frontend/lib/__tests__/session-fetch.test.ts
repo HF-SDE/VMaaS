@@ -5,6 +5,9 @@ const payload = {
   user: { id: "u1", name: "Kenni", email: "k@example.com" },
   session: { activeTenantId: "t1" },
   tenants: [{ id: "t1", name: "Tenant One" }],
+  tenantInvites: [
+    { tenantId: "t2", tenantName: "Tenant Two", token: "inv1", roleName: "Operator" },
+  ],
   permissions: ["machine:read"],
 }
 
@@ -65,6 +68,14 @@ describe("fetchSession", () => {
       user: { id: "u1", name: "Kenni", email: "k@example.com" },
       activeTenantId: "t1",
       tenants: [{ id: "t1", name: "Tenant One" }],
+      tenantInvites: [
+        {
+          tenantId: "t2",
+          tenantName: "Tenant Two",
+          token: "inv1",
+          roleName: "Operator",
+        },
+      ],
       permissions: ["machine:read"],
     })
   })
