@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-fs",
+  "version": "0.1.0",
+  "description": "LittleFS mount and whole-file text reading for VMaaS controllers",
+  "keywords": ["littlefs", "filesystem", "vmaas"],
+  "frameworks": "espidf",
+  "platforms": "espressif32",
+  "headers": ["storage.h"]
+}

@@ -3,7 +3,7 @@
  * @file config_parser.h
  * @brief Parse and validate a Motorcontrol config.json text.
  */
-#include "config.h"
+#include "slot_config.h"
 
 namespace vmaas
 {
@@ -18,7 +18,7 @@ namespace vmaas
      * - At most MAX_SLOTS entries (TooManySlots). The first MAX_SLOTS are
      *   still validated so the log can name every problem it can see.
      * - Unknown keys are ignored. "version" higher than
-     *   CONFIG_SCHEMA_VERSION gives NewerVersion and parsing continues.
+     *   SLOT_SCHEMA_VERSION gives NewerVersion and parsing continues.
      * - Invalid JSON, a nullptr, a non-object root, or nesting deeper than 8
      *   levels (checked before the recursive parser runs, so a hostile file
      *   cannot exhaust the stack) gives json_valid == false and one
@@ -31,5 +31,5 @@ namespace vmaas
      * @param json_text NUL-terminated JSON text, or nullptr.
      * @return Slot table plus issues. Never fails.
      */
-    ParseResult parse_config(const char* json_text);
+    SlotParseResult parse_slot_config(const char* json_text);
 }

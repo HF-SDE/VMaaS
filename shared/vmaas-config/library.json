@@ -5,5 +5,5 @@
   "keywords": ["config", "json", "vmaas"],
   "frameworks": "*",
   "platforms": "*",
-  "headers": ["config.h", "config_parser.h"]
+  "headers": ["slot_config.h", "slot_config_parser.h", "device_config.h", "device_config_parser.h", "config_issue.h", "json_depth.h"]
 }

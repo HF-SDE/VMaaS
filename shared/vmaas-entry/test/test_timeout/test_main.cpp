@@ -71,6 +71,17 @@ void test_released_events_are_ignored()
     TEST_ASSERT_EQUAL(EntryStatus::TimedOut, e.tick(SLOT_ENTRY_TIMEOUT_MS).status);
 }
 
+// The window can also be set after construction: main.cpp builds the object at
+// file scope, long before config.json has been read off the filesystem.
+void test_timeout_can_be_changed_after_construction()
+{
+    SlotEntry e;
+    e.set_timeout_ms(3000);
+    e.handle(press('1', 1000));
+    TEST_ASSERT_EQUAL(EntryStatus::Editing, e.tick(3999).status);
+    TEST_ASSERT_EQUAL(EntryStatus::TimedOut, e.tick(4000).status);
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -79,5 +90,6 @@ int main()
     RUN_TEST(test_each_keypress_restarts_the_window);
     RUN_TEST(test_zero_timeout_disables_it);
     RUN_TEST(test_released_events_are_ignored);
+    RUN_TEST(test_timeout_can_be_changed_after_construction);
     return UNITY_END();
 }

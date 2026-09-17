@@ -22,17 +22,6 @@ namespace Config
     /// outrun.
     constexpr uint32_t keypad_scan_interval_ms = 10;
 
-    /// How long a raw key state must hold before it is believed, in milliseconds.
-    constexpr uint32_t keypad_debounce_ms = 20;
-
-    /// Inactivity before a partial slot entry is discarded, in milliseconds.
-    constexpr uint32_t slot_entry_timeout_ms = 10000;
-
-    /// How long a result line ("Slot 12 valgt", "Annulleret") stays on screen
-    /// before the prompt returns, in milliseconds. Without this the next loop
-    /// iteration would overwrite the result within 50 ms.
-    constexpr uint32_t slot_entry_result_hold_ms = 2000;
-
     /// Depth of the queue between the keypad task and the main loop.
     constexpr int keypad_queue_depth = 16;
 
@@ -41,9 +30,4 @@ namespace Config
 
     /// Priority of the keypad scan task. Above the idle work, below the UART.
     constexpr int keypad_task_priority = 5;
-
-    /// @brief WiFi SSID
-    constexpr const char* wifi_ssid = "VMaaS";
-    /// @brief WiFi password
-    constexpr const char* wifi_password = "VMaaS123";
 }

@@ -1,0 +1,5 @@
+# Custom partition table with a LittleFS storage partition. Recorded here so it
+# survives regeneration of sdkconfig.main-controller.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"

@@ -1,6 +1,6 @@
 /**
  * @file test_main.cpp
- * @brief Host tests for ConfigIssueKind, to_string() and the ParseResult shape.
+ * @brief Host tests for ConfigIssueKind, to_string() and the SlotParseResult shape.
  *
  * Guards that every issue kind has its own log-friendly name so a boot log
  * line always tells which validation failed, that None is 0, and that the
@@ -8,7 +8,7 @@
  */
 #include <unity.h>
 #include <cstring>
-#include "config.h"
+#include "slot_config.h"
 
 using namespace vmaas;
 
@@ -44,14 +44,14 @@ void test_unknown_value_maps_to_unknown()
     TEST_ASSERT_EQUAL_STRING("Unknown", to_string(static_cast<ConfigIssueKind>(0xFF)));
 }
 
-// A fresh ParseResult must read as "nothing parsed, no issues" so callers can rely on zero-init.
+// A fresh SlotParseResult must read as "nothing parsed, no issues" so callers can rely on zero-init.
 void test_parse_result_default_is_clean()
 {
-    ParseResult r{};
+    SlotParseResult r{};
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.issue_count);
     TEST_ASSERT_EQUAL_UINT32(0, r.config.slot_count);
-    TEST_ASSERT_TRUE(ParseResult::MAX_ISSUES >= 1);
+    TEST_ASSERT_TRUE(SlotParseResult::MAX_ISSUES >= 1);
 }
 
 // The longest field name the parser can emit, "slots[31].slot", must fit with its NUL.

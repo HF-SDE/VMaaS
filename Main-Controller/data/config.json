@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "device": {
+    "name": "VMaaS-0042",
+    "machine_id": "5f2c1a90-6b3e-4d21-9f77-1c0a8e4b2d55"
+  },
+  "backend": {
+    "mqtt_host": "mqtt.vmaas.dk",
+    "mqtt_port": 8883,
+    "client_id": "vmaas-0042"
+  },
+  "timings": {
+    "keypad_debounce_ms": 20,
+    "slot_entry_timeout_ms": 10000,
+    "slot_entry_result_hold_ms": 2000
+  }
+}
