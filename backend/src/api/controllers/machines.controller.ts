@@ -3,6 +3,7 @@ import {
   getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
+  saveSlotLayoutSchema,
   simpleMachineSearchSchema,
   updateMachineSchema,
 } from "@vmaas/shared/schemas";
@@ -12,8 +13,11 @@ import {
   createMachineService,
   deleteMachineService,
   getMachineByIdService,
+  getMachineWithoutTenantService,
   getMachinesPageService,
   getMachinesService,
+  getMachinesWithoutTenantService,
+  saveSlotLayoutService,
   simpleMachineSearchService,
   updateMachineService,
 } from "../services/machines.service";
@@ -70,6 +74,60 @@ export async function getMachinesPageController(req: Request, res: Response) {
   }
 
   return res.status(200).json(page).end();
+}
+
+export async function getMachinesWithoutTenantController(req: Request, res: Response) {
+  const machines = await getMachinesWithoutTenantService();
+
+  return res.status(200).json(machines).end();
+}
+
+export async function getMachineWithoutTenantController(req: Request, res: Response) {
+  const { params } = machineIdParamsSchema.parse(req);
+
+  const [error, machine] = await getMachineWithoutTenantService(params.id);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "Machine not found" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(machine).end();
+}
+
+/**
+ * Saves the slot layout editor's layout. Superadmin only, and not tenant-scoped:
+ * the layout is set up before the machine is given to a tenant.
+ */
+export async function saveSlotLayoutController(req: Request, res: Response) {
+  const { body } = saveSlotLayoutSchema.parse(req);
+
+  const [error, slots] = await saveSlotLayoutService(body);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      // 404: the machine is what this request addresses
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "Machine not found" }).end();
+      // 400 rather than 404: a wrong slot id is a problem with the payload
+      case "SLOT_NOT_FOUND":
+        return res.status(400).json({ error: "One or more slots do not belong to this machine" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while saving the slot layout" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(slots).end();
 }
 
 /**

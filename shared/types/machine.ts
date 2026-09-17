@@ -71,3 +71,25 @@ export interface MachineKpis {
  *  order the rows by uuid — see `getMachinesPageService`. */
 export const MACHINE_SORT_FIELDS = ["name", "site", "status", "createdAt"] as const;
 export type MachineSortField = (typeof MACHINE_SORT_FIELDS)[number];
+
+/**
+ * What the slot layout editor sends to `POST /api/machines/save-slot-layout`.
+ *
+ * The whole layout, not a list of changes: a slot without an `id` is new, a slot with
+ * an `id` is updated, and a stored slot whose `id` is missing has been deleted.
+ */
+export interface SaveSlotLayoutData {
+  machineId: string;
+  columns: number;
+  rows: number;
+  slots: {
+    /** Missing for slots created in the editor */
+    id?: string;
+    slotNumber: number;
+    beginX: number;
+    endX: number;
+    beginY: number;
+    endY: number;
+    capacity: number;
+  }[];
+}

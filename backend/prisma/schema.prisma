@@ -292,8 +292,8 @@ model Product {
 // # Der mangler en engangs aktiverings kode
 model Machine {
   id             String          @id @default(uuid()) @db.Uuid
-  tenantId       String          @db.Uuid
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId       String?         @db.Uuid
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   name           String
   description    String?
   status         machine_status  @default(online)
@@ -323,8 +323,8 @@ model Slot {
   id         String   @id @default(uuid()) @db.Uuid
   machineId  String   @db.Uuid
   machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
-  productId  String   @db.Uuid
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productId  String?  @db.Uuid
+  product    Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
   slotNumber Int
   beginX     Int
   endX       Int

@@ -1,4 +1,4 @@
-import { type Machine, Prisma } from "@/generated/prisma/client";
+import { type Machine, Prisma, type Slot } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
@@ -11,6 +11,7 @@ import {
   type MachineSite,
   type MachineSortField,
   type MachineUsage,
+  type SaveSlotLayoutData,
   type SimpleMachine,
   type SimpleMachineSearchParams,
 } from "@vmaas/shared/types/machine";
@@ -30,6 +31,8 @@ export type MachineInUseError = { reason: "MACHINE_IN_USE"; message: string };
 /** A write named a site that is not this tenant's — or does not exist at all. */
 export type MachineSiteNotFoundError = { reason: "SITE_NOT_FOUND"; message: string };
 export type UnknownMachineError = { reason: "UNKNOWN_ERROR"; message: string };
+/** A saved layout named a slot id that isn't one of the machine's slots. */
+export type SlotNotFoundError = { reason: "SLOT_NOT_FOUND"; message: string };
 
 /** A machine row with the site it stands at, as every read returns it. */
 export type MachineListItem = Machine & MachineSite;
@@ -37,6 +40,8 @@ export type MachineDetail = MachineListItem & MachineUsage & MachineKpis;
 
 /** What the detail read takes beyond the id — only the KPI window so far. */
 export type MachineReadParams = { days?: number };
+/** A machine without a tenant, with its slots, as the slot layout editor reads it. */
+export type MachineWithoutTenant = MachineListItem & { slots: Slot[] };
 
 /** What `MachineSite` carries — enough to name the site and link to it. */
 const SITE_SELECT = { select: { id: true, name: true, city: true } } as const;
@@ -57,6 +62,11 @@ const MACHINE_NOT_FOUND: MachineNotFoundError = {
 const MACHINE_IN_USE: MachineInUseError = {
   reason: "MACHINE_IN_USE",
   message: "The machine is in use.",
+};
+
+const SLOT_NOT_FOUND: SlotNotFoundError = {
+  reason: "SLOT_NOT_FOUND",
+  message: "One or more slots do not belong to the machine.",
 };
 
 const SITE_NOT_FOUND: MachineSiteNotFoundError = {
@@ -145,6 +155,98 @@ export async function getMachinesPageService(
     });
   } catch (error) {
     return unknownError("listing", error);
+  }
+}
+
+export async function getMachinesWithoutTenantService() {
+  const machines = await prisma.machine.findMany({
+    where: { tenantId: null },
+    include: { site: SITE_SELECT, slots: true },
+    orderBy: { name: "asc" },
+  });
+
+  return machines;
+}
+
+/**
+ * One machine that hasn't been given to a tenant yet, for the slot layout editor.
+ * A machine that has a tenant reads as not found: its layout is no longer edited from there.
+ */
+export async function getMachineWithoutTenantService(
+  id: string,
+): Promise<Result<MachineNotFoundError | UnknownMachineError, MachineWithoutTenant>> {
+  try {
+    const machine = await prisma.machine.findFirst({
+      where: { id, tenantId: null },
+      include: { site: SITE_SELECT, slots: { orderBy: { slotNumber: "asc" } } },
+    });
+
+    if (!machine) return err(MACHINE_NOT_FOUND);
+
+    return ok(machine);
+  } catch (error) {
+    return unknownError("reading", error);
+  }
+}
+
+/**
+ * Replaces a machine's slots with the layout from the editor, in one transaction.
+ *
+ * The body is the whole layout, and the rules it has to follow (inside the grid, no overlaps,
+ * no floating slots, unique slot numbers) were already checked by `saveSlotLayoutSchema`.
+ * What's left for here is what needs the database:
+ * - slots with an id must be slots of this machine
+ * - stored slots missing from the layout are deleted
+ * - slots with an id are updated, slots without one are created
+ *
+ * `columns` and `rows` are validated but not stored yet: `Machine` has no columns for them.
+ */
+export async function saveSlotLayoutService(
+  data: SaveSlotLayoutData,
+): Promise<Result<MachineNotFoundError | SlotNotFoundError | UnknownMachineError, Slot[]>> {
+  const { machineId } = data;
+
+  try {
+    const machine = await prisma.machine.findUnique({
+      where: { id: machineId },
+      select: { slots: { select: { id: true } } },
+    });
+    if (!machine) return err(MACHINE_NOT_FOUND);
+
+    const storedIds = new Set(machine.slots.map((slot) => slot.id));
+    const keptSlots = data.slots.filter((slot) => slot.id !== undefined);
+    const newSlots = data.slots.filter((slot) => slot.id === undefined);
+
+    // Without this check an id from another machine would move that slot over here
+    if (keptSlots.some((slot) => !storedIds.has(slot.id!))) return err(SLOT_NOT_FOUND);
+
+    const keptIds = new Set(keptSlots.map((slot) => slot.id!));
+    const removedIds = [...storedIds].filter((id) => !keptIds.has(id));
+
+    const slots = await prisma.$transaction(async (tx) => {
+      await tx.slot.deleteMany({ where: { machineId, id: { in: removedIds } } });
+
+      // Slot numbers are unique per machine and checked on every write, so renumbering in
+      // place fails when two slots swap numbers. Moving the kept slots to temporary negative
+      // numbers first frees up every number the layout uses.
+      for (const [index, slot] of keptSlots.entries()) {
+        await tx.slot.update({ where: { id: slot.id }, data: { slotNumber: -(index + 1) } });
+      }
+
+      for (const { id, ...slot } of keptSlots) {
+        await tx.slot.update({ where: { id }, data: slot });
+      }
+
+      if (newSlots.length > 0) {
+        await tx.slot.createMany({ data: newSlots.map((slot) => ({ ...slot, machineId })) });
+      }
+
+      return tx.slot.findMany({ where: { machineId }, orderBy: { slotNumber: "asc" } });
+    });
+
+    return ok(slots);
+  } catch (error) {
+    return unknownError("saving the slot layout of", error);
   }
 }
 

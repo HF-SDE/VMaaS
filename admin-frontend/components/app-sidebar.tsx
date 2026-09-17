@@ -34,6 +34,8 @@ import {
   MapPinned,
   UserRound,
   ShieldCog,
+  Wrench,
+  LayoutGrid,
 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
@@ -59,12 +61,16 @@ interface NavItem {
   url?: string
   icon?: React.ReactNode
   requiredPermission?: PermissionKey
+  /** Only shown to super admins */
+  superAdminOnly?: boolean
   feature?: "brew-log"
   items?: {
     title: string
     url: string
     icon?: React.ReactNode
     requiredPermission?: PermissionKey
+    /** Only shown to super admins */
+    superAdminOnly?: boolean
     feature?: "brew-log"
   }[]
 }
@@ -141,7 +147,39 @@ const data: AppSidebarProps = {
         },
       ],
     },
+    {
+      title: "Super admin",
+      icon: <Wrench />,
+      superAdminOnly: true,
+
+      items: [
+        {
+          title: "Set up machines",
+          url: "/create-machine",
+          icon: <LayoutGrid />,
+        },
+      ],
+    },
   ],
+}
+
+type NavVisibility = Pick<NavItem, "requiredPermission" | "superAdminOnly">
+
+/**
+ * The navigation the user is allowed to see. Filtered before rendering, so a group's
+ * item count (which decides between a single link and a collapsible group) only counts
+ * visible items, and a group whose items are all hidden disappears entirely.
+ */
+function getVisibleNavItems(
+  items: NavItem[],
+  canSee: (item: NavVisibility) => boolean
+): NavItem[] {
+  return items
+    .filter(canSee)
+    .map((item) =>
+      item.items ? { ...item, items: item.items.filter(canSee) } : item
+    )
+    .filter((item) => item.items === undefined || item.items.length > 0)
 }
 
 const SIDEBAR_OPEN_GROUPS_STORAGE_KEY = "app-sidebar:open-groups"
@@ -262,6 +300,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
   const { user, hasPermission } = useSession()
+  const navItems = getVisibleNavItems(
+    data.navMain,
+    (item) =>
+      (!item.superAdminOnly || user.isSuperAdmin === true) &&
+      (!item.requiredPermission || hasPermission(item.requiredPermission))
+  )
   const [hasMounted, setHasMounted] = React.useState(false)
   React.useEffect(() => setHasMounted(true), [])
 
@@ -304,7 +348,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         {shouldShowNavSkeleton ? (
           <SidebarNavigationSkeleton />
         ) : (
-          data.navMain.map((item) => (
+          navItems.map((item) => (
             <div key={item.title}>
               {item.items === undefined || item.items?.length === 0 ? (
                 <SidebarMenu>
@@ -366,13 +410,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <CollapsibleContent>
                     <SidebarMenu>
                       {item.items?.map((subItem) => {
-                        if (
-                          subItem.requiredPermission &&
-                          !hasPermission(subItem.requiredPermission)
-                        ) {
-                          return null
-                        }
-
                         return (
                           <SidebarMenuItem key={subItem.title} className="pl-4">
                             <SidebarMenuButton
