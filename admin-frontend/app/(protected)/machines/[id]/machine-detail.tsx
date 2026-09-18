@@ -1,16 +1,7 @@
 import { Suspense } from "react"
-import Link from "next/link"
 import { notFound } from "next/navigation"
-import testData from "./test-data.json"
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
@@ -25,6 +16,7 @@ import type { SlotListItem } from "./slot-columns"
 import { SlotsTable } from "./slots-table"
 import { StockGrid } from "./stock-row-grid"
 import { VendingMachine } from "./vending-machine"
+import { VendingMachineSlim } from "./vending-machine-slim"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
@@ -121,19 +113,32 @@ export async function MachineDetailLoader({
           )}
         </TabsContent>
         <TabsContent value="preview">
-          <VendingMachine>
-            <StockGrid
-              stockRows={testData.map(
-                ({ beginX, beginY, endX, endY, ...row }) => ({
-                  ...row,
-                  x_start: beginX,
-                  y_start: beginY,
-                  x_end: endX,
-                  y_end: endY,
-                })
-              )}
-            />
-          </VendingMachine>
+          {/* The same read the table above uses — the preview is a second view
+              of those slots, not a second request. */}
+          {slotsError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {machinesErrorMessage(slotsError.status)}
+            </p>
+          ) : (
+            <>
+              {/* The full cabinet needs room for its keypad column; below md
+                  only the display window fits, so the slim shell stands in. */}
+              <VendingMachineSlim
+                className="md:hidden"
+                label={machine.name}
+                status={STATUS_LABEL[machine.status]}
+              >
+                <StockGrid slots={slots} />
+              </VendingMachineSlim>
+              <VendingMachine
+                className="hidden md:block"
+                label={machine.name}
+                status={STATUS_LABEL[machine.status]}
+              >
+                <StockGrid slots={slots} />
+              </VendingMachine>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </>

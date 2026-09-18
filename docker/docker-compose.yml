@@ -25,6 +25,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      pki-init:
+        condition: service_completed_successfully
     env_file:
       - ../config/environment-variables/.env.backend.dev
     environment:
@@ -33,6 +35,11 @@ services:
       # nginx (the normal entry point) plus a bare `next dev` on the host.
       FRONTEND_URL: http://localhost,http://localhost:3000
       BETTER_AUTH_URL: http://localhost
+      MQTT_URL: mqtts://emqx:8884
+      MQTT_PUBLIC_HOST: localhost
+      MQTT_PUBLIC_PORT: 8883
+      CA_CERT_PATH: /pki/ca.crt
+      CA_KEY_PATH: /pki/ca.key
     volumes:
       - ../backend/src:/usr/src/app/src
       # The entrypoint runs migrate deploy + db seed on every start; mounting
@@ -40,6 +47,9 @@ services:
       - ../backend/prisma:/usr/src/app/prisma
       - ../shared:/usr/src/shared
       - shared_node_modules:/usr/src/shared/node_modules
+      # ca.key is written mode 0600 by the container's own user, and the
+      # backend runs as that same user, so a read-only mount is enough.
+      - pki:/pki:ro
     networks:
       - internal
       - public
@@ -63,6 +73,74 @@ services:
     networks:
       - public
       - internal
+
+  pki-init:
+    container_name: pki-init
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: base
+    # Bypasses the backend entrypoint, which would run prisma migrate first.
+    entrypoint: ["npx", "tsx", "tools/pki-init.ts"]
+    environment:
+      PKI_DIR: /pki
+      # The emqx/emqx image runs its process as this uid (verified with
+      # `docker compose exec emqx id`), not root like every other consumer of
+      # /pki here — pki-init chowns emqx.key to it so the broker can read its
+      # own private key. Keep this equal to whatever uid the `emqx` image
+      # actually runs as if that image is ever changed.
+      EMQX_UID: "1000"
+    volumes:
+      - pki:/pki
+    networks:
+      - internal
+
+  emqx:
+    container_name: emqx
+    image: emqx/emqx:5.8
+    ports:
+      - 8883:8883
+      - 18083:18083
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    environment:
+      EMQX_NODE__COOKIE: vmaas-dev-cookie
+      # The dashboard admin password EMQX sets on a fresh emqx_data volume.
+      # Port 18083 is published to the host and emqx is on the `public` network,
+      # so this IS a live, reachable credential — it must never be a value
+      # committed to the repo. It comes from EMQX_DASHBOARD__DEFAULT_PASSWORD in
+      # config/environment-variables/.env.backend.dev (regenerated from the
+      # .example), supplied to compose via --env-file (see the root package.json
+      # dev scripts). The `:?` guard makes compose refuse to start rather than
+      # silently fall back to a default if the variable is unset.
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD__DEFAULT_PASSWORD:?set EMQX_DASHBOARD__DEFAULT_PASSWORD in config/environment-variables/.env.backend.dev}
+      # config/emqx/api_key_bootstrap.txt (api_key:secret, one line, NO "#"
+      # comments — tested empirically: a comment line makes EMQX fail to
+      # parse the whole file with `failed_to_load_bootstrap_file` on a fresh
+      # emqx_data volume, so the key never gets created) must be kept equal
+      # to EMQX_API_KEY / EMQX_API_SECRET in .env.backend.dev by hand; nothing
+      # enforces that beyond this comment. Same for
+      # config/emqx/auth-built-in-db-bootstrap.csv against MQTT credentials
+      # the backend uses as an MQTT client — that file DOES require a
+      # "user_id,password,is_superuser" header row (tested: no header, no
+      # user gets created; with it, it does).
+      EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/api_key_bootstrap.txt
+    volumes:
+      - pki:/pki:ro
+      - ../config/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ../config/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ../config/emqx/api_key_bootstrap.txt:/opt/emqx/etc/api_key_bootstrap.txt:ro
+      - ../config/emqx/auth-built-in-db-bootstrap.csv:/opt/emqx/etc/auth-built-in-db-bootstrap.csv:ro
+      - emqx_data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+      - public
 
   admin-frontend:
     container_name: admin-frontend
@@ -131,12 +209,15 @@ services:
     image: nginx:1.27-alpine
     ports:
       - 80:80
+      - 8443:8443
     depends_on:
       - backend
       - admin-frontend
     configs:
       - source: nginx_config
         target: /etc/nginx/nginx.conf
+    volumes:
+      - pki:/pki:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/health"]
       interval: 30s
@@ -157,6 +238,8 @@ volumes:
   postgres_data: {}
   admin-frontend_next: {}
   shared_node_modules: {}
+  pki: {}
+  emqx_data: {}
 
 configs:
   nginx_config:

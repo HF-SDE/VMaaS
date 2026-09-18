@@ -1,4 +1,6 @@
 import { alertsRouter } from "@/api/routes/alerts.route";
+import { deviceRouter } from "@/api/routes/device.route";
+import { internalRouter } from "@/api/routes/internal.route";
 import { machinesRouter } from "@/api/routes/machines.route";
 import { productsRouter } from "@/api/routes/products.route";
 import { salesRouter } from "@/api/routes/sales.route";
@@ -8,6 +10,7 @@ import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { attachWebSocketServer } from "@/lib/ws/server";
+import { startMqttClient } from "@/mqtt/client";
 
 import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
@@ -49,10 +52,18 @@ api.use("/products", productsRouter);
 api.use("/sites", sitesRouter);
 api.use("/slots", slotsRouter);
 api.use("/sales", salesRouter);
+api.use("/device", deviceRouter);
+api.use("/internal", internalRouter);
 
 app.use("/api", api);
 
 const server = http.createServer(app);
 attachWebSocketServer(server);
 
-server.listen(config.PORT, () => console.log(`Server listening on port ${config.PORT}`));
+server.listen(config.PORT, () => {
+  console.log(`Server listening on port ${config.PORT}`);
+
+  // Started after the HTTP server is up, and never awaited: a broker that is
+  // down or still starting must not stop the API from serving.
+  void startMqttClient().catch((error) => console.error("mqtt: failed to start:", error));
+});

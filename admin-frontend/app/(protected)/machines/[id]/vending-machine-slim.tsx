@@ -33,10 +33,17 @@ export function VendingMachineSlim({
           <span className="min-w-0 text-sm font-semibold tracking-[0.25em] break-words uppercase">
             {label}
           </span>
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_8px_rgb(16_185_129/0.3)]"
-          />
+          {/* No room for the side panel's status readout here, so the
+              nameplate carries it instead. */}
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="font-mono text-[10px] text-muted-foreground uppercase">
+              {status}
+            </span>
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_8px_rgb(16_185_129/0.3)]"
+            />
+          </span>
         </div>
 
         <div className="flex flex-col gap-3">
