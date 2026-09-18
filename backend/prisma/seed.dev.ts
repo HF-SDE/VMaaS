@@ -2,6 +2,9 @@ import { faker } from "@faker-js/faker";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 
+import { contains } from "@vmaas/shared/lib/cords-grid";
+import type { StockRow } from "@vmaas/shared/types/stock-row";
+
 import type { Prisma, Slot } from "../src/generated/prisma/client";
 import { auth } from "../src/lib/auth";
 import { config } from "../src/lib/config";
@@ -37,6 +40,58 @@ async function createTenantRoles(tenantId: string) {
 
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
+
+/** How big a machine's front can be built, in grid cells. */
+const MACHINE_GRID = { minWidth: 4, maxWidth: 10, minHeight: 5, maxHeight: 12 };
+
+/** The shelf sizes a machine can be fitted with, as [width, height]. */
+const SLOT_SIZES = [
+  [1, 1],
+  [1, 2],
+  [2, 1],
+  [2, 2],
+] as const;
+
+/** Tiles a whole machine front with slots, scanning bottom-left to top-right and
+ *  placing a random size that still fits the free space at each uncovered cell.
+ *  A 1x1 always fits, so every cell ends up covered — which is what makes the
+ *  layout gapless, overlap-free and, since nothing is ever left hollow, unfloatable. */
+function generateSlotLayout(): StockRow[] {
+  const width = faker.number.int({ min: MACHINE_GRID.minWidth, max: MACHINE_GRID.maxWidth });
+  const height = faker.number.int({ min: MACHINE_GRID.minHeight, max: MACHINE_GRID.maxHeight });
+
+  const rows: StockRow[] = [];
+  const isFree = (x: number, y: number) => !rows.some((row) => contains(row, x, y));
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isFree(x, y)) continue;
+
+      const candidates = SLOT_SIZES.filter(([slotWidth, slotHeight]) => {
+        if (x + slotWidth > width || y + slotHeight > height) return false;
+
+        // Every cell the slot would cover has to still be empty
+        return Array.from({ length: slotWidth }).every((_, dx) =>
+          Array.from({ length: slotHeight }).every((_, dy) => isFree(x + dx, y + dy)),
+        );
+      });
+
+      const [slotWidth, slotHeight] = faker.helpers.arrayElement(candidates);
+      rows.push({ x_start: x, x_end: x + slotWidth - 1, y_start: y, y_end: y + slotHeight - 1 });
+    }
+  }
+
+  return rows;
+}
+
+function toSlotRect(row: StockRow) {
+  return { beginX: row.x_start, endX: row.x_end, beginY: row.y_start, endY: row.y_end };
+}
+
+/** A taller/wider shelf simply holds more of the product. */
+function slotCapacity(row: StockRow) {
+  return 5 * (row.x_end - row.x_start + 1) * (row.y_end - row.y_start + 1);
+}
 
 type SlotHistory = {
   sales: Prisma.SaleCreateManyInput[];
@@ -204,22 +259,18 @@ async function seedTenant(tenantNumber: number) {
         },
       });
 
-      const machineProducts = faker.helpers.arrayElements(products, 5);
+      // The same product may sit in more than one slot, as it does in a real machine.
       const slots = await Promise.all(
-        machineProducts.map((product, slotNumber) => {
-          const beginX = faker.number.int({ min: 0, max: 3 });
-          const beginY = faker.number.int({ min: 0, max: 3 });
+        generateSlotLayout().map((row, slotNumber) => {
+          const product = faker.helpers.arrayElement(products);
           return prisma.slot.create({
             data: {
               machineId: machine.id,
               productId: product.id,
               slotNumber,
-              beginX,
-              endX: beginX + 1,
-              beginY,
-              endY: beginY + 1,
+              ...toSlotRect(row),
               quantity: 0,
-              capacity: 10,
+              capacity: slotCapacity(row),
               price: product.price,
             },
           });
@@ -260,23 +311,16 @@ async function seedTenant(tenantNumber: number) {
  * Slots have no product: the tenant picks those once the machine is theirs.
  */
 async function seedMachinesWithoutTenant(siteId: string) {
-  // A valid layout (no overlaps, nothing floating) on a 3x3 grid; y = 0 is the bottom row:
-  //   y=2  [4] [3 3]
-  //   y=1  [2] [3 3]
-  //   y=0  [0 0] [1]
-  const layout = [
-    { beginX: 0, endX: 1, beginY: 0, endY: 0 },
-    { beginX: 2, endX: 2, beginY: 0, endY: 0 },
-    { beginX: 0, endX: 0, beginY: 1, endY: 1 },
-    { beginX: 1, endX: 2, beginY: 1, endY: 2 },
-    { beginX: 0, endX: 0, beginY: 2, endY: 2 },
-  ];
-
   const withLayout = await prisma.machine.create({
     data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
   });
   await prisma.slot.createMany({
-    data: layout.map((rect, slotNumber) => ({ machineId: withLayout.id, slotNumber, ...rect, capacity: 10 })),
+    data: generateSlotLayout().map((row, slotNumber) => ({
+      machineId: withLayout.id,
+      slotNumber,
+      ...toSlotRect(row),
+      capacity: slotCapacity(row),
+    })),
   });
 
   // And one with no slots at all, to start a layout from scratch

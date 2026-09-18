@@ -97,7 +97,7 @@ function SlotActionsCell({ slot }: { slot: SlotListItem }) {
 
 /** `x −5…−4` for a slot two columns wide, `x −3` for one that is a single
  *  column — a range that starts and ends in the same place reads as a point. */
-function axis(label: string, begin: number, end: number): string {
+export function axis(label: string, begin: number, end: number): string {
   return begin === end ? `${label}${begin}` : `${label}${begin}…${end}`
 }
 
