@@ -70,7 +70,7 @@ export function StockLevelsCard({ kpi }: { kpi: MachineKpi }) {
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="mx-auto aspect-square max-h-[140px] w-full"
+            className="mx-auto aspect-square max-h-35 w-full"
           >
             <PieChart>
               <ChartTooltip
