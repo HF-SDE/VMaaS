@@ -5,3 +5,4 @@ export * from "./general";
 export * from "./sites";
 export * from "./slots";
 export * from "./tenants";
+export * from "./ws";
