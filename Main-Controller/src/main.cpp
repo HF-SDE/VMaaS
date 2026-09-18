@@ -15,13 +15,14 @@
 #include "config_store.h"
 #include "wifi_sta.h"
 #include "slot_entry.h"
+#include "onboarding.h"
 
 namespace
 {
     constexpr const char *TAG = "MainController";
     constexpr TickType_t STATUS_INTERVAL = pdMS_TO_TICKS(2000);
 
-    constexpr const char *PROMPT_ROW0 = "VMaaS - vaelg slot";
+    constexpr const char *PROMPT_ROW0 = "VMaaS: pick slot";   // exactly 16
     constexpr const char *ERROR_ROW0 = "MOTOR CONFIG ERR";
     constexpr const char *ERROR_ROW1 = "check slot config on Motorcontrol";
 
@@ -191,10 +192,6 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "keypad scan task did not start, continuing without keypad");
     }
 
-    // Boot self-check for keyboard matrix wiring, drive each row low and read the columns.
-    // A column stuck low means a wiring or pull-up fault rather than a scan fault.
-    // against its pull-up, for every row selected; a column stuck low means a
-    // wiring or pull-up fault rather than a scan fault.
     if (kp_err == vmaas::KeypadError::None)
     {
         for (size_t r = 0; r < 4; ++r)
@@ -206,6 +203,19 @@ extern "C" void app_main()
             keypad_port.drive_row(r, true);
             ESP_LOGI(TAG, "selftest row %u (GPIO%d): cols = %d %d %d", (unsigned)r, Pins::KEYPAD_ROWS[r], c0, c1, c2);
         }
+    }
+
+    if (wifi_err == ESP_OK && !wifi_sta::has_credentials())
+    {
+        if (!display_ok)
+        {
+            ESP_LOGE(TAG, "no display: onboarding is BLE-only, pin logged separately");
+        }
+        onboarding::run(cfg, lcd, backlight_ok);
+    }
+    else if (wifi_err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
     }
 
     show_prompt();

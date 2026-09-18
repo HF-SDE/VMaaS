@@ -52,3 +52,4 @@ config/environment-variables/.env.*.prod*
 
 # doxygen output
 /docs/api/
+.superpowers/

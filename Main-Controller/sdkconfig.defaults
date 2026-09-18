@@ -3,3 +3,20 @@
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# partitions.csv above needs the full 4 MB (storage alone runs to 0x400000).
+# This must live here, not only be assumed from the board default: an earlier
+# task deleted sdkconfig.main-controller so the Bluetooth options below would
+# take effect, and when it regenerated the flash size silently reverted to the
+# 2 MB default, which esptool -t uploadfs will refuse against this partition
+# table and which leaves the storage partition out of bounds at runtime.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# BLE provisioning. NimBLE rather than Bluedroid: much smaller, and the
+# provisioning component supports both. BLE only - no classic Bluetooth.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=n
+CONFIG_BTDM_CTRL_MODE_BTDM=n
