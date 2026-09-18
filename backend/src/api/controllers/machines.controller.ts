@@ -1,5 +1,6 @@
 import {
   createMachineSchema,
+  disableMachineSchema,
   getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
@@ -12,6 +13,7 @@ import { Request, Response } from "express";
 import {
   createMachineService,
   deleteMachineService,
+  disableMachineService,
   getMachineByIdService,
   getMachineWithoutTenantService,
   getMachinesPageService,
@@ -230,6 +232,26 @@ export async function updateMachineController(req: Request, res: Response) {
   }
 
   return res.status(200).json(machine).end();
+}
+
+export async function disableMachineController(req: Request, res: Response) {
+  const { params, body } = disableMachineSchema.parse(req);
+
+  const [error, result] = await disableMachineService(req.tenantId!, params.id, body);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "MACHINE_NOT_FOUND":
+        return res.status(404).json({ error: "The machine does not exist" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while disabling the machine" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(result).end();
 }
 
 export async function deleteMachineController(req: Request, res: Response) {

@@ -7,14 +7,22 @@ import { findFloatingSlots, hasOverlappingSlots } from "../lib/slot-layout";
 const SITE_ID_MESSAGE = { message: "site is required" };
 
 /**
- * `Machine.siteId` is required and `onDelete: Restrict` — a machine stands at a
- * site, so there is no "not placed yet" state to model and no blank to normalise
- * away. That the site belongs to the caller's tenant is not something a schema
- * can tell; the service checks it before the write.
+ * A machine created through this endpoint is placed at a site immediately —
+ * `siteId` is required, not optional. "Not placed yet" is a real state, but it
+ * belongs to a machine registered by serial number at the factory, which comes
+ * into being through a different path and is bound to a tenant and a site
+ * together by `POST /api/machines/claim`.
  *
- * `status` is deliberately absent from both write schemas. It is reported by the
- * machine's firmware and defaults to `online`, so there is nothing for an admin
- * to send; the services do not accept it either.
+ * `serialNumber` is not part of the body: a machine created here has no
+ * physical hardware behind it yet, so the service generates one rather than
+ * trusting the caller to invent a unique value.
+ *
+ * That the site belongs to the caller's tenant is not something a schema can
+ * tell; the service checks it before the write.
+ *
+ * `status` and `registrationStatus` are deliberately absent from both write
+ * schemas. The first is reported by firmware; the second is moved only by
+ * claiming and activating.
  */
 export const createMachineSchema = z.object({
   body: z.object({

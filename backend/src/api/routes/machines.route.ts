@@ -3,7 +3,9 @@ import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
 import {
+  claimMachineSchema,
   createMachineSchema,
+  disableMachineSchema,
   getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
@@ -13,9 +15,11 @@ import {
 } from "@vmaas/shared/schemas";
 import { Router } from "express";
 
+import { claimMachineController } from "../controllers/activation.controller";
 import {
   createMachineController,
   deleteMachineController,
+  disableMachineController,
   getMachineController,
   getMachineWithoutTenantController,
   getMachinesController,
@@ -61,6 +65,13 @@ machinesRouter.get(
   validate(simpleMachineSearchSchema),
   simpleMachineSearchController,
 );
+// Same: a literal path above "/:id". The administrator's half of activation.
+machinesRouter.post(
+  "/claim",
+  requirePermission(PERMISSIONS.MACHINE_WRITE),
+  validate(claimMachineSchema),
+  claimMachineController,
+);
 machinesRouter.post(
   "/",
   requirePermission(PERMISSIONS.MACHINE_WRITE),
@@ -85,4 +96,10 @@ machinesRouter.delete(
   requirePermission(PERMISSIONS.MACHINE_WRITE),
   validate(machineIdParamsSchema),
   deleteMachineController,
+);
+machinesRouter.post(
+  "/:id/disable",
+  requirePermission(PERMISSIONS.MACHINE_WRITE),
+  validate(disableMachineSchema),
+  disableMachineController,
 );

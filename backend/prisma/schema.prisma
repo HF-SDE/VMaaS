@@ -205,6 +205,26 @@ enum alert_type {
   @@schema("public")
 }
 
+/// Registration is the only machine-level lifecycle. `permanent_locked` is
+/// terminal: a machine binds to one tenant until it is physically reset (§6).
+enum machine_registration_status {
+  unregistered
+  claimed
+  permanent_locked
+
+  @@schema("public")
+}
+
+enum machine_command_status {
+  pending
+  sent
+  completed
+  failed
+  expired
+
+  @@schema("public")
+}
+
 // Why a slot's stock changed. There is deliberately no "missing" member: shrinkage
 // is never observed directly, it is inferred from a physical recount, which lands
 // here as a `correction` with a note.
@@ -286,23 +306,36 @@ model Product {
   @@schema("public")
 }
 
-// # Tenant skal være optional da en ny maskine ikke har nogle tenant til at starte med.
-// # Det skal være muligt at give en grund til at man har disbaled maskinen fx for ikke at betale til os. Eller det skal ihvertfald være tydliget hvad det er disabled.
-// # Der mangler en tabel med machine event
-// # Der mangler en engangs aktiverings kode
 model Machine {
-  id             String          @id @default(uuid()) @db.Uuid
-  tenantId       String?         @db.Uuid
-  tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  name           String
-  description    String?
-  status         machine_status  @default(online)
-  createdAt      DateTime        @default(now())
-  siteId         String          @db.Uuid
-  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  slots          Slot[]
-  sales          Sale[]
-  securityAlerts SecurityAlert[]
+  id                    String                      @id @default(uuid()) @db.Uuid
+  serialNumber          String                      @unique
+  tenantId              String?                     @db.Uuid
+  tenant                Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  name                  String
+  description           String?
+  status                machine_status              @default(online)
+  /// The broker connection event (`$events/client_connected`/`client_disconnected`)
+  /// that most recently moved `status`, used as the ordering clock for
+  /// out-of-order events — see connection.service.ts. Null until the first
+  /// event this machine's certificate ever produces.
+  lastConnectionEventAt DateTime?
+  registrationStatus    machine_registration_status @default(unregistered)
+  createdAt             DateTime                    @default(now())
+  claimedAt             DateTime?
+  activatedAt           DateTime?
+  disabledAt            DateTime?
+  disabledReason        String?
+  siteId                String?                     @db.Uuid
+  site                  Site?                       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  slots                 Slot[]
+  sales                 Sale[]
+  securityAlerts        SecurityAlert[]
+
+  activations    MachineActivation[]
+  certificates   MachineCertificate[]
+  configurations MachineConfiguration[]
+  commands       MachineCommand[]
+  events         MachineEvent[]
 
   @@index([tenantId])
   @@index([siteId])
@@ -341,6 +374,100 @@ model Slot {
   @@unique([machineId, slotNumber])
   @@index([productId])
   @@map("slots")
+  @@schema("public")
+}
+
+/// One claim's one-time code. The code itself is never stored — only its
+/// argon2id hash, which is salted and therefore cannot be a query key; the
+/// service loads by machineId and verifies (spec §10).
+model MachineActivation {
+  id          String    @id @default(uuid()) @db.Uuid
+  machineId   String    @db.Uuid
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  tenantId    String    @db.Uuid
+  siteId      String    @db.Uuid
+  codeHash    String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  attempts    Int       @default(0)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  @@index([machineId])
+  @@map("machine_activations")
+  @@schema("public")
+}
+
+/// The machine's identity on both channels. `serial` is the lookup key: nginx
+/// reports it as $ssl_client_serial, EMQX carries it in the peer DN's OU.
+model MachineCertificate {
+  id            String    @id @default(uuid()) @db.Uuid
+  machineId     String    @db.Uuid
+  machine       Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  serial        String    @unique
+  fingerprint   String    @unique
+  subject       String
+  notBefore     DateTime
+  notAfter      DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+
+  @@index([machineId])
+  @@map("machine_certificates")
+  @@schema("public")
+}
+
+model MachineConfiguration {
+  id          String   @id @default(uuid()) @db.Uuid
+  machineId   String   @db.Uuid
+  machine     Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  version     Int
+  payload     Json
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@unique([machineId, version])
+  @@map("machine_configurations")
+  @@schema("public")
+}
+
+model MachineCommand {
+  id          String                 @id @default(uuid()) @db.Uuid
+  tenantId    String                 @db.Uuid
+  machineId   String                 @db.Uuid
+  machine     Machine                @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  /// The id carried on the wire, e.g. "cmd-9281". Unique so a replayed result
+  /// is recognised rather than applied twice (§13).
+  commandId   String                 @unique
+  type        String
+  payload     Json
+  status      machine_command_status @default(pending)
+  issuedAt    DateTime               @default(now())
+  expiresAt   DateTime
+  completedAt DateTime?
+  result      Json?
+
+  @@index([machineId, status])
+  @@map("machine_commands")
+  @@schema("public")
+}
+
+model MachineEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String?  @db.Uuid
+  machineId      String   @db.Uuid
+  machine        Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  type           String
+  payload        Json
+  /// Device-supplied, for deduplicating a replayed offline queue (§10).
+  eventId        String?  @unique
+  sequenceNumber BigInt?
+  occurredAt     DateTime
+  receivedAt     DateTime @default(now())
+
+  @@index([machineId, occurredAt])
+  @@map("machine_events")
   @@schema("public")
 }
 

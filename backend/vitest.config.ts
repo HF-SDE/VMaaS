@@ -5,12 +5,17 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    setupFiles: ["./vitest.setup.ts"],
     // Config (src/lib/config.ts) validates process.env at import time with no
     // defaults for these, so any test that transitively imports it needs them.
     env: {
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
       BETTER_AUTH_URL: "http://localhost:5000",
       BETTER_AUTH_SECRET: "test-secret-value",
+      MQTT_INTERNAL_SECRET: "test-internal-secret-value",
+      MQTT_PASSWORD: "test-mqtt-password-value",
+      EMQX_API_KEY: "test-emqx-api-key",
+      EMQX_API_SECRET: "test-emqx-api-secret-value",
     },
   },
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },

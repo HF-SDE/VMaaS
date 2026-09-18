@@ -27,9 +27,11 @@ export interface MachineUsage {
   canDelete: boolean;
 }
 
-/** Every machine stands at a site — `Machine.siteId` is required, not nullable —
- *  so the list and the detail both include the site the UI has to name, rather
- *  than leaving the client to resolve an id. */
+/** A machine that has a tenant always has a site — `claimMachineService` and
+ *  `createMachineService` both set them in the same write — so the list and
+ *  the detail both include the site the UI has to name, rather than leaving
+ *  the client to resolve an id. A machine with neither is a different type:
+ *  see `MachineWithoutTenant`. */
 export interface MachineSite {
   site: SimpleSite;
 }

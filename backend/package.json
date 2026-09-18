@@ -13,12 +13,16 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:dev": "NODE_ENV=development tsx prisma/seed.dev.ts",
     "postinstall": "prisma skills sync || exit 0",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "pki:init": "tsx tools/pki-init.ts",
+    "fake-machine": "tsx tools/fake-machine.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
+    "@peculiar/x509": "^2.1.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@vmaas/shared": "file:../shared",
@@ -29,7 +33,10 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "pg": "^8.23.0"
+    "mqtt": "^5.16.0",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "undici": "^7.29.1"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
