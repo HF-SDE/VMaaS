@@ -42,6 +42,9 @@ async function createTenantRoles(tenantId: string) {
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 
+/** Every seeded site stands on Funen, so the map view has something to show. */
+const FYN_BOUNDS = { minLat: 55.02, maxLat: 55.63, minLng: 9.68, maxLng: 10.86 };
+
 /** How big a machine's front can be built, in grid cells. */
 const MACHINE_GRID = { minWidth: 4, maxWidth: 10, minHeight: 5, maxHeight: 12 };
 
@@ -234,7 +237,9 @@ async function seedTenant(tenantNumber: number) {
     ),
   );
 
-  for (let siteIndex = 0; siteIndex < 2; siteIndex++) {
+  const siteCount = faker.number.int({ min: 10, max: 40 });
+
+  for (let siteIndex = 0; siteIndex < siteCount; siteIndex++) {
     const site = await prisma.site.create({
       data: {
         tenantId: tenant.id,
@@ -243,6 +248,8 @@ async function seedTenant(tenantNumber: number) {
         postalCode: faker.location.zipCode(),
         city: faker.location.city(),
         countryCode: "DK",
+        latitude: faker.location.latitude({ min: FYN_BOUNDS.minLat, max: FYN_BOUNDS.maxLat }),
+        longitude: faker.location.longitude({ min: FYN_BOUNDS.minLng, max: FYN_BOUNDS.maxLng }),
         contactName: faker.person.fullName(),
         contactPhone: faker.phone.number(),
         contactEmail: faker.internet.email().toLowerCase(),

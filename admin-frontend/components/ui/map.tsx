@@ -2356,6 +2356,20 @@ type MapClusterLayerProps<
   clusterThresholds?: [number, number];
   /** Color for unclustered individual points (default: "#3b82f6") */
   pointColor?: string;
+  /**
+   * Aggregations MapLibre computes per cluster, e.g.
+   * `{ revenue: ["+", ["get", "price"]] }` to sum a property of the points a
+   * cluster swallowed. Read `["get", "revenue"]` back out in `clusterLabel`.
+   */
+  clusterProperties?: MapLibreGL.GeoJSONSourceSpecification["clusterProperties"];
+  /**
+   * What each cluster circle is labelled with (default: the point count).
+   * Takes a MapLibre expression, so it can read a `clusterProperties`
+   * aggregate. Read once, when the layer is created.
+   */
+  clusterLabel?: NonNullable<
+    MapLibreGL.SymbolLayerSpecification["layout"]
+  >["text-field"];
   /** Callback when an unclustered point is clicked */
   onPointClick?: (
     feature: GeoJSON.Feature<GeoJSON.Point, P>,
@@ -2385,6 +2399,8 @@ function MapClusterLayer<
   clusterColors = DEFAULT_CLUSTER_COLORS,
   clusterThresholds = DEFAULT_CLUSTER_THRESHOLDS,
   pointColor = "#3b82f6",
+  clusterProperties,
+  clusterLabel = "{point_count_abbreviated}",
   onPointClick,
   onClusterClick,
 }: MapClusterLayerProps<P>) {
@@ -2412,6 +2428,7 @@ function MapClusterLayer<
       cluster: true,
       clusterMaxZoom,
       clusterRadius,
+      clusterProperties,
     });
 
     // Add cluster circles layer
@@ -2452,7 +2469,7 @@ function MapClusterLayer<
       source: sourceId,
       filter: ["has", "point_count"],
       layout: {
-        "text-field": "{point_count_abbreviated}",
+        "text-field": clusterLabel,
         "text-font": ["Open Sans Semibold"],
         "text-size": 12,
       },
