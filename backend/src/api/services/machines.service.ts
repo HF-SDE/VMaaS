@@ -1,4 +1,7 @@
+import { randomBytes } from "node:crypto";
+
 import { type Machine, Prisma, type Slot } from "@/generated/prisma/client";
+import { kickMqttClient } from "@/lib/emqx";
 import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
@@ -15,6 +18,7 @@ import {
   type SimpleMachine,
   type SimpleMachineSearchParams,
 } from "@vmaas/shared/types/machine";
+import type { SimpleSite } from "@vmaas/shared/types/site";
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
@@ -34,20 +38,48 @@ export type UnknownMachineError = { reason: "UNKNOWN_ERROR"; message: string };
 /** A saved layout named a slot id that isn't one of the machine's slots. */
 export type SlotNotFoundError = { reason: "SLOT_NOT_FOUND"; message: string };
 
-/** A machine row with the site it stands at, as every read returns it. */
+/** A machine row with the site it stands at, as every tenant-scoped read
+ *  returns it — see the invariant note on `narrowToSite` below. */
 export type MachineListItem = Machine & MachineSite;
 export type MachineDetail = MachineListItem & MachineUsage & MachineKpis;
 
 /** What the detail read takes beyond the id — only the KPI window so far. */
 export type MachineReadParams = { days?: number };
-/** A machine without a tenant, with its slots, as the slot layout editor reads it. */
-export type MachineWithoutTenant = MachineListItem & { slots: Slot[] };
+
+/** A machine that has neither a tenant nor a site is not a `MachineListItem`:
+ *  it deliberately keeps a nullable site, unlike every tenant-scoped read,
+ *  because a factory-registered machine genuinely hasn't been placed yet. Built
+ *  from `Machine` directly rather than from `MachineListItem`, so tightening
+ *  `MachineSite` to non-null can never drag this type along with it. */
+export type MachineWithoutTenant = Machine & { site: SimpleSite | null; slots: Slot[] };
 
 /** What `MachineSite` carries — enough to name the site and link to it. */
 const SITE_SELECT = { select: { id: true, name: true, city: true } } as const;
 
-/** The columns a write accepts. `siteId` is checked against the tenant before it
- *  reaches Prisma, so a machine can never be moved to another tenant's site. */
+/**
+ * Narrows a row with a possibly-null site down to `MachineSite`, or `null` if
+ * the invariant ("a machine with a tenant always has a site") doesn't hold for
+ * this row.
+ *
+ * It should always hold — `claimMachineService` and `createMachineService`
+ * both set `tenantId` and `siteId` in the same write — so a `null` here means
+ * something else broke it, not that the caller did anything wrong. Rather than
+ * asserting that away with a cast, a violation is treated as absence: dropped
+ * from a list, or read as not-found for a single machine. Either is safer than
+ * crashing the page or lying about the type.
+ */
+function narrowToSite<T extends { id: string; site: SimpleSite | null }>(machine: T): (T & MachineSite) | null {
+  if (!machine.site) {
+    console.error(`[machines.service] invariant violated: machine ${machine.id} has a tenant but no site`);
+    return null;
+  }
+  return { ...machine, site: machine.site };
+}
+
+/** The columns a write accepts. `siteId` is checked against the tenant before
+ *  it reaches Prisma, so a machine can never be moved to another tenant's site.
+ *  No `null`: `updateMachineSchema` takes no `null` either — moving a machine
+ *  means naming another site, never clearing the one it stands at. */
 export type MachineWriteData = { name?: string; siteId?: string };
 
 function isSortField(value: string): value is MachineSortField {
@@ -97,7 +129,20 @@ function unknownError(action: string, cause: unknown): Result<UnknownMachineErro
 
 export async function getMachinesService(tenantId: string): Promise<Result<UnknownMachineError, MachineListItem[]>> {
   try {
-    return ok(await prisma.machine.findMany({ where: { tenantId }, include: { site: SITE_SELECT } }));
+    const machines = await prisma.machine.findMany({
+      // `siteId: { not: null }` on top of the mapper's own narrowing, not
+      // instead of it: Prisma's generated type still calls `site` nullable
+      // regardless of the filter, so the mapper is what TypeScript actually
+      // trusts. The filter just keeps a violation off the wire in the first
+      // place, rather than shrinking the array after the fact.
+      where: { tenantId, siteId: { not: null } },
+      include: { site: SITE_SELECT },
+    });
+
+    // A row that fails the narrow despite the filter would mean the
+    // invariant broke between the filter and the read — vanishingly
+    // unlikely, but dropped rather than trusted either way.
+    return ok(machines.flatMap((machine) => narrowToSite(machine) ?? []));
   } catch (error) {
     return unknownError("listing", error);
   }
@@ -114,9 +159,11 @@ export async function getMachinesPageService(
   const search = params.search?.trim();
 
   // The site is a column in the table, so it is searchable like the name is —
-  // typing a site's name finds the machines standing there.
+  // typing a site's name finds the machines standing there. `siteId: { not:
+  // null }` is the same invariant-defending filter as the unpaged list.
   const where = {
     tenantId,
+    siteId: { not: null } as const,
     ...(search
       ? {
           OR: [
@@ -147,7 +194,7 @@ export async function getMachinesPageService(
     ]);
 
     return ok({
-      data: machines,
+      data: machines.flatMap((machine) => narrowToSite(machine) ?? []),
       page,
       pageSize,
       pageCount: Math.ceil(totalCount / pageSize),
@@ -266,23 +313,48 @@ export async function simpleMachineSearchService(
   const limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(params.limit ?? DEFAULT_SEARCH_LIMIT)));
 
   try {
-    return ok(
-      await prisma.machine.findMany({
-        where: {
-          tenantId,
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { site: { name: { contains: search, mode: "insensitive" } } },
-          ],
-        },
-        select: { id: true, name: true, site: SITE_SELECT },
-        orderBy: { name: "asc" },
-        take: limit,
-      }),
-    );
+    const machines = await prisma.machine.findMany({
+      where: {
+        tenantId,
+        siteId: { not: null },
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { site: { name: { contains: search, mode: "insensitive" } } },
+        ],
+      },
+      select: { id: true, name: true, site: SITE_SELECT },
+      orderBy: { name: "asc" },
+      take: limit,
+    });
+
+    return ok(machines.flatMap((machine) => narrowToSite(machine) ?? []));
   } catch (error) {
     return unknownError("searching", error);
   }
+}
+
+/** No physical hardware behind a machine created this way, so there is no
+ *  factory-etched serial to record — a short readable one is minted instead.
+ *  8 hex characters is 2^32 combinations, checked against the real
+ *  possibility of a collision below rather than assumed away. */
+const SERIAL_PREFIX = "VM-";
+const SERIAL_RANDOM_BYTES = 4;
+const MAX_SERIAL_ATTEMPTS = 5;
+
+/** Exported so seeds mint serials the same way real writes do — one
+ *  definition of what a generated serial looks like, not two. */
+export function generateSerialNumber(): string {
+  return `${SERIAL_PREFIX}${randomBytes(SERIAL_RANDOM_BYTES).toString("hex").toUpperCase()}`;
+}
+
+/** Whether a `P2002` is *this* write colliding on `serialNumber` specifically,
+ *  rather than some other unique constraint. `Machine` only has the one today,
+ *  but retrying blindly would silently paper over a future one instead of
+ *  surfacing it. */
+function isSerialNumberCollision(error: Prisma.PrismaClientKnownRequestError): boolean {
+  const target = error.meta?.target;
+  const targets = Array.isArray(target) ? target : typeof target === "string" ? [target] : [];
+  return targets.includes("serialNumber");
 }
 
 export async function createMachineService(
@@ -292,7 +364,32 @@ export async function createMachineService(
   try {
     if (!(await tenantOwnsSite(tenantId, data.siteId))) return err(SITE_NOT_FOUND);
 
-    return ok(await prisma.machine.create({ data: { ...data, tenantId }, include: { site: SITE_SELECT } }));
+    // A generated serial colliding with an existing one is vanishingly
+    // unlikely at 2^32 combinations, but retried with a fresh one rather than
+    // surfaced as a 500 the caller can do nothing about.
+    for (let attempt = 0; attempt < MAX_SERIAL_ATTEMPTS; attempt++) {
+      try {
+        const machine = await prisma.machine.create({
+          data: { ...data, tenantId, serialNumber: generateSerialNumber() },
+          include: { site: SITE_SELECT },
+        });
+
+        // The site was just verified to belong to this tenant and is named in
+        // this very write, so a missing site here means the invariant itself
+        // broke, not that this call did anything wrong.
+        const withSite = narrowToSite(machine);
+        if (!withSite) return unknownError("creating", new Error("the created machine has no site"));
+
+        return ok(withSite);
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && isSerialNumberCollision(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return unknownError("creating", new Error("could not generate a unique serial number"));
   } catch (error) {
     return unknownError("creating", error);
   }
@@ -357,14 +454,20 @@ export async function getMachineByIdService(
   params: MachineReadParams = {},
 ): Promise<Result<MachineNotFoundError | UnknownMachineError, MachineDetail>> {
   try {
+    // A tenant-scoped machine with no site would violate the invariant this
+    // read's type relies on; filtered here so it reads as not-found rather
+    // than reaching the narrow below at all.
     const machine = await prisma.machine.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, siteId: { not: null } },
       include: { site: SITE_SELECT, _count: { select: { slots: true, sales: true } } },
     });
 
     if (!machine) return err(MACHINE_NOT_FOUND);
 
-    const { _count, ...rest } = machine;
+    const withSite = narrowToSite(machine);
+    if (!withSite) return err(MACHINE_NOT_FOUND);
+
+    const { _count, ...rest } = withSite;
 
     // After the 404, not beside it: there is no point costing eight queries for
     // a machine this tenant cannot see.
@@ -396,6 +499,57 @@ export async function updateMachineService(
   }
 
   return getMachineByIdService(tenantId, id);
+}
+
+export type DisableMachineResult = { machineId: string; kicked: boolean };
+
+/**
+ * Disabling is database state checked on every use: `requireMachine` and the
+ * authn webhook both read it, so HTTP and new MQTT connections stop at once.
+ * The kick handles the session that is already open.
+ */
+export async function disableMachineService(
+  tenantId: string,
+  machineId: string,
+  input: { reason: string; revokeCertificate: boolean },
+): Promise<Result<MachineNotFoundError | UnknownMachineError, DisableMachineResult>> {
+  try {
+    // Compound filter: a machine belonging to another tenant must read as not
+    // found, never as forbidden — the caller learns nothing about it either way.
+    const machine = await prisma.machine.findFirst({
+      where: { id: machineId, tenantId },
+      select: { id: true },
+    });
+
+    if (!machine) return err(MACHINE_NOT_FOUND);
+
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.machine.update({
+        where: { id: machineId },
+        data: { disabledAt: now, disabledReason: input.reason },
+      });
+
+      // All of the machine's unrevoked certificates, not just one — a
+      // rotation could in principle leave more than one live.
+      if (input.revokeCertificate) {
+        await tx.machineCertificate.updateMany({
+          where: { machineId, revokedAt: null },
+          data: { revokedAt: now, revokedReason: input.reason },
+        });
+      }
+    });
+
+    // Reported, not thrown: the machine is disabled either way, and the caller
+    // needs to know whether a live session survived. A broker that is down
+    // must not turn an otherwise-successful disable into a failed request.
+    const kicked = await kickMqttClient(machineId);
+
+    return ok({ machineId, kicked });
+  } catch (error) {
+    return unknownError("disabling", error);
+  }
 }
 
 export async function deleteMachineService(

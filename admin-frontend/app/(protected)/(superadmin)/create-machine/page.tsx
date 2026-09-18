@@ -85,7 +85,8 @@ async function MachinesList() {
           <ItemContent>
             <ItemTitle>{machine.name}</ItemTitle>
             <ItemDescription>
-              {machine.site.name} · {slotCountLabel(machine.slots.length)}
+              {machine.site?.name ?? "—"} ·{" "}
+              {slotCountLabel(machine.slots.length)}
             </ItemDescription>
           </ItemContent>
           <ItemActions>

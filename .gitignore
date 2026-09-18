@@ -52,3 +52,9 @@ config/environment-variables/.env.*.prod*
 
 # doxygen output
 /docs/api/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/
+
+# Local CA material exported for the fake-machine smoke test
+backend/ca.crt

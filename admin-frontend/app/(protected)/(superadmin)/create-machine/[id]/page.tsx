@@ -65,7 +65,9 @@ async function MachineLayoutLoader({
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">{machine.name}</h1>
         <p className="text-muted-foreground">
-          {`Placed at ${machine.site.name}. Set up the slot layout of the machine.`}
+          {machine.site
+            ? `Placed at ${machine.site.name}. Set up the slot layout of the machine.`
+            : "Not placed at a site yet. Set up the slot layout of the machine."}
         </p>
       </div>
 

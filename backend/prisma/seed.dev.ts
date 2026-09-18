@@ -6,6 +6,7 @@ import { contains } from "@vmaas/shared/lib/cords-grid";
 import type { StockRow } from "@vmaas/shared/types/stock-row";
 
 import type { Prisma, Slot } from "../src/generated/prisma/client";
+import { generateSerialNumber } from "../src/api/services/machines.service";
 import { auth } from "../src/lib/auth";
 import { config } from "../src/lib/config";
 import { prisma } from "../src/lib/prisma";
@@ -253,6 +254,7 @@ async function seedTenant(tenantNumber: number) {
         data: {
           tenantId: tenant.id,
           siteId: site.id,
+          serialNumber: generateSerialNumber(),
           name: `VM-${faker.string.alphanumeric({ length: 5, casing: "upper" })}`,
           description: faker.company.catchPhrase(),
           status: faker.helpers.arrayElement(["online", "online", "online", "offline", "error"]),
@@ -312,7 +314,7 @@ async function seedTenant(tenantNumber: number) {
  */
 async function seedMachinesWithoutTenant(siteId: string) {
   const withLayout = await prisma.machine.create({
-    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+    data: { siteId, serialNumber: generateSerialNumber(), name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
   });
   await prisma.slot.createMany({
     data: generateSlotLayout().map((row, slotNumber) => ({
@@ -325,7 +327,7 @@ async function seedMachinesWithoutTenant(siteId: string) {
 
   // And one with no slots at all, to start a layout from scratch
   await prisma.machine.create({
-    data: { siteId, name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
+    data: { siteId, serialNumber: generateSerialNumber(), name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
   });
 }
 

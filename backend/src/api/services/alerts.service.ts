@@ -105,8 +105,25 @@ export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Pris
   return where;
 }
 
-/** Joined row → the flat, JSON-shaped row the client is typed against. */
-function toAlertRow(alert: AlertWithMachine): MachineAlertRow {
+/**
+ * Joined row → the flat, JSON-shaped row the client is typed against, or
+ * `null` if the row doesn't honour the invariant `MachineAlertRow`'s non-null
+ * `siteId`/`siteName` rely on: an alert is logged by a machine `buildAlertWhere`
+ * already scoped to this tenant, and a machine with a tenant always has a site
+ * (`claimMachineService` and `createMachineService` both set them together).
+ *
+ * A `null` site here means that invariant broke, not that the caller did
+ * anything wrong. Rather than asserting it away with a cast, the row is
+ * dropped from the page instead — safer than crashing the log or lying about
+ * the type.
+ */
+function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
+  const site = alert.machine.site;
+  if (!site) {
+    console.error(`[alerts.service] invariant violated: alert ${alert.id}'s machine ${alert.machineId} has no site`);
+    return null;
+  }
+
   return {
     id: alert.id,
     type: alert.type,
@@ -116,10 +133,10 @@ function toAlertRow(alert: AlertWithMachine): MachineAlertRow {
     occurredAt: alert.occurredAt.toISOString(),
     resolvedAt: alert.resolvedAt?.toISOString() ?? null,
     message: alert.message,
-    siteId: alert.machine.site.id,
-    siteName: alert.machine.site.name,
-    contactPhone: alert.machine.site.contactPhone,
-    contactEmail: alert.machine.site.contactEmail,
+    siteId: site.id,
+    siteName: site.name,
+    contactPhone: site.contactPhone ?? null,
+    contactEmail: site.contactEmail ?? null,
   };
 }
 
@@ -151,7 +168,7 @@ export async function getAlertsPageService(
     ]);
 
     return ok({
-      data: alerts.map(toAlertRow),
+      data: alerts.flatMap((alert) => toAlertRow(alert) ?? []),
       page,
       pageSize,
       pageCount: Math.ceil(totalCount / pageSize),
