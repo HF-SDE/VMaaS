@@ -1,0 +1,877 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>VMaaS-MQTT-arkitektur</title><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+/* Override strong tags inside headings to maintain consistent weight */
+h1 strong,
+h2 strong,
+h3 strong {
+	font-weight: 600;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 10px;
+	padding: 1rem;
+}
+
+/* For default-background callouts, render the border outline. */
+.callout.block-color-default_background {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+/*
+ * Toggles and callouts hold arbitrary content, so they can easily be taller
+ * than a page. They must stay breakable: avoiding breaks inside them makes
+ * Chromium push the whole block onto the next page, which leaves the previous
+ * page mostly empty before every long toggle.
+ */
+details,
+aside {
+	margin: 1.25em 0;
+}
+
+/* Keep a toggle's title on the same page as the start of its content. */
+summary {
+	page-break-after: avoid;
+	break-after: avoid;
+}
+
+/*
+ * Toggle headings render as <h1/h2/h3 style="display:inline-block"> inside
+ * <summary>. Without this reset, the heading's margin-top pushes it below the
+ * ::marker (▼), so the triangle and the title appear on separate lines.
+ */
+summary h1,
+summary h2,
+summary h3,
+summary h4 {
+	margin-top: 0;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+
+	table.collection-content {
+		width: 100%;
+		table-layout: fixed;
+	}
+
+	table.collection-content th,
+	table.collection-content td {
+		overflow-wrap: anywhere;
+	}
+
+	table.collection-content td > .user,
+	table.collection-content td > time {
+		white-space: pre-wrap;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content-wrapper {
+	overflow-x: auto;
+}
+
+@media only print {
+	.collection-content-wrapper {
+		overflow-x: visible;
+	}
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.collection-content td {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.column-list {
+	display: flex;
+	gap: 46px;
+}
+
+.column {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.column > *:first-child {
+	margin-top: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding-inline: 0.125rem;
+	padding-block: 0.375rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+table {
+	border-collapse: collapse;
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol.numbered-list.numbered-list-digits-2 {
+	padding-inline-start: 2em;
+}
+
+ol.numbered-list.numbered-list-digits-3plus {
+	padding-inline-start: 2.4em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+/*
+ * Render emoji icons using a ::before pseudo-element to keep the glyph
+ * out of the DOM textContent traversal. This avoids double-rendering icons
+ * in callouts and page titles.
+ * NOTE(slim/html-export-pseudo-icons): I can't tagref this because it will
+ * flag as a duplicate tag after codegen.
+ */
+.icon[data-emoji]::before {
+	content: attr(data-emoji);
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.callout img.notion-static-icon {
+	width: 1em;
+	height: 1em;
+}
+
+.callout p {
+	margin: 0;
+}
+
+.callout h1,
+.callout h2,
+.callout h3 {
+	margin: 0 0 0.6rem;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	margin-right: 0.4em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+blockquote.quote-large {
+	font-size: 1.25em;
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.tab {
+	margin: 1.25em 0;
+	padding-inline: 1rem;
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.highlight-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.highlight-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.highlight-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.highlight-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.highlight-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.highlight-default_background {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray_background {
+	background: rgba(42, 28, 0, 0.07);
+}
+.highlight-brown_background {
+	background: rgba(139, 46, 0, 0.086);
+}
+.highlight-orange_background {
+	background: rgba(224, 101, 1, 0.129);
+}
+.highlight-yellow_background {
+	background: rgba(211, 168, 0, 0.137);
+}
+.highlight-teal_background {
+	background: rgba(0, 100, 45, 0.09);
+}
+.highlight-blue_background {
+	background: rgba(0, 124, 215, 0.094);
+}
+.highlight-purple_background {
+	background: rgba(102, 0, 178, 0.078);
+}
+.highlight-pink_background {
+	background: rgba(197, 0, 93, 0.086);
+}
+.highlight-red_background {
+	background: rgba(223, 22, 0, 0.094);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.block-color-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.block-color-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.block-color-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.block-color-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.block-color-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(240, 239, 237, 1);
+}
+.block-color-brown_background {
+	background: rgba(245, 237, 233, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 235, 222, 1);
+}
+.block-color-yellow_background {
+	background: rgba(249, 243, 220, 1);
+}
+.block-color-teal_background {
+	background: rgba(232, 241, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(229, 242, 252, 1);
+}
+.block-color-purple_background {
+	background: rgba(243, 235, 249, 1);
+}
+.block-color-pink_background {
+	background: rgba(250, 233, 241, 1);
+}
+.block-color-red_background {
+	background: rgba(252, 233, 231, 1);
+}
+.select-value-color-default { background-color: rgba(42, 28, 0, 0.07); }
+.select-value-color-gray { background-color: rgba(28, 19, 1, 0.11); }
+.select-value-color-brown { background-color: rgba(127, 51, 0, 0.156); }
+.select-value-color-orange { background-color: rgba(196, 88, 0, 0.203); }
+.select-value-color-yellow { background-color: rgba(209, 156, 0, 0.282); }
+.select-value-color-green { background-color: rgba(0, 96, 38, 0.156); }
+.select-value-color-blue { background-color: rgba(0, 118, 217, 0.203); }
+.select-value-color-purple { background-color: rgba(92, 0, 163, 0.141); }
+.select-value-color-pink { background-color: rgba(183, 0, 78, 0.152); }
+.select-value-color-red { background-color: rgba(206, 24, 0, 0.164); }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style><style>@import url('https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex-swap.min.css')</style></head><body><article id="3d57c79e-9bbf-80ff-a48c-d4265f9925a7" class="page sans"><header><h1 class="page-title" dir="auto">VMaaS-MQTT-arkitektur</h1><p class="page-description" dir="auto"></p></header><div class="page-body"><h2 id="3d57c79e-9bbf-8194-be9e-f45aab74adae" class="" dir="auto">1. Valg af arkitektur</h2><hr id="3d57c79e-9bbf-8167-a20b-c8766434af31" dir="auto"/><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" integrity="sha512-7Z9J3l1+EYfeaPKcGXu3MS/7T+w19WtKQY/n+xzmw4hZhJ9tyYmcUS+4QqAlzhicE5LAfMQSF3iFTK9bQdTxXg==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" integrity="sha512-tN7Ec6zAFaVSG3TpNAKtk4DOHNpSwKHxxrsiw4GHKESGPs5njn/0sMCUMl2svV4wo4BK/rCP7juYz+zx+l6oeQ==" crossorigin="anonymous" referrerPolicy="no-referrer"/><pre id="3d57c79e-9bbf-81b5-ad1e-d59fac6e3d4d" class="code code-wrap" data-notion-code-syntax="mermaid"><code class="language-mermaid" style="white-space:pre-wrap;word-break:break-all">flowchart TD
+    User[Bruger og webapp] --&gt; API[VMaaS API]
+    API --&gt; DB[(Multi-tenant database)]
+    API --&gt; Broker[MQTT-broker]
+    Broker &lt;--&gt;|MQTT over TLS| Controller[Maskincontroller]
+    Controller --&gt; Sensors[Sensorer]
+    Controller --&gt; Cooling[Køling og strøm]
+    Controller --&gt; Dispenser[Motorer og vareudlevering]
+    Cash[Kontantmodul] --&gt; Controller
+    Cash --&gt; Acceptor[Mønt- og seddelvalidator]
+    Cash --&gt; Change[Byttepengeenhed]</code></pre><h3 id="3d57c79e-9bbf-8186-a801-ef0daa5ba4f6" class="" dir="auto">Komponenternes ansvar</h3><table id="3d57c79e-9bbf-8131-ad31-c1afcb2b727f" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-819f-a961-c895e6c4374b" dir="ltr"><th id="TfBN" class="simple-table-header-color simple-table-header">Komponent</th><th id="F;A?" class="simple-table-header-color simple-table-header">Ansvar</th></tr></thead><tbody><tr id="3d57c79e-9bbf-815f-a1a9-f0b4b1c452c8" dir="ltr"><td id="TfBN" class="">Webapp</td><td id="F;A?" class="">Administration af maskiner, produkter, priser, lager og alarmer</td></tr><tr id="3d57c79e-9bbf-8163-905c-c593c657af9b" dir="ltr"><td id="TfBN" class="">API</td><td id="F;A?" class="">Login, adgangskontrol, forretningslogik og tenant-isolation</td></tr><tr id="3d57c79e-9bbf-81aa-a390-eed6ceb9b386" dir="ltr"><td id="TfBN" class="">MQTT-broker</td><td id="F;A?" class="">Sikker beskedudveksling mellem platform og maskiner</td></tr><tr id="3d57c79e-9bbf-8152-a562-f4d61536bf70" dir="ltr"><td id="TfBN" class="">Database</td><td id="F;A?" class="">Brugere, tenants, maskiner, salg, lager, telemetry og auditlogs</td></tr><tr id="3d57c79e-9bbf-81f5-9dd1-e99d049a710c" dir="ltr"><td id="TfBN" class="">Maskincontroller</td><td id="F;A?" class="">Lokal styring, MQTT-klient, databehandling og offline-kø</td></tr><tr id="3d57c79e-9bbf-819c-8208-fcec285736e8" dir="ltr"><td id="TfBN" class="">Sensorer</td><td id="F;A?" class="">Temperatur, dørstatus, strøm og andre målinger</td></tr><tr id="3d57c79e-9bbf-81b7-97af-ce43b0233e26" dir="ltr"><td id="TfBN" class="">Motorstyring</td><td id="F;A?" class="">Kontrolleret fysisk udlevering af varer</td></tr><tr id="3d57c79e-9bbf-81f2-954e-d580191b2650" dir="ltr"><td id="TfBN" class="">Kontantmodul</td><td id="F;A?" class="">Validerer mønter og sedler, registrerer kredit og udbetaler byttepenge</td></tr></tbody></table><hr id="3d57c79e-9bbf-8130-b69a-d62da75040a1" dir="auto"/><h2 id="3d57c79e-9bbf-81ce-9873-e0b580926e5a" class="" dir="auto">2. Enheds- og domænemodel</h2><hr id="3d57c79e-9bbf-8170-ab55-f958558e78bb" dir="auto"/><pre id="3d57c79e-9bbf-8127-8698-ce1cc6fd35ea" class="code code-wrap" data-notion-code-syntax="mermaid"><code class="language-mermaid" style="white-space:pre-wrap;word-break:break-all">flowchart LR
+    Tenant[Tenant] --&gt; Site[Lokation]
+    Site --&gt; Machine[Maskine]
+    Machine --&gt; Component[Komponent]
+    Component --&gt; Data[Egenskab, kommando eller hændelse]</code></pre><table id="3d57c79e-9bbf-8114-8d02-c48a7cd276c2" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-81b4-9bc0-dabf494a10f6" dir="ltr"><th id="umf=" class="simple-table-header-color simple-table-header">Niveau</th><th id="&gt;[~M" class="simple-table-header-color simple-table-header">Betydning</th><th id="\Ibk" class="simple-table-header-color simple-table-header">Eksempel</th></tr></thead><tbody><tr id="3d57c79e-9bbf-8138-93e8-f1de70f4b2a1" dir="ltr"><td id="umf=" class="">Tenant</td><td id="&gt;[~M" class="">Virksomheden, som driver maskinen</td><td id="\Ibk" class=""><code>acme</code></td></tr><tr id="3d57c79e-9bbf-81bf-874d-c58c8dc110cd" dir="ltr"><td id="umf=" class="">Lokation</td><td id="&gt;[~M" class="">Stedet, hvor maskinen er installeret</td><td id="\Ibk" class=""><code>copenhagen</code></td></tr><tr id="3d57c79e-9bbf-8107-831a-c86bc9a93616" dir="ltr"><td id="umf=" class="">Maskine</td><td id="&gt;[~M" class="">Den fysiske vending machine</td><td id="\Ibk" class=""><code>vm-001</code></td></tr><tr id="3d57c79e-9bbf-8143-b556-eece3d5fca01" dir="ltr"><td id="umf=" class="">Komponent</td><td id="&gt;[~M" class="">En del eller funktion i maskinen</td><td id="\Ibk" class=""><code>cooling</code></td></tr><tr id="3d57c79e-9bbf-81a9-89b3-c46dce65b049" dir="ltr"><td id="umf=" class="">Egenskab</td><td id="&gt;[~M" class="">En aktuel værdi eller tilstand</td><td id="\Ibk" class=""><code>measured-temperature</code></td></tr><tr id="3d57c79e-9bbf-8167-a768-cc2835ee5f8e" dir="ltr"><td id="umf=" class="">Kommando</td><td id="&gt;[~M" class="">En handling, maskinen skal udføre</td><td id="\Ibk" class=""><code>set-target-temperature</code></td></tr><tr id="3d57c79e-9bbf-812f-8709-eafbbee05b64" dir="ltr"><td id="umf=" class="">Hændelse</td><td id="&gt;[~M" class="">Noget, der allerede er sket</td><td id="\Ibk" class=""><code>door-opened</code></td></tr></tbody></table><h3 id="3d57c79e-9bbf-81cd-8627-d89b894dd2b3" class="" dir="auto">Foreslåede komponenter</h3><table id="3d57c79e-9bbf-81a8-b1d3-d3e83dfee93d" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-8129-a2c3-d36c2dbc5532" dir="ltr"><th id="rdPo" class="simple-table-header-color simple-table-header">Komponent</th><th id="]Vpw" class="simple-table-header-color simple-table-header">Egenskaber</th><th id="{c}\" class="simple-table-header-color simple-table-header">Kommandoer og hændelser</th></tr></thead><tbody><tr id="3d57c79e-9bbf-81fb-b3f8-faf4465ed893" dir="ltr"><td id="rdPo" class=""><code>system</code></td><td id="]Vpw" class="">Version, online-status og servicetilstand</td><td id="{c}\" class="">Genstart, opdatering og fejl</td></tr><tr id="3d57c79e-9bbf-81a9-b787-db8c8851ef8c" dir="ltr"><td id="rdPo" class=""><code>cooling</code></td><td id="]Vpw" class="">Temperatur, måltemperatur og kompressorstatus</td><td id="{c}\" class="">Sæt måltemperatur og temperaturalarm</td></tr><tr id="3d57c79e-9bbf-811d-a82e-ed12be93fa7c" dir="ltr"><td id="rdPo" class=""><code>door</code></td><td id="]Vpw" class="">Åben/lukket og låsestatus</td><td id="{c}\" class="">Dør åbnet og manipulation registreret</td></tr><tr id="3d57c79e-9bbf-8111-8881-e7fcc65e9fa4" dir="ltr"><td id="rdPo" class=""><code>dispenser</code></td><td id="]Vpw" class="">Motorstatus og seneste udlevering</td><td id="{c}\" class="">Udleveringsresultat og motorfejl</td></tr><tr id="3d57c79e-9bbf-819e-9d64-fa3af6ea3657" dir="ltr"><td id="rdPo" class=""><code>inventory</code></td><td id="]Vpw" class="">Antal varer pr. slot</td><td id="{c}\" class="">Lagerændring og lav lagerbeholdning</td></tr><tr id="3d57c79e-9bbf-801c-9e36-d97e709cb6c9" dir="ltr"><td id="rdPo" class=""><code>cash</code></td><td id="]Vpw" class="">Indsat kredit og niveau af byttepenge</td><td id="{c}\" class="">Kontant accepteret og kontantfejl</td></tr></tbody></table><hr id="3d57c79e-9bbf-8183-a280-d094b4fa7cc6" dir="auto"/><h2 id="3d57c79e-9bbf-819d-bbc6-d33e62d04a6a" class="" dir="auto">5. MQTT-kommunikation</h2><p id="3d57c79e-9bbf-817a-9e01-cbdef2a3e503" class="" dir="auto">Alle MQTT-topics begynder med versionsnummer, tenant, lokation og maskine:</p><pre id="3d57c79e-9bbf-8163-984c-c87cbc56cc8b" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/{tenantId}/{siteId}/{machineId}/...</code></pre><h3 id="3d57c79e-9bbf-8146-987d-d6c1a34338e5" class="" dir="auto">Topicstruktur</h3><pre id="3d57c79e-9bbf-813d-bfee-c143e394c345" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/{tenant}/{site}/{machine}/properties/{component}/{property}
+v1/{tenant}/{site}/{machine}/commands/{command}
+v1/{tenant}/{site}/{machine}/command-results/{commandId}
+v1/{tenant}/{site}/{machine}/events/{event}
+v1/{tenant}/{site}/{machine}/inventory/current
+v1/{tenant}/{site}/{machine}/sales/completed
+v1/{tenant}/{site}/{machine}/status/connection</code></pre><h3 id="3d57c79e-9bbf-8105-8312-c4543f549685" class="" dir="auto">Eksempler</h3><pre id="3d57c79e-9bbf-8170-8eab-df119d53997b" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/acme/copenhagen/vm-001/properties/cooling/measured-temperature
+v1/acme/copenhagen/vm-001/events/door-opened
+v1/acme/copenhagen/vm-001/events/dispense-failed
+v1/acme/copenhagen/vm-001/inventory/current
+v1/acme/copenhagen/vm-001/commands/set-target-temperature</code></pre><h3 id="3d57c79e-9bbf-8138-8172-c68ab585fcfe" class="" dir="auto">Beskedtyper</h3><table id="3d57c79e-9bbf-812c-b519-dd422e0ffe2e" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-8121-9276-cb5fa6756b03" dir="ltr"><th id="k`yH" class="simple-table-header-color simple-table-header">Type</th><th id="?G\x" class="simple-table-header-color simple-table-header">Retained</th><th id="Z_uH" class="simple-table-header-color simple-table-header">Anbefalet QoS</th><th id="gQyQ" class="simple-table-header-color simple-table-header">Begrundelse</th></tr></thead><tbody><tr id="3d57c79e-9bbf-8160-b108-d90231bec793" dir="ltr"><td id="k`yH" class="">Aktuel egenskab/status</td><td id="?G\x" class="">Ja</td><td id="Z_uH" class="">1</td><td id="gQyQ" class="">Nye abonnenter modtager seneste kendte værdi</td></tr><tr id="3d57c79e-9bbf-8182-804b-fc14ab33c0c4" dir="ltr"><td id="k`yH" class="">Kommando</td><td id="?G\x" class="">Nej</td><td id="Z_uH" class="">1</td><td id="gQyQ" class="">Kommandoen skal leveres, men må ikke genafspilles ved genstart</td></tr><tr id="3d57c79e-9bbf-818a-b34c-cbab47537c88" dir="ltr"><td id="k`yH" class="">Kommandoresultat</td><td id="?G\x" class="">Nej</td><td id="Z_uH" class="">1</td><td id="gQyQ" class="">Platformen skal kende udfaldet</td></tr><tr id="3d57c79e-9bbf-81c5-aff2-c83fa3509477" dir="ltr"><td id="k`yH" class="">Hændelse</td><td id="?G\x" class="">Nej</td><td id="Z_uH" class="">1</td><td id="gQyQ" class="">Hændelsen gemmes efterfølgende i databasen</td></tr><tr id="3d57c79e-9bbf-8139-9907-f87d94cc87d6" dir="ltr"><td id="k`yH" class="">Hyppig ikke-kritisk telemetry</td><td id="?G\x" class="">Valgfrit</td><td id="Z_uH" class="">0 eller 1</td><td id="gQyQ" class="">Afhænger af krav til datatab og belastning</td></tr></tbody></table><h3 id="3d57c79e-9bbf-814c-b60f-c15319a70c1f" class="" dir="auto">Eksempel på temperatur</h3><p id="3d57c79e-9bbf-81bc-bca3-e58b28ae0583" class="" dir="auto">Topic:</p><pre id="3d57c79e-9bbf-81f8-8479-ffa1afbb0fbf" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/acme/copenhagen/vm-001/properties/cooling/measured-temperature</code></pre><p id="3d57c79e-9bbf-819f-80a1-de78cc83bf78" class="" dir="auto">Payload:</p><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" integrity="sha512-QXFMVAusM85vUYDaNgcYeU3rzSlc+bTV4JvkfJhjxSHlQEo+ig53BtnGkvFTiNJh8D+wv6uWAQ2vJaVmxe8d3w==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><pre id="3d57c79e-9bbf-81b4-afb7-e9ff6e4f8a94" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;value&quot;: 4.5,
+  &quot;unit&quot;: &quot;celsius&quot;,
+  &quot;timestamp&quot;: &quot;2026-09-08T12:30:00Z&quot;
+}</code></pre><h3 id="3d57c79e-9bbf-81b2-813f-e63d137306b7" class="" dir="auto">Eksempel på kommando</h3><p id="3d57c79e-9bbf-81d3-8f59-f1b5d52b44bd" class="" dir="auto">Topic:</p><pre id="3d57c79e-9bbf-8102-b648-eafa85704df7" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/acme/copenhagen/vm-001/commands/set-target-temperature</code></pre><p id="3d57c79e-9bbf-812f-8852-dfac8e364a88" class="" dir="auto">Payload:</p><pre id="3d57c79e-9bbf-81c3-8e06-c7e1a4bcf41c" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;commandId&quot;: &quot;cmd-9281&quot;,
+  &quot;value&quot;: 4.0,
+  &quot;issuedAt&quot;: &quot;2026-09-08T12:30:00Z&quot;,
+  &quot;expiresAt&quot;: &quot;2026-09-08T12:31:00Z&quot;
+}</code></pre><p id="3d57c79e-9bbf-81f0-b2e5-ef5b11c8ac0c" class="" dir="auto">Resultat:</p><pre id="3d57c79e-9bbf-81b7-9404-d1e5d8960ccc" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">v1/acme/copenhagen/vm-001/command-results/cmd-9281</code></pre><pre id="3d57c79e-9bbf-812d-b69f-ce4dc325fbff" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;status&quot;: &quot;completed&quot;,
+  &quot;completedAt&quot;: &quot;2026-09-08T12:30:04Z&quot;
+}</code></pre><hr id="3d57c79e-9bbf-81c2-a3fe-fabfc5b45acc" dir="auto"/><h2 id="3d57c79e-9bbf-8195-beb7-c984627c6e25" class="" dir="auto">6. Multi-tenancy</h2><p id="3d57c79e-9bbf-81e5-8ec2-e57cd75e6b6b" class="" dir="auto">En tenant er en virksomhed eller kunde. Den fælles platform må gerne dele servere, broker og database, men kundernes adgang og data skal være logisk og sikkerhedsmæssigt adskilt.</p><pre id="3d57c79e-9bbf-819d-a334-cc4accc1f900" class="code code-wrap" data-notion-code-syntax="mermaid"><code class="language-mermaid" style="white-space:pre-wrap;word-break:break-all">flowchart TD
+    Platform[Fælles VMaaS-platform]
+    Platform --&gt; A[Tenant: ACME]
+    Platform --&gt; B[Tenant: Firma B]
+    A --&gt; A1[København]
+    A1 --&gt; A2[VM-001 og VM-002]
+    B --&gt; B1[Aarhus]
+    B1 --&gt; B2[VM-207]</code></pre><h3 id="3d57c79e-9bbf-8121-ba7b-f95ead70b605" class="" dir="auto">Regler</h3><ul id="3d57c79e-9bbf-8181-adeb-f72dc63fc7b4" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En bruger kan kun tilgå tenants, som brugeren er medlem af.</li></ul><ul id="3d57c79e-9bbf-81bd-8e88-dcdcacb4bb05" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En maskine tilhører præcis én tenant ad gangen.</li></ul><ul id="3d57c79e-9bbf-81d7-b6ff-e0f7113e7f3a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En maskine kan kun publicere og abonnere inden for sit eget topicområde.</li></ul><ul id="3d57c79e-9bbf-8193-be55-c46913fc9584" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Backend udleder tenant fra den validerede bruger- eller maskinidentitet.</li></ul><ul id="3d57c79e-9bbf-8175-aa22-da593e93e5a1" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Et <code>tenant_id</code> i en request eller MQTT-payload giver ikke i sig selv adgang.</li></ul><ul id="3d57c79e-9bbf-81e1-ba82-d884e7339bbf" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Flytning af en maskine mellem tenants er en kontrolleret administratorhandling og kræver at maskinen resettes.</li></ul><hr id="3d57c79e-9bbf-81f7-b0ea-d6b8f91a829f" dir="auto"/><h2 id="3d57c79e-9bbf-817c-83d8-cfbbdd0e81e1" class="" dir="auto">7. Sikkerhed</h2><p id="3d57c79e-9bbf-81f4-8846-d48edcc175dd" class="" dir="auto">Sikkerheden bygges i flere lag, så et kompromis af én maskine ikke giver adgang til andre maskiner, tenants, betalinger eller platformadministration.</p><h3 id="3d57c79e-9bbf-8135-b5d5-c75c6d3785b6" class="" dir="auto">7.1 Maskinidentitet</h3><p id="3d57c79e-9bbf-810e-8adf-db142c4fce45" class="" dir="auto">Hver maskine får:</p><ul id="3d57c79e-9bbf-8116-a3a9-d60f945cd4f3" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Et unikt <code>machine_id</code>.</li></ul><ul id="3d57c79e-9bbf-8137-9a44-e1b2e73853f1" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Et individuelt klientcertifikat.</li></ul><ul id="3d57c79e-9bbf-8149-bf5a-ed3b9969b478" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En privat nøgle, helst gemt i TPM eller secure element.</li></ul><ul id="3d57c79e-9bbf-8119-a6db-c62b9a9f0a76" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En serverstyret kobling til tenant og lokation (sættes op under opsætning).</li></ul><ul id="3d57c79e-9bbf-81ee-8ec0-c87f1c0e2870" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Mulighed for certifikatrotation og tilbagekaldelse.</li></ul><p id="3d57c79e-9bbf-8180-80a0-e0a2d79696f3" class="" dir="auto">Maskinen må ikke selv vælge eller ændre sin autoritative tenant.</p><h3 id="3d57c79e-9bbf-81d2-a801-df5c302538a4" class="" dir="auto">7.2 MQTT over mutual TLS</h3><ol type="1" id="3d57c79e-9bbf-811b-bf78-ea3d310e4f5b" class="numbered-list" start="1" dir="auto"><li>Maskinen kontrollerer brokerens servercertifikat.</li></ol><ol type="1" id="3d57c79e-9bbf-816e-b2f6-c1c9c2cfff25" class="numbered-list" start="2" dir="auto"><li>Brokeren kontrollerer maskinens klientcertifikat.</li></ol><ol type="1" id="3d57c79e-9bbf-8189-847e-f0651dbe1507" class="numbered-list" start="3" dir="auto"><li>Certifikatet kobles til en registreret tenant, lokation og maskine.</li></ol><ol type="1" id="3d57c79e-9bbf-8137-9c29-d91dbed9b312" class="numbered-list" start="4" dir="auto"><li>Brokerens ACL giver kun adgang til nødvendige topics.</li></ol><p id="3d57c79e-9bbf-81ca-b024-f6a52182e692" class="" dir="auto">Eksempel for <code>vm-001</code>:</p><pre id="3d57c79e-9bbf-8123-85a5-de09b7b8ee2c" class="code code-wrap"><code style="white-space:pre-wrap;word-break:break-all">ALLOW PUBLISH:
+v1/acme/copenhagen/vm-001/properties/#
+v1/acme/copenhagen/vm-001/events/#
+v1/acme/copenhagen/vm-001/inventory/#
+v1/acme/copenhagen/vm-001/sales/#
+v1/acme/copenhagen/vm-001/command-results/#
+
+ALLOW SUBSCRIBE:
+v1/acme/copenhagen/vm-001/commands/#
+
+DENY:
+#</code></pre><p id="3d57c79e-9bbf-817b-b2cd-c4569835893e" class="" dir="auto">Standardpolitikken er <strong>deny by default</strong>.</p><h3 id="3d57c79e-9bbf-815b-ad89-ff5422153825" class="" dir="auto">7.3 Sikring af kommandoer</h3><p id="3d57c79e-9bbf-8126-9798-c963412045ac" class="" dir="auto">Maskinen kontrollerer:</p><ul id="3d57c79e-9bbf-813f-8307-dbf586df7cc6" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om kommandoen er sendt til den korrekte maskine.</li></ul><ul id="3d57c79e-9bbf-81cb-b7b4-e2fee1b577b2" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om kommandotypen er tilladt.</li></ul><ul id="3d57c79e-9bbf-813d-85cc-d8e5d49aeb19" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om værdierne ligger inden for sikre grænser.</li></ul><ul id="3d57c79e-9bbf-81c1-865c-e9f81638506c" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om kommandoen er udløbet.</li></ul><ul id="3d57c79e-9bbf-8171-80c6-d6cf1f89a076" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om <code>commandId</code> tidligere er behandlet.</li></ul><ul id="3d57c79e-9bbf-812f-9059-f21669d879df" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Om maskinen er i en tilstand, hvor handlingen må udføres.</li></ul><p id="3d57c79e-9bbf-8142-a4fc-e65434c910f4" class="" dir="auto">Kommando-topics må ikke være retained. Følsomme handlinger som åbning af maskinen, fabriksnulstilling og direkte vareudlevering bør kræve ekstra godkendelse eller lokal fysisk adgang.</p><h3 id="3d57c79e-9bbf-81fc-8767-dbedf17d44cf" class="" dir="auto">7.4 Brugere og roller</h3><p id="3d57c79e-9bbf-81a5-8011-de98d6e1eee2" class="" dir="auto">Brugere logger ind gennem OAuth/OIDC. Administrative konti anvender MFA.</p><pre id="3d57c79e-9bbf-8128-a615-c308454c3a1c" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;sub&quot;: &quot;user-42&quot;,
+  &quot;tenant_id&quot;: &quot;acme&quot;,
+  &quot;roles&quot;: [&quot;service_technician&quot;]
+}</code></pre><table id="3d57c79e-9bbf-8101-bc3d-d11e6e582aad" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-8173-8fb4-dd7b18fb8a6e" dir="ltr"><th id="HMEP" class="simple-table-header-color simple-table-header">Rolle</th><th id="[tvz" class="simple-table-header-color simple-table-header">Rettigheder</th></tr></thead><tbody><tr id="3d57c79e-9bbf-816c-ad29-fa52c8cc4886" dir="ltr"><td id="HMEP" class="">Platformadministrator</td><td id="[tvz" class="">Administrerer den samlede platform</td></tr><tr id="3d57c79e-9bbf-81e2-8e4c-f3d3ef04f87e" dir="ltr"><td id="HMEP" class="">Tenantadministrator</td><td id="[tvz" class="">Administrerer egen virksomhed og brugere</td></tr><tr id="3d57c79e-9bbf-819f-9403-d0d16336781d" dir="ltr"><td id="HMEP" class="">Operatør</td><td id="[tvz" class="">Produkter, priser, lager og rapporter</td></tr><tr id="3d57c79e-9bbf-8130-8b9c-d6770b210aa5" dir="ltr"><td id="HMEP" class="">Servicetekniker</td><td id="[tvz" class="">Fejl, diagnosticering og vedligehold</td></tr></tbody></table><p id="3d57c79e-9bbf-81dd-975f-e2355f79e3dc" class="" dir="auto">API’et anvender tenant fra det validerede token og kontrollerer rollen ved hver beskyttet handling.</p><h3 id="3d57c79e-9bbf-8110-9b82-e4148ce4f9e8" class="" dir="auto">7.5 Databasebeskyttelse</h3><p id="3d57c79e-9bbf-8193-b569-df8537e514b2" class="" dir="auto">Alle driftsrelaterede tabeller indeholder <code>tenant_id</code>. Alle forespørgsler filtreres efter den godkendte tenant:</p><script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js" integrity="sha512-sijCOJblSCXYYmXdwvqV0tak8QJW5iy2yLB1wAbbLc3OOIueqymizRFWUS/mwKctnzPKpNdPJV3aK1zlDMJmXQ==" crossorigin="anonymous" referrerPolicy="no-referrer"></script><pre id="3d57c79e-9bbf-81fd-9d71-e5d7cb67dfc9" class="code code-wrap" data-notion-code-syntax="sql"><code class="language-sql" style="white-space:pre-wrap;word-break:break-all">SELECT *
+FROM machines
+WHERE tenant_id = :authenticated_tenant_id;</code></pre><p id="3d57c79e-9bbf-81f9-b777-ee813650ce34" class="" dir="auto">Row-Level Security anvendes som et ekstra lag. Ændringer af brugere, rettigheder, priser, maskiner og kommandoer registreres i en auditlog.</p><h3 id="3d57c79e-9bbf-816d-b11d-e81141c01203" class="" dir="auto">7.6 Firmware og fysisk sikkerhed</h3><p id="3d57c79e-9bbf-81a0-b7d2-f60c3a313732" class="" dir="auto">Maskincontrolleren bør have:</p><ul id="3d57c79e-9bbf-810c-aedb-d2d3b6d36fd9" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Secure boot.</li></ul><ul id="3d57c79e-9bbf-8116-973f-c18741102eb4" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Kryptografisk signerede opdateringer.</li></ul><ul id="3d57c79e-9bbf-8174-ac9b-cd5d6bb87c58" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Beskyttelse mod installation af ældre sårbare versioner.</li></ul><ul id="3d57c79e-9bbf-81fc-8e33-f1ca1bd1333d" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Automatisk rollback ved en mislykket opdatering.</li></ul><ul id="3d57c79e-9bbf-8115-958c-c33c3c3dc81a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Krypteret opbevaring af følsomme data.</li></ul><ul id="3d57c79e-9bbf-8191-80b1-c3a539a0eb75" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Deaktiveret eller beskyttet USB-, UART- og debug-adgang.</li></ul><ul id="3d57c79e-9bbf-81c0-b844-c5a44f57889b" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Kun nødvendige netværkstjenester.</li></ul><ul id="3d57c79e-9bbf-817c-a5ba-e7eb3ecd90aa" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Regelmæssige sikkerhedsopdateringer.</li></ul><hr id="3d57c79e-9bbf-816f-ba1b-e0df2004b9df" dir="auto"/><h2 id="3d57c79e-9bbf-812e-b11d-c69c6f0b5d55" class="" dir="auto">8. Betalingssikkerhed</h2><p id="3d57c79e-9bbf-8118-a39e-e64caeaa85cb" class="" dir="auto">Betalingsterminalen er adskilt fra maskincontrollerens almindelige netværkskommunikation.</p><p id="3d57c79e-9bbf-81ff-8917-dac85bfd5e0b" class="" dir="auto">Platformen gemmer kun nødvendige oplysninger:</p><pre id="3d57c79e-9bbf-81c1-aeea-ed7c10de6920" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;paymentReference&quot;: &quot;pay-82913&quot;,
+  &quot;status&quot;: &quot;approved&quot;,
+  &quot;amount&quot;: 25.00,
+  &quot;currency&quot;: &quot;DKK&quot;
+}</code></pre><hr id="3d57c79e-9bbf-814c-931b-fe30aea656fc" dir="auto"/><h2 id="3d57c79e-9bbf-819d-a86a-ebf8f4caf6ff" class="" dir="auto">9. Provisionering af en maskine</h2><pre id="3d57c79e-9bbf-817c-a196-d56a7cf08a10" class="code code-wrap" data-notion-code-syntax="mermaid"><code class="language-mermaid" style="white-space:pre-wrap;word-break:break-all">sequenceDiagram
+    participant Admin as Tenantadministrator
+    participant API as VMaaS API
+    participant Registry as Device registry
+    participant Machine as Ny maskine
+    participant Broker as MQTT-broker
+
+    Admin-&gt;&gt;API: Opret maskine under tenant og lokation
+    API-&gt;&gt;Registry: Opret maskinidentitet
+    Registry--&gt;&gt;Machine: Engangsaktivering
+    Machine-&gt;&gt;Registry: Aktiver enheden
+    Registry--&gt;&gt;Machine: Unikt klientcertifikat
+    Machine-&gt;&gt;Broker: Forbind med mutual TLS
+    Broker-&gt;&gt;Registry: Valider identitet og ACL
+    Broker--&gt;&gt;Machine: Forbindelse accepteret</code></pre><h3 id="3d57c79e-9bbf-812c-b8c7-c19c6e339b03" class="" dir="auto">Regler for provisionering</h3><ul id="3d57c79e-9bbf-8196-b4f5-dc9f248c7b03" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Engangsaktiveringen skal have kort levetid.</li></ul><ul id="3d57c79e-9bbf-814f-9e23-c7244d859987" class="bulleted-list" dir="auto"><li style="list-style-type:disc">En aktiveringskode kan kun bruges én gang.</li></ul><ul id="3d57c79e-9bbf-819f-b86a-ef8c2d13d8d9" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Tenant, lokation og maskin-ID fastlægges af serveren.</li></ul><ul id="3d57c79e-9bbf-8196-ace3-e9e89492b4ac" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Certifikatet udstedes først efter godkendt aktivering.</li></ul><ul id="3d57c79e-9bbf-81cb-95b7-df8e330f5f7a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Certifikater skal kunne roteres og tilbagekaldes.</li></ul><hr id="3d57c79e-9bbf-8184-bd30-d50235ea18db" dir="auto"/><h2 id="3d57c79e-9bbf-8173-babb-c9011833e018" class="" dir="auto">10. Offline-drift</h2><p id="3d57c79e-9bbf-812e-9ffc-fb9439fc5241" class="" dir="auto">Ved manglende internetforbindelse gemmer maskinen hændelser i en lokal kø:</p><ul id="3d57c79e-9bbf-8103-aba5-eb9bc343febd" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Salgshændelser.</li></ul><ul id="3d57c79e-9bbf-81da-bf91-c6c2c8179b7e" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Lagerændringer.</li></ul><ul id="3d57c79e-9bbf-819b-8c3a-f64e3d23a9db" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Fejl og alarmer.</li></ul><ul id="3d57c79e-9bbf-81bb-ab18-f2e73a7bf345" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Relevant telemetry.</li></ul><p id="3d57c79e-9bbf-81a8-a5ed-fe54d0a4a8aa" class="" dir="auto">Når forbindelsen genetableres, synkroniseres køen. Hver hændelse har et unikt ID og et sekvensnummer, så platformen kan opdage dubletter og manglende beskeder.</p><pre id="3d57c79e-9bbf-81c1-87c1-c0cf5d05a3fc" class="code code-wrap" data-notion-code-syntax="json"><code class="language-json" style="white-space:pre-wrap;word-break:break-all">{
+  &quot;eventId&quot;: &quot;evt-10982&quot;,
+  &quot;sequenceNumber&quot;: 4921,
+  &quot;occurredAt&quot;: &quot;2026-09-08T12:45:00Z&quot;
+}</code></pre><p id="3d57c79e-9bbf-817e-adc2-fb82d7890002" class="" dir="auto">Maskinen sender heartbeat med faste intervaller. MQTT Last Will and Testament bruges til at registrere uventede afbrydelser.</p><hr id="3d57c79e-9bbf-81a6-abf8-e140a2a52edd" dir="auto"/><h2 id="3d57c79e-9bbf-8169-9573-f985c6fcdb75" class="" dir="auto">11. Forslag til databasestruktur</h2><table id="3d57c79e-9bbf-81da-83af-e371ee495756" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-814e-8cd8-c0b4b5e25d54" dir="ltr"><th id="~uX_" class="simple-table-header-color simple-table-header">Tabel</th><th id="zKGL" class="simple-table-header-color simple-table-header">Centrale felter</th></tr></thead><tbody><tr id="3d57c79e-9bbf-8147-8cc0-e8de3059eec1" dir="ltr"><td id="~uX_" class=""><code>tenants</code></td><td id="zKGL" class=""><code>id</code>, <code>name</code>, <code>status</code></td></tr><tr id="3d57c79e-9bbf-81c9-8e1f-c87375111d3e" dir="ltr"><td id="~uX_" class=""><code>users</code></td><td id="zKGL" class=""><code>id</code>, <code>identity_provider_id</code>, <code>status</code></td></tr><tr id="3d57c79e-9bbf-817b-b875-d4b13f734cd7" dir="ltr"><td id="~uX_" class=""><code>tenant_users</code></td><td id="zKGL" class=""><code>tenant_id</code>, <code>user_id</code>, <code>role</code></td></tr><tr id="3d57c79e-9bbf-8149-93f1-eb80805111fa" dir="ltr"><td id="~uX_" class=""><code>sites</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>name</code>, <code>address</code></td></tr><tr id="3d57c79e-9bbf-819d-81af-c1ed6ca10c3d" dir="ltr"><td id="~uX_" class=""><code>machines</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>site_id</code>, <code>serial_number</code>, <code>status</code></td></tr><tr id="3d57c79e-9bbf-81c9-8467-fce18df03573" dir="ltr"><td id="~uX_" class=""><code>components</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>machine_id</code>, <code>type</code></td></tr><tr id="3d57c79e-9bbf-81f8-bd82-decf5ff3d4bf" dir="ltr"><td id="~uX_" class=""><code>products</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>name</code>, <code>price</code></td></tr><tr id="3d57c79e-9bbf-8132-9dd3-f0bea181075c" dir="ltr"><td id="~uX_" class=""><code>slots</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>machine_id</code>, <code>product_id</code>, <code>quantity</code></td></tr><tr id="3d57c79e-9bbf-81c0-af93-d79d61415442" dir="ltr"><td id="~uX_" class=""><code>sales</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>machine_id</code>, <code>payment_reference</code>, <code>amount</code></td></tr><tr id="3d57c79e-9bbf-81f7-ba15-cb99b452f2bd" dir="ltr"><td id="~uX_" class=""><code>telemetry</code></td><td id="zKGL" class=""><code>tenant_id</code>, <code>machine_id</code>, <code>component</code>, <code>property</code>, <code>value</code>, <code>created_at</code></td></tr><tr id="3d57c79e-9bbf-816e-8339-e7cf6025592d" dir="ltr"><td id="~uX_" class=""><code>alerts</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>machine_id</code>, <code>severity</code>, <code>status</code></td></tr><tr id="3d57c79e-9bbf-81b0-905f-c8bc397c23bd" dir="ltr"><td id="~uX_" class=""><code>commands</code></td><td id="zKGL" class=""><code>id</code>, <code>tenant_id</code>, <code>machine_id</code>, <code>type</code>, <code>expires_at</code>, <code>status</code></td></tr><tr id="3d57c79e-9bbf-818f-80fb-cf41df33eea1" dir="ltr"><td id="~uX_" class=""><code>audit_logs</code></td><td id="zKGL" class=""><code>tenant_id</code>, <code>actor_id</code>, <code>action</code>, <code>target_id</code>, <code>created_at</code></td></tr></tbody></table><hr id="3d57c79e-9bbf-8110-802e-f44ce942ed07" dir="auto"/><h2 id="3d57c79e-9bbf-81f6-a844-fa0e82ad679a" class="" dir="auto">12. Overvågning</h2><p id="3d57c79e-9bbf-8170-a294-cfc0bfe14a0c" class="" dir="auto">Følgende skal logges og overvåges:</p><ul id="3d57c79e-9bbf-8154-bd8f-f7541de9153a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Mislykkede brugerlogin.</li></ul><ul id="3d57c79e-9bbf-8188-9bf0-f2e571dd6b5c" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Afviste MQTT-forbindelser.</li></ul><ul id="3d57c79e-9bbf-81c2-9a93-f08cec3868f4" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Forsøg på adgang til andre tenants eller maskiner.</li></ul><ul id="3d57c79e-9bbf-81f3-a35c-fe4da2298aba" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Udløbende og tilbagekaldte certifikater.</li></ul><ul id="3d57c79e-9bbf-8106-affa-ca121eba9c89" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Ugyldige eller udløbne kommandoer.</li></ul><ul id="3d57c79e-9bbf-815e-8e31-f3b5d81c2183" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Firmwareopdateringer og deres resultat.</li></ul><ul id="3d57c79e-9bbf-819e-aed0-fa6593836ff5" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Ændringer af priser, brugere og rettigheder.</li></ul><ul id="3d57c79e-9bbf-8131-bcec-d2ade495892a" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Døråbning og fysisk manipulation.</li></ul><ul id="3d57c79e-9bbf-8111-978f-f323c046d14d" class="bulleted-list" dir="auto"><li style="list-style-type:disc">Maskiner, der går offline.</li></ul><p id="3d57c79e-9bbf-81e8-ac0e-d5c4616bd6cf" class="" dir="auto">Logs må ikke indeholde adgangskoder, tokens eller private nøgler. Optælling og tømning af kontanter registreres i auditloggen med bruger, maskine, beløb og tidspunkt.</p><hr id="3d57c79e-9bbf-812b-84af-d870e237a440" dir="auto"/><h2 id="3d57c79e-9bbf-8112-aa2f-dbd5900bd4b3" class="" dir="auto">13. Testscenarier</h2><table id="3d57c79e-9bbf-810a-9992-f25a150fc78c" class="simple-table" dir="ltr"><thead class="simple-table-header"><tr id="3d57c79e-9bbf-8133-8f5a-ef3da3fb02c9" dir="ltr"><th id="j=\I" class="simple-table-header-color simple-table-header">Test</th><th id="Mcc{" class="simple-table-header-color simple-table-header">Forventet resultat</th></tr></thead><tbody><tr id="3d57c79e-9bbf-81ce-8242-db31d1bb3b86" dir="ltr"><td id="j=\I" class="">ACME-maskine publicerer til Firma B’s topic</td><td id="Mcc{" class="">MQTT-brokeren afviser beskeden</td></tr><tr id="3d57c79e-9bbf-811e-adb8-c7c07c27e777" dir="ltr"><td id="j=\I" class="">ACME-bruger anmoder om Firma B’s maskine</td><td id="Mcc{" class="">API returnerer <code>403</code> eller <code>404</code></td></tr><tr id="3d57c79e-9bbf-818c-9243-d65b26d55e21" dir="ltr"><td id="j=\I" class="">Kommandoen er udløbet</td><td id="Mcc{" class="">Maskinen afviser kommandoen</td></tr><tr id="3d57c79e-9bbf-814d-9580-cb1749803543" dir="ltr"><td id="j=\I" class="">Samme <code>commandId</code> modtages to gange</td><td id="Mcc{" class="">Kommandoen udføres kun én gang</td></tr><tr id="3d57c79e-9bbf-81c8-a6c3-eedd5fb31f82" dir="ltr"><td id="j=\I" class="">Maskinens certifikat tilbagekaldes</td><td id="Mcc{" class="">MQTT-forbindelsen afvises</td></tr><tr id="3d57c79e-9bbf-8130-ac41-dc1b3a906929" dir="ltr"><td id="j=\I" class="">Firmware mangler gyldig signatur</td><td id="Mcc{" class="">Opdateringen installeres ikke</td></tr><tr id="3d57c79e-9bbf-80c0-9962-dd4aff688b0d" dir="ltr"><td id="j=\I" class="">Kunden indsætter for lidt kontantbeløb</td><td id="Mcc{" class="">Varen kan ikke udleveres</td></tr><tr id="3d57c79e-9bbf-81be-85a9-dbd52ab4c922" dir="ltr"><td id="j=\I" class="">Maskinen mister internetforbindelsen</td><td id="Mcc{" class="">Hændelser gemmes og synkroniseres senere</td></tr><tr id="3d57c79e-9bbf-81cb-80da-f35ffdde7787" dir="ltr"><td id="j=\I" class="">Database undersøges for kortdata</td><td id="Mcc{" class="">Kortnummer, CVV og PIN findes ikke</td></tr><tr id="3d57c79e-9bbf-8183-9395-ec65f8bb387b" dir="ltr"><td id="j=\I" class="">MQTT-broker genstartes</td><td id="Mcc{" class="">Maskinen genetablerer forbindelsen automatisk</td></tr><tr id="3d57c79e-9bbf-805f-9017-d5e23a777457" dir="ltr"><td id="j=\I" class="">Kontantbeholderen åbnes</td><td id="Mcc{" class="">Hændelsen registreres med bruger og tidspunkt</td></tr></tbody></table><hr id="3d57c79e-9bbf-8114-872d-e036776ead89" dir="auto"/><h2 id="3d57c79e-9bbf-81f3-a5eb-e13f5b72534d" class="" dir="auto">14. Centrale designbeslutninger</h2><ol type="1" id="3d57c79e-9bbf-81db-8825-ee2db83af112" class="numbered-list" start="1" dir="auto"><li>MQTT er den eneste applikationsprotokol mellem maskincontroller og VMaaS.</li></ol><ol type="1" id="3d57c79e-9bbf-8131-b838-f056a697662e" class="numbered-list" start="2" dir="auto"><li>Maskinen opdeles i komponenter, egenskaber, kommandoer og hændelser.</li></ol><ol type="1" id="3d57c79e-9bbf-819a-83dc-ca9ce9172c2d" class="numbered-list" start="3" dir="auto"><li>Tenant er den øverste sikkerhedsgrænse i API, MQTT og database.</li></ol><ol type="1" id="3d57c79e-9bbf-81d4-aa94-f5fc70831673" class="numbered-list" start="4" dir="auto"><li>Hver maskine får sin egen kryptografiske identitet.</li></ol><ol type="1" id="3d57c79e-9bbf-818b-b7ff-dd7f8eb5ac47" class="numbered-list" start="5" dir="auto"><li>MQTT-brokeren anvender deny-by-default og præcise ACL-regler.</li></ol><ol type="1" id="3d57c79e-9bbf-80c6-b979-ed88c5ebf5e1" class="numbered-list" start="6" dir="auto"><li>Maskinen accepterer kun kontanter gennem et lokalt kontantmodul.</li></ol><ol type="1" id="3d57c79e-9bbf-818f-b905-fcbbebb1de3f" class="numbered-list" start="7" dir="auto"><li>Kommandoer har ID, udløbstid, validering og resultatbesked.</li></ol><ol type="1" id="3d57c79e-9bbf-8113-ac75-cbd0ccd47275" class="numbered-list" start="8" dir="auto"><li>Firmware skal være signeret og kunne opdateres sikkert.</li></ol><ol type="1" id="3d57c79e-9bbf-8149-805e-f9eb2da9bcff" class="numbered-list" start="9" dir="auto"><li>Maskinen skal kunne håndtere midlertidig offline-drift uden at miste hændelser.</li></ol><hr id="3d57c79e-9bbf-8151-9161-d1ff5e087d97" dir="auto"/><h2 id="3d57c79e-9bbf-8117-b46d-c613253c1ca9" class="" dir="auto">15. Referencer</h2><hr id="3d57c79e-9bbf-812f-9c12-d16bb5e34cd3" dir="auto"/><ul id="3d57c79e-9bbf-812a-8120-cd2171a0ae63" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><a href="https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html">OASIS – MQTT Version 5.0</a></li></ul><ul id="3d57c79e-9bbf-81c2-9592-fc5613050388" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><a href="https://owasp.org/IoT-Security-Verification-Standard-ISVS/en/V3-Software_Platform_Requirements.html">OWASP – IoT Security Verification Standard</a></li></ul><ul id="3d57c79e-9bbf-81f0-bf25-c9f9c6e02888" class="bulleted-list" dir="auto"><li style="list-style-type:disc"><a href="https://www.pcisecuritystandards.org/documents/Guidance-PCI-DSS-Scoping-and-Segmentation_v1_1.pdf">PCI Security Standards Council – Scoping and Network Segmentation</a></li></ul></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>
