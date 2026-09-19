@@ -10,3 +10,11 @@ export const getSalesMapSchema = z.object({
     days: z.coerce.number().optional(),
   }),
 });
+
+/** `days` stays optional and the service clamps it, like `/map` — a
+ *  hand-edited query string renders a window rather than a 400. */
+export const getSalesSummarySchema = z.object({
+  query: z.object({
+    days: z.coerce.number().optional(),
+  }),
+});
