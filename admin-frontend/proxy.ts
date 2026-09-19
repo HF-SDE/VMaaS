@@ -15,6 +15,10 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|login|sign-up|welcome|verify-email|forgot-password|reset-password).*)",
+    // `invite` is exempt because an invitation link has to survive being opened
+    // signed out: the page itself redirects to sign-in carrying its own URL, so
+    // the visitor comes back to the invitation instead of landing on /login
+    // with nothing to show for it.
+    "/((?!api|_next/static|_next/image|favicon.ico|login|sign-up|invite|welcome|verify-email|forgot-password|reset-password).*)",
   ],
 }
