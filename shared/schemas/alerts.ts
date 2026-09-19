@@ -47,3 +47,15 @@ export const getAlertsPageSchema = z.object({
     dateTo: z.string().regex(ISO_DATE, ISO_DATE_MESSAGE).optional(),
   }),
 });
+
+/**
+ * `PATCH /api/alerts/:id/resolve`.
+ *
+ * Request-shaped like every other schema, so `validate()` rejects a malformed
+ * id as a 400 before it reaches a query that could never have matched it.
+ */
+export const resolveAlertSchema = z.object({
+  params: z.object({
+    id: z.uuid({ message: "id must be a uuid" }),
+  }),
+});

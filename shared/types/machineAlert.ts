@@ -38,6 +38,27 @@ export interface MachineAlertRow {
   contactEmail: string | null;
 }
 
+/** How many recent open alerts the dashboard summary carries. The card shows
+ *  the first few and hides the rest behind "Show N more", so this is the depth
+ *  of that button, not what is on screen; the log is still one click away.
+ *  Matches `LOW_STOCK_LIMIT`, the restock queue's equivalent. */
+export const ALERTS_SUMMARY_RECENT_LIMIT = 50;
+
+/**
+ * What `GET /api/alerts/summary` answers: how bad it is, and the few rows worth
+ * showing without opening the log.
+ *
+ * `recent` is `MachineAlertRow[]` rather than a narrower shape so one alert
+ * renders identically whether it came from here or from `/paginated`.
+ */
+export interface AlertsSummary {
+  /** Open alerts only — `resolvedAt` is null. One key per `ALERT_TYPES` member. */
+  openByType: Record<AlertType, number>;
+  openTotal: number;
+  /** At most `ALERTS_SUMMARY_RECENT_LIMIT`, newest first by `occurredAt`. */
+  recent: MachineAlertRow[];
+}
+
 /**
  * What the alert log sends to `GET /api/alerts/paginated`.
  *

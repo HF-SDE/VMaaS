@@ -3,7 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
-import type { GetAlertsParams, MachineAlertRow } from "@vmaas/shared/types/machineAlert";
+import {
+  ALERTS_SUMMARY_RECENT_LIMIT,
+  ALERT_TYPES,
+  type AlertType,
+  type AlertsSummary,
+  type GetAlertsParams,
+  type MachineAlertRow,
+} from "@vmaas/shared/types/machineAlert";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
@@ -11,11 +18,6 @@ const DEFAULT_SORT_ORDER = "desc" as const;
 
 export type UnknownAlertError = { reason: "UNKNOWN_ERROR"; message: string };
 
-/**
- * The columns a row needs, joined down to the two names the table prints and
- * the contact details the expanded row shows. Selected rather than included so
- * the rest of the machine and the site never cross the wire.
- */
 const ALERT_SELECT = {
   id: true,
   type: true,
@@ -44,14 +46,6 @@ function unknownError(action: string, cause: unknown): Result<UnknownAlertError,
   });
 }
 
-/**
- * Page and size, clamped rather than rejected.
- *
- * A log is something people bookmark and come back to, so a saved page number
- * that has since fallen off the end should render an empty page instead of a
- * 400. Exported for its own test — it is the half of the read that has no
- * database in it.
- */
 export function clampAlertPaging(params: GetAlertsParams): { page: number; pageSize: number } {
   return {
     page: Math.max(0, Math.trunc(params.page ?? 0)),
@@ -59,18 +53,6 @@ export function clampAlertPaging(params: GetAlertsParams): { page: number; pageS
   };
 }
 
-/**
- * The `where` for one alert query.
- *
- * `machine: { tenantId }` is the tenant boundary and is written first and
- * unconditionally: `SecurityAlert` has no `tenantId` of its own, so the join to
- * the machine is the only thing keeping one tenant's log out of another's. The
- * caller's `machineIds` and `siteIds` narrow *within* that filter rather than
- * replacing it, so an id belonging to someone else matches nothing instead of
- * leaking a row.
- *
- * Exported so the filter logic can be asserted directly, without a database.
- */
 export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Prisma.SecurityAlertWhereInput {
   const search = params.search?.trim();
 
@@ -82,18 +64,10 @@ export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Pris
   if (params.machineIds?.length) where.machineId = { in: params.machineIds };
   if (params.alertTypes?.length) where.type = { in: params.alertTypes };
 
-  // Both bounds are inclusive whole days, read in UTC: the filter comes from a
-  // `<input type="date">`, which has no time and no zone to offer. `dateTo`
-  // therefore has to reach the end of its day, or picking the same date in both
-  // boxes would select nothing.
   const occurredAt: Prisma.DateTimeFilter = {};
   if (params.dateFrom) occurredAt.gte = new Date(`${params.dateFrom}T00:00:00.000Z`);
   if (params.dateTo) occurredAt.lte = new Date(`${params.dateTo}T23:59:59.999Z`);
   if (occurredAt.gte || occurredAt.lte) where.occurredAt = occurredAt;
-
-  // The machine and the site are columns in the table, so they are searchable
-  // alongside the message — typing a site's name finds everything that happened
-  // there, the same way the machines list searches its site.
   if (search) {
     where.OR = [
       { message: { contains: search, mode: "insensitive" } },
@@ -105,18 +79,6 @@ export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Pris
   return where;
 }
 
-/**
- * Joined row → the flat, JSON-shaped row the client is typed against, or
- * `null` if the row doesn't honour the invariant `MachineAlertRow`'s non-null
- * `siteId`/`siteName` rely on: an alert is logged by a machine `buildAlertWhere`
- * already scoped to this tenant, and a machine with a tenant always has a site
- * (`claimMachineService` and `createMachineService` both set them together).
- *
- * A `null` site here means that invariant broke, not that the caller did
- * anything wrong. Rather than asserting it away with a cast, the row is
- * dropped from the page instead — safer than crashing the log or lying about
- * the type.
- */
 function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
   const site = alert.machine.site;
   if (!site) {
@@ -140,13 +102,6 @@ function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
   };
 }
 
-/**
- * One page of the tenant's machine alerts, newest first.
- *
- * Sorted on `occurredAt` rather than `createdAt`: a machine that was offline
- * reports what it buffered once it is back, so the order rows were written in
- * is not the order the incidents happened in.
- */
 export async function getAlertsPageService(
   tenantId: string,
   params: GetAlertsParams = {},
@@ -176,5 +131,83 @@ export async function getAlertsPageService(
     });
   } catch (error) {
     return unknownError("listing", error);
+  }
+}
+
+export async function getAlertsSummaryService(tenantId: string): Promise<Result<UnknownAlertError, AlertsSummary>> {
+  const where: Prisma.SecurityAlertWhereInput = { ...buildAlertWhere(tenantId, {}), resolvedAt: null };
+
+  try {
+    const countsByType = prisma.securityAlert.groupBy({
+      by: ["type"],
+      where,
+      orderBy: { type: "asc" },
+      _count: { _all: true },
+    });
+
+    const recentAlerts = prisma.securityAlert.findMany({
+      where,
+      select: ALERT_SELECT,
+      orderBy: { occurredAt: "desc" },
+      take: ALERTS_SUMMARY_RECENT_LIMIT,
+    });
+
+    const [grouped, recent] = await prisma.$transaction([countsByType, recentAlerts]);
+
+    const openByType = Object.fromEntries(ALERT_TYPES.map((type) => [type, 0])) as Record<AlertType, number>;
+    for (const row of grouped) openByType[row.type] = row._count._all;
+
+    return ok({
+      openByType,
+      openTotal: ALERT_TYPES.reduce((total, type) => total + openByType[type], 0),
+      recent: recent.flatMap((alert) => toAlertRow(alert) ?? []),
+    });
+  } catch (error) {
+    return unknownError("summarising", error);
+  }
+}
+
+export type AlertNotFoundError = { reason: "ALERT_NOT_FOUND"; message: string };
+export type AlertAlreadyResolvedError = { reason: "ALERT_ALREADY_RESOLVED"; message: string };
+export type ResolveAlertError = AlertNotFoundError | AlertAlreadyResolvedError | UnknownAlertError;
+
+const ALERT_NOT_FOUND: AlertNotFoundError = {
+  reason: "ALERT_NOT_FOUND",
+  message: "No open alert with that id belongs to this tenant.",
+};
+
+const ALERT_ALREADY_RESOLVED: AlertAlreadyResolvedError = {
+  reason: "ALERT_ALREADY_RESOLVED",
+  message: "That alert has already been resolved.",
+};
+
+export async function resolveAlertService(
+  tenantId: string,
+  alertId: string,
+): Promise<Result<ResolveAlertError, MachineAlertRow>> {
+  try {
+    const { count } = await prisma.securityAlert.updateMany({
+      where: { id: alertId, resolvedAt: null, machine: { tenantId } },
+      data: { resolvedAt: new Date() },
+    });
+
+    if (count === 0) {
+      const existing = await prisma.securityAlert.count({ where: { id: alertId, machine: { tenantId } } });
+      return err(existing > 0 ? ALERT_ALREADY_RESOLVED : ALERT_NOT_FOUND);
+    }
+
+    const updated = await prisma.securityAlert.findFirst({
+      where: { id: alertId, machine: { tenantId } },
+      select: ALERT_SELECT,
+    });
+
+    // The row was updated a statement ago, so a miss here means the same
+    // machine-has-no-site invariant `toAlertRow` guards, not a missing row.
+    const row = updated && toAlertRow(updated);
+    if (!row) return err(ALERT_NOT_FOUND);
+
+    return ok(row);
+  } catch (error) {
+    return unknownError("resolving", error);
   }
 }
