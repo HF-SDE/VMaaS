@@ -99,9 +99,9 @@ export async function createTenantController(req: Request, res: Response) {
  *
  * Like the paginated read above, the body is parsed here — this route has no
  * `validate()` middleware — and every failure the service names gets its own
- * status, because the invite dialog tells them apart: a 404 is "no account with
- * that email", a 409 is "already a member", and a 400 is a role that vanished
- * between the page load and the submit.
+ * status, because the invite dialog tells them apart: a 409 is "already a
+ * member", a 400 is a role that vanished between the page load and the submit,
+ * and a 502 is a mail outage that took the invitation down with it.
  */
 export async function inviteMemberController(req: Request, res: Response) {
   const { email, role } = inviteMemberSchema.parse(req.body);
@@ -116,6 +116,11 @@ export async function inviteMemberController(req: Request, res: Response) {
         return res.status(409).json({ error: error.message }).end();
       case "INVITE_ROLE_NOT_FOUND":
         return res.status(400).json({ error: error.message }).end();
+      // The invitation was rolled back with the send, so this is safe to retry —
+      // the message says so rather than leaving the inviter guessing whether
+      // half of it went through.
+      case "INVITE_EMAIL_FAILED":
+        return res.status(502).json({ error: error.message }).end();
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while inviting the member" }).end();
       default:

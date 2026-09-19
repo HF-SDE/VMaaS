@@ -1,20 +1,48 @@
-import { getInviteService, respondToInviteService } from "@/api/services/tenants.service";
+import { getInviteService, inviteMemberService, respondToInviteService } from "@/api/services/tenants.service";
 
+import { err, ok } from "@vmaas/shared/lib/error-handling";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { inviteFindUnique, inviteUpdate, userRoleFindFirst, userRoleCreate, userRoleCount } = vi.hoisted(() => ({
+const {
+  inviteFindUnique,
+  inviteUpdate,
+  inviteUpsert,
+  userRoleFindFirst,
+  userRoleCreate,
+  userRoleCount,
+  roleFindFirst,
+  userFindFirst,
+  sendInvitationEmail,
+} = vi.hoisted(() => ({
   inviteFindUnique: vi.fn(),
   inviteUpdate: vi.fn(),
+  inviteUpsert: vi.fn(),
   userRoleFindFirst: vi.fn(),
   userRoleCreate: vi.fn(),
   userRoleCount: vi.fn(),
+  roleFindFirst: vi.fn(),
+  userFindFirst: vi.fn(),
+  sendInvitationEmail: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    tenantInvite: { findUnique: inviteFindUnique, update: inviteUpdate },
+vi.mock("@/lib/prisma", () => {
+  const client = {
+    tenantInvite: { findUnique: inviteFindUnique, update: inviteUpdate, upsert: inviteUpsert },
     userRole: { findFirst: userRoleFindFirst, create: userRoleCreate, count: userRoleCount },
-  },
+    role: { findFirst: roleFindFirst },
+    user: { findFirst: userFindFirst },
+    // Stands in for an interactive transaction: the callback runs against the
+    // same client, and a throw inside it propagates — which is the rollback the
+    // invite flow relies on.
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(client),
+  };
+
+  return { prisma: client };
+});
+
+vi.mock("@/lib/emails", () => ({
+  sendInvitationEmail,
+  invitationUrl: (id: string) => `https://app.test/invite/${id}`,
 }));
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -39,10 +67,81 @@ function invite(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  for (const spy of [inviteFindUnique, inviteUpdate, userRoleFindFirst, userRoleCreate, userRoleCount]) spy.mockReset();
+  for (const spy of [
+    inviteFindUnique,
+    inviteUpdate,
+    inviteUpsert,
+    userRoleFindFirst,
+    userRoleCreate,
+    userRoleCount,
+    roleFindFirst,
+    userFindFirst,
+    sendInvitationEmail,
+  ]) {
+    spy.mockReset();
+  }
   userRoleCount.mockResolvedValue(0);
   userRoleFindFirst.mockResolvedValue(null);
   inviteUpdate.mockResolvedValue({});
+  roleFindFirst.mockResolvedValue({ id: "role-1", name: "operator" });
+  userFindFirst.mockResolvedValue(null);
+  inviteUpsert.mockResolvedValue(invite());
+  sendInvitationEmail.mockResolvedValue(ok({ id: "email-1" }));
+});
+
+describe("inviteMemberService", () => {
+  it("writes the invitation and sends its email", async () => {
+    const [error, created] = await inviteMemberService(TENANT, "Invited@example.com", "owner-1", "operator");
+
+    expect(error).toBeNull();
+    expect(created?.id).toBe(INVITE);
+    // Folded before it is stored, so a re-invite with different casing hits the
+    // same row rather than creating a second invitation.
+    expect(inviteUpsert.mock.calls[0][0].create.email).toBe("invited@example.com");
+    expect(sendInvitationEmail).toHaveBeenCalledWith(
+      "invited@example.com",
+      expect.objectContaining({ roleName: "operator" }),
+    );
+  });
+
+  it("fails the whole invitation when the email cannot be sent", async () => {
+    sendInvitationEmail.mockResolvedValue(err({ reason: "EMAIL_SEND_FAILED", message: "Resend is down." }));
+
+    const [error] = await inviteMemberService(TENANT, "invited@example.com", "owner-1", "operator");
+
+    // The upsert ran, but it ran inside the transaction the throw rolls back —
+    // so the caller is told nothing was created rather than being left to guess.
+    expect(inviteUpsert).toHaveBeenCalled();
+    expect(error?.reason).toBe("INVITE_EMAIL_FAILED");
+  });
+
+  it("keeps the invitation when the server has no mail credentials", async () => {
+    sendInvitationEmail.mockResolvedValue(err({ reason: "EMAIL_NOT_CONFIGURED", message: "Not configured." }));
+
+    const [error, created] = await inviteMemberService(TENANT, "invited@example.com", "owner-1", "operator");
+
+    expect(error).toBeNull();
+    expect(created?.id).toBe(INVITE);
+  });
+
+  it("refuses a role that does not belong to the tenant", async () => {
+    roleFindFirst.mockResolvedValue(null);
+
+    const [error] = await inviteMemberService(TENANT, "invited@example.com", "owner-1", "ghost");
+
+    expect(error?.reason).toBe("INVITE_ROLE_NOT_FOUND");
+    expect(inviteUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses someone who is already a member", async () => {
+    userFindFirst.mockResolvedValue({ id: "u1" });
+    userRoleFindFirst.mockResolvedValue({ id: "ur1" });
+
+    const [error] = await inviteMemberService(TENANT, "invited@example.com", "owner-1", "operator");
+
+    expect(error?.reason).toBe("ALREADY_MEMBER");
+    expect(inviteUpsert).not.toHaveBeenCalled();
+  });
 });
 
 describe("getInviteService", () => {

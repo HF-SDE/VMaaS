@@ -1,5 +1,4 @@
 import { config } from "../config";
-
 import { type SendEmailError, sendEmail } from "./send";
 import { type InvitationEmail, renderInvitationEmail } from "./templates/invitation";
 
@@ -13,8 +12,9 @@ export function invitationUrl(invitationId: string): string {
   return `${config.APP_URL}/invite/${invitationId}`;
 }
 
-/** Fire-and-forget: a bounced invitation email must not undo the invitation
- *  row that was already written. The failure is logged inside `sendEmail`. */
+/** Answers a `Result` like `sendEmail` — `inviteMemberService` sends from inside
+ *  the transaction that writes the invitation and rolls the row back when this
+ *  fails, so the outcome has to reach the caller. */
 export async function sendInvitationEmail(to: string, invitation: InvitationEmail) {
   const { subject, html } = renderInvitationEmail(invitation);
   return sendEmail({ to, subject, html });

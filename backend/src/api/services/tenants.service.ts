@@ -50,6 +50,12 @@ export type InviteNotFoundError = { reason: "INVITE_NOT_FOUND"; message: string 
 export type InviteExpiredError = { reason: "INVITE_EXPIRED"; message: string };
 export type InviteNotPendingError = { reason: "INVITE_NOT_PENDING"; message: string };
 export type InviteEmailMismatchError = { reason: "INVITE_EMAIL_MISMATCH"; message: string };
+export type InviteEmailFailedError = { reason: "INVITE_EMAIL_FAILED"; message: string };
+
+/** Thrown only to roll the invite transaction back when the email does not go
+ *  out. It never leaves `inviteMemberService`, which turns it back into an
+ *  `InviteEmailFailedError`. */
+class InviteEmailFailure extends Error {}
 
 function isSortField(value: string): value is MemberSortField {
   return (MEMBER_SORT_FIELDS as readonly string[]).includes(value);
@@ -176,13 +182,21 @@ export async function createTenantService(userId: string, name: string) {
  *
  * Re-inviting someone who already has a pending invite is not a failure: the
  * upsert re-points it at the role just picked and the invite stands.
+ *
+ * The row and its email are written in one transaction: an invitation the
+ * invitee never receives is worse than no invitation at all, because the member
+ * list would show someone as invited who has no way to accept. If the send
+ * fails the upsert is rolled back — including a re-invite, which leaves the
+ * previous invitation exactly as it was.
  */
 export async function inviteMemberService(
   tenantId: string,
   email: string,
   invitedById: string,
   role: string,
-): Promise<Result<InviteRoleNotFoundError | AlreadyMemberError | UnknownMemberError, TenantInvite>> {
+): Promise<
+  Result<InviteRoleNotFoundError | AlreadyMemberError | InviteEmailFailedError | UnknownMemberError, TenantInvite>
+> {
   // Addresses are compared case-insensitively everywhere, so they are stored
   // folded — otherwise "Kenni@x.dk" and "kenni@x.dk" would be two invitations
   // that the unique index does not recognise as the same.
@@ -206,36 +220,61 @@ export async function inviteMemberService(
     const expireAfterDays = 7;
     const expiresAt = new Date(Date.now() + expireAfterDays * 24 * 60 * 60 * 1000);
 
-    // Re-inviting someone who already has a pending invite is not a failure:
-    // the upsert re-points it at the role just picked and extends its life.
-    const invite = await prisma.tenantInvite.upsert({
-      where: { email_tenantId_status: { email: normalisedEmail, tenantId, status: "pending" } },
-      update: { roleId: roleRecord.id, userId: user?.id ?? null, expiresAt },
-      create: {
-        email: normalisedEmail,
-        userId: user?.id ?? null,
-        tenantId,
-        roleId: roleRecord.id,
-        expiresAt,
-        token: crypto.randomUUID(),
-        invitedById,
-      },
-      include: { tenant: true, role: true, invitedBy: { select: { name: true, email: true } } },
-    });
+    // The email is sent inside the transaction so a failed send takes the row
+    // with it. The timeout is raised from Prisma's 5s default because the send
+    // is a network call to the mail provider, not just a query.
+    const invite = await prisma.$transaction(
+      async (tx) => {
+        // Re-inviting someone who already has a pending invite is not a failure:
+        // the upsert re-points it at the role just picked and extends its life.
+        const created = await tx.tenantInvite.upsert({
+          where: { email_tenantId_status: { email: normalisedEmail, tenantId, status: "pending" } },
+          update: { roleId: roleRecord.id, userId: user?.id ?? null, expiresAt },
+          create: {
+            email: normalisedEmail,
+            userId: user?.id ?? null,
+            tenantId,
+            roleId: roleRecord.id,
+            expiresAt,
+            token: crypto.randomUUID(),
+            invitedById,
+          },
+          include: { tenant: true, role: true, invitedBy: { select: { name: true, email: true } } },
+        });
 
-    // Deliberately awaited but not failed on: the invitation exists either way,
-    // and a mail outage must not read to the inviter as "the invite was not
-    // created". `sendEmail` logs its own failures.
-    await sendInvitationEmail(normalisedEmail, {
-      tenantName: invite.tenant.name,
-      roleName: invite.role.name,
-      invitedBy: invite.invitedBy?.name ?? invite.invitedBy?.email,
-      acceptUrl: invitationUrl(invite.id),
-      expiresAt: invite.expiresAt,
-    });
+        const [sendError] = await sendInvitationEmail(normalisedEmail, {
+          tenantName: created.tenant.name,
+          roleName: created.role.name,
+          invitedBy: created.invitedBy?.name ?? created.invitedBy?.email,
+          acceptUrl: invitationUrl(created.id),
+          expiresAt: created.expiresAt,
+        });
+
+        // A server with no `RESEND_API_KEY` is the local-dev setup, where
+        // `sendEmail` logs the invitation link instead of sending it — rolling
+        // back there would make inviting impossible without mail credentials.
+        // Every other failure is a real one and undoes the invitation.
+        if (sendError && sendError.reason !== "EMAIL_NOT_CONFIGURED") {
+          throw new InviteEmailFailure(sendError.message);
+        }
+
+        return created;
+      },
+      { timeout: 15_000 },
+    );
 
     return ok(invite);
   } catch (error) {
+    if (error instanceof InviteEmailFailure) {
+      // TODO: capture sentry error
+      console.error(`[tenants.service] inviting ${normalisedEmail} failed to send`, error);
+
+      return err({
+        reason: "INVITE_EMAIL_FAILED",
+        message: `We could not send the invitation email to ${email}, so no invitation was created. Please try again.`,
+      });
+    }
+
     return unknownError("inviting the member", error);
   }
 }
@@ -317,11 +356,7 @@ export async function respondToInviteService(
   status: InviteResponses,
 ): Promise<
   Result<
-    | InviteNotFoundError
-    | InviteExpiredError
-    | InviteNotPendingError
-    | InviteEmailMismatchError
-    | UnknownMemberError,
+    InviteNotFoundError | InviteExpiredError | InviteNotPendingError | InviteEmailMismatchError | UnknownMemberError,
     { tenantId: string }
   >
 > {

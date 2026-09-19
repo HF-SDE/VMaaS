@@ -26,6 +26,10 @@ export function membersErrorMessage(status: number): string {
  * There is deliberately no "no account uses that address" case any more:
  * invitations are keyed on the email, so inviting someone who has never signed
  * up is the normal path, not an error.
+ *
+ * A 502 is the one status that needs to say what did *not* happen: the backend
+ * writes the invitation and sends its email in one transaction, so a failed
+ * send leaves nothing behind and retrying is safe.
  */
 export function memberInviteErrorMessage(
   status: number,
@@ -46,6 +50,8 @@ export function memberInviteErrorMessage(
       return "That role no longer exists. Reload the page and try again."
     case 500:
       return "An unexpected error occurred. Please try again."
+    case 502:
+      return `We could not email the invitation to ${email}, so nobody was invited. Please try again.`
     default:
       throw new Error(`Unexpected error - status: ${status}`)
   }
