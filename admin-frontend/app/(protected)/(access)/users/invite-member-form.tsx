@@ -44,7 +44,7 @@ type InviteFormValues = {
 /** The statuses that are about the invited person rather than the request. They
  *  are shown under the email field instead of in a toast, because the field is
  *  what the user has to change to get past them. */
-const EMAIL_STATUSES = [404, 409]
+const EMAIL_STATUSES = [409]
 
 export function InviteMemberForm({
   tenantRoles,
@@ -129,7 +129,8 @@ export function InviteMemberForm({
                   isInvalid && <FieldError errors={field.state.meta.errors} />
                 )}
                 <FieldDescription>
-                  The person must already have a VMaaS account.
+                  We&apos;ll email them an invitation. They don&apos;t need a
+                  VMaaS account yet.
                 </FieldDescription>
               </Field>
             )
