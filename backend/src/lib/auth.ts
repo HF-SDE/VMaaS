@@ -2,10 +2,11 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { customSession } from "better-auth/plugins";
 
+import { getTenantSubscription } from "../api/services/subscriptions.service";
 import { config } from "./config";
 import { multiTenant } from "./plugins/multi-tenant";
 import { prisma } from "./prisma";
-import { getUserInvites, getUserPermissions, listTenantsForUser } from "./rbac";
+import { getUserInvites, getUserPermissions, isTenantOwner, listTenantsForUser } from "./rbac";
 
 const github = {
   clientId: config.GITHUB_CLIENT_ID,
@@ -42,19 +43,51 @@ const options = {
   },
 } satisfies BetterAuthOptions;
 
-type EnrichInput = { user: { id: string }; session: { activeTenantId?: string | null } };
+type EnrichInput = { user: { id: string; email: string }; session: { activeTenantId?: string | null } };
 
 /** Shapes the /get-session response. Holds no authorization logic of its own —
- *  every value comes from this project's rbac.ts. */
+ *  every value comes from this project's rbac.ts and subscriptions.service.ts. */
 export async function enrichSession({ user, session }: EnrichInput) {
-  const activeTenantId = session.activeTenantId ?? null;
-  const [tenants, permissions, tenantInvites] = await Promise.all([
-    listTenantsForUser(user.id),
+  const [tenants, tenantInvites] = await Promise.all([listTenantsForUser(user.id), getUserInvites(user.email)]);
+
+  // The session's active tenant can outlive the membership that justified it —
+  // the user was removed from the tenant, or the tenant was deleted, while they
+  // stayed signed in. Reporting it anyway would leave the frontend routing into
+  // a tenant the backend then refuses every request for, so it is dropped here
+  // and the user falls back to onboarding or the selector.
+  const claimedTenantId = session.activeTenantId ?? null;
+  const activeTenantId = claimedTenantId && tenants.some((tenant) => tenant.id === claimedTenantId)
+    ? claimedTenantId
+    : null;
+
+  const [permissions, subscriptionResult] = await Promise.all([
     getUserPermissions(user.id, activeTenantId),
-    getUserInvites(user.id),
+    activeTenantId ? getTenantSubscription(activeTenantId) : Promise.resolve(null),
   ]);
 
-  return { user, session, tenants, tenantInvites, permissions: [...permissions] };
+  // A subscription lookup that failed must not read as "no subscription", which
+  // would silently paywall a paying tenant. `null` says "unknown"; the frontend
+  // treats that as an error rather than as a billing state.
+  const subscription =
+    subscriptionResult && !subscriptionResult[0]
+      ? {
+          status: subscriptionResult[1].status,
+          trialEndsAt: subscriptionResult[1].trialEndsAt,
+          currentPeriodEnd: subscriptionResult[1].currentPeriodEnd,
+        }
+      : null;
+
+  const isOwner = activeTenantId ? await isTenantOwner(user.id, activeTenantId) : false;
+
+  return {
+    user,
+    session: { ...session, activeTenantId },
+    tenants,
+    tenantInvites,
+    permissions: [...permissions],
+    subscription,
+    isOwner,
+  };
 }
 
 export const auth = betterAuth({

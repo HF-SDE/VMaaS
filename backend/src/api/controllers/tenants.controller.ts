@@ -1,5 +1,6 @@
 import {
   createRoleSchema,
+  getInviteSchema,
   getMembersPageSchema,
   inviteMemberSchema,
   requireTenantId,
@@ -11,10 +12,10 @@ import { Request, Response } from "express";
 import { z } from "zod";
 
 import {
-  DEFAULT_ROLES,
   createRoleService,
   createTenantService,
   deleteRoleService,
+  getInviteService,
   getMembersPageService,
   getMembersService,
   getRolesService,
@@ -111,8 +112,6 @@ export async function inviteMemberController(req: Request, res: Response) {
   if (error) {
     const reason = error.reason;
     switch (reason) {
-      case "INVITE_USER_NOT_FOUND":
-        return res.status(404).json({ error: error.message }).end();
       case "ALREADY_MEMBER":
         return res.status(409).json({ error: error.message }).end();
       case "INVITE_ROLE_NOT_FOUND":
@@ -127,20 +126,69 @@ export async function inviteMemberController(req: Request, res: Response) {
   return res.status(201).json(invite).end();
 }
 
-export async function respondToInviteController(req: Request, res: Response) {
+/**
+ * One invitation, for the `/invite/[id]` page.
+ *
+ * Needs only a signed-in user — not tenant membership, which is precisely what
+ * the invitation is offering. A 404 here means the id is wrong; an invitation
+ * addressed to somebody else still returns 200 with `matchesViewer: false`, so
+ * the page can explain the mismatch rather than deny the invitation exists.
+ */
+export async function getInviteController(req: Request, res: Response) {
   const {
-    params: { token },
-    body: { status },
-  } = respondToInviteSchema.parse(req);
-  const userId = req.session!.user.id;
+    params: { inviteId },
+  } = getInviteSchema.parse(req);
+  const { id, email } = req.session!.user;
 
-  const result = await respondToInviteService(token, userId, status);
-  if (!result.ok) {
-    res.status(500).json({ error: "An unknown error occurred!" });
-    return;
+  const [error, invite] = await getInviteService(inviteId, { id, email });
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "INVITE_NOT_FOUND":
+        return res.status(404).json({ error: error.message }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the invitation" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
   }
 
-  res.status(200).json({ message: "Invite accepted successfully" });
+  return res.status(200).json(invite).end();
+}
+
+export async function respondToInviteController(req: Request, res: Response) {
+  const {
+    params: { inviteId },
+    body: { status },
+  } = respondToInviteSchema.parse(req);
+  const { id, email } = req.session!.user;
+
+  const [error, result] = await respondToInviteService(inviteId, { id, email }, status);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "INVITE_NOT_FOUND":
+        return res.status(404).json({ error: error.message }).end();
+      // Signed in as a different account than the one invited. 403 rather than
+      // 404: the invitation is real, it is just not this user's to accept.
+      case "INVITE_EMAIL_MISMATCH":
+        return res.status(403).json({ error: error.message }).end();
+      case "INVITE_EXPIRED":
+      case "INVITE_NOT_PENDING":
+        return res.status(409).json({ error: error.message }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while responding to the invitation" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res
+    .status(200)
+    .json({ tenantId: result.tenantId, message: status === "accepted" ? "Invitation accepted" : "Invitation declined" })
+    .end();
 }
 
 export async function removeMemberController(req: Request, res: Response) {

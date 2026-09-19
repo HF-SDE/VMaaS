@@ -51,6 +51,21 @@ const schema = z.object({
   MQTT_INTERNAL_SECRET: z.string().min(16, {
     message: "MQTT_INTERNAL_SECRET must be at least 16 characters",
   }),
+  /** Resend API key. Optional on purpose: without it `lib/emails` logs the
+   *  message instead of sending it, so onboarding still works end-to-end on a
+   *  machine that has no mail credentials. A missing key must never be the
+   *  reason an invitation cannot be created. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /** The From: address on transactional mail. Must be a domain verified in
+   *  Resend, or Resend rejects the send. */
+  EMAIL_FROM: z.string().min(1).default("no-reply@vmaas.dk"),
+  /** Public origin used to build links inside emails. Distinct from
+   *  FRONTEND_URL, which is a CORS/trusted-origin list and may hold several
+   *  entries — a link needs exactly one. Defaults to the first of those. */
+  APP_URL: z.url({ protocol: /^https?$/ }).optional(),
 });
 
-export const config = schema.parse(process.env);
+export const config = (() => {
+  const parsed = schema.parse(process.env);
+  return { ...parsed, APP_URL: parsed.APP_URL ?? parsed.FRONTEND_URL[0]! };
+})();

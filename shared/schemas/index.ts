@@ -7,5 +7,6 @@ export * from "./machines";
 export * from "./general";
 export * from "./sites";
 export * from "./slots";
+export * from "./subscriptions";
 export * from "./tenants";
 export * from "./ws";

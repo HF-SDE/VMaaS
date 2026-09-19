@@ -1,4 +1,5 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
@@ -23,7 +24,7 @@ import {
 
 export const sitesRouter = Router();
 
-sitesRouter.use(requireAuth, requireTenant);
+sitesRouter.use(requireAuth, requireTenant, requireSubscription);
 
 sitesRouter.get("/", requirePermission(PERMISSIONS.SITE_READ), getSitesController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.

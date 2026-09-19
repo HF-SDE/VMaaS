@@ -156,10 +156,16 @@ enum invitation_status {
   @@schema("rbac")
 }
 
+/// An invitation to join a tenant. Keyed on `email`, not on a user id, so
+/// someone without an account yet can be invited: they sign up from the
+/// invitation link and the email is what binds the invite to their new user
+/// row. `userId` is kept as a convenience back-reference and is only set once a
+/// matching account exists — never rely on it to decide who an invite is for.
 model TenantInvite {
   id          String            @id @default(uuid()) @db.Uuid
-  userId      String            @db.Uuid
-  user        User              @relation("TenantInviteRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  email       String
+  userId      String?           @db.Uuid
+  user        User?             @relation("TenantInviteRecipient", fields: [userId], references: [id], onDelete: SetNull)
   tenantId    String            @db.Uuid
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   roleId      String            @db.Uuid
@@ -173,11 +179,49 @@ model TenantInvite {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  @@unique([userId, tenantId, status])
+  @@unique([email, tenantId, status])
   @@index([tenantId])
   @@index([userId])
+  @@index([email])
   @@map("tenant_invites")
   @@schema("rbac")
+}
+
+/// Billing state for one tenant. Stripe is not wired up yet; these columns are
+/// the shape its webhook will eventually write, so adding it later changes only
+/// `subscriptions.service.ts` and nothing that reads through it.
+enum subscription_status {
+  /// Tenant created, billing not yet started. Not an access-granting state.
+  pending
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  unpaid
+
+  @@schema("public")
+}
+
+model Subscription {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Null until Stripe is integrated. Unique so a webhook replay that arrives
+  /// twice cannot create a second row for the same Stripe object.
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+
+  status           subscription_status @default(pending)
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+  @@schema("public")
 }
 
 enum machine_status {
@@ -250,6 +294,7 @@ model Tenant {
   roles          Role[]
   invites        TenantInvite[]
   sites          Site[]
+  subscription   Subscription?
 
   inventoryMovements InventoryMovement[]
 

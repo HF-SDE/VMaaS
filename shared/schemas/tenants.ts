@@ -16,9 +16,16 @@ export const inviteMemberSchema = z.object({
   role: z.string().min(1, "Select a role"),
 });
 
+/** Keyed on the invitation's id, which is what the emailed link carries. The id
+ *  alone grants nothing — accepting re-checks that the signed-in user's address
+ *  is the invited one. */
 export const respondToInviteSchema = z.object({
-  params: z.object({ token: z.string().min(1, "Token is required") }),
+  params: z.object({ inviteId: z.uuid("Invalid invitation") }),
   body: z.object({ status: z.enum(["accepted", "rejected"], "Status must be either 'accepted' or 'rejected'") }),
+});
+
+export const getInviteSchema = z.object({
+  params: z.object({ inviteId: z.uuid("Invalid invitation") }),
 });
 
 export const createRoleSchema = z.object({

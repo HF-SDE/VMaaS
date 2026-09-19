@@ -106,6 +106,15 @@ export async function isTenantMember(userId: string, tenantId: string): Promise<
   return count > 0;
 }
 
+export async function isTenantOwner(userId: string, tenantId: string): Promise<boolean> {
+  if (await isPlatformAdmin(userId)) return true;
+
+  const count = await prisma.userRole.count({
+    where: { userId, tenantId, role: { name: DEFAULT_TENANT_ROLES.OWNER } },
+  });
+  return count > 0;
+}
+
 /** Tenants `userId` belongs to. Platform admins are treated as members of every tenant. */
 export async function listTenantsForUser(userId: string): Promise<TenantModel[]> {
   if (await isPlatformAdmin(userId)) {
@@ -119,17 +128,23 @@ export async function listTenantsForUser(userId: string): Promise<TenantModel[]>
   return userRoles.map((userRole) => userRole.tenant!).filter(Boolean);
 }
 
-export async function getUserInvites(userId: string, status: invitation_status = "pending") {
+export async function getUserInvites(email: string, status: invitation_status = "pending") {
   const invites = await prisma.tenantInvite.findMany({
-    where: { userId, status },
-    include: { tenant: true, role: true },
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      status,
+      ...(status === "pending" ? { expiresAt: { gt: new Date() } } : {}),
+    },
+    include: { tenant: true, role: true, invitedBy: { select: { name: true, email: true } } },
   });
 
   return invites.map((invite) => ({
+    id: invite.id,
     tenantId: invite.tenantId,
     tenantName: invite.tenant.name,
     token: invite.token,
     roleName: invite.role?.name,
+    invitedBy: invite.invitedBy?.name ?? invite.invitedBy?.email,
     expiresAt: invite.expiresAt,
   }));
 }

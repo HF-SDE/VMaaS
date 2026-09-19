@@ -7,6 +7,7 @@ import {
   createRoleController,
   createTenantController,
   deleteRoleController,
+  getInviteController,
   getMembersController,
   getMembersPageController,
   getRolesController,
@@ -33,9 +34,15 @@ tenantsRouter.get(
 );
 tenantsRouter.get("/roles", requireTenant, requirePermission(PERMISSIONS.ROLE_VIEW), getRolesController);
 
+// Invitation endpoints take `requireAuth` only — deliberately not
+// `requireTenant`. The user reading or accepting an invitation is by definition
+// not yet a member of the tenant it names, so membership cannot be the gate;
+// the service checks that the invited address is the signed-in one instead.
+tenantsRouter.get("/invites/:inviteId", getInviteController);
+tenantsRouter.post("/invites/:inviteId/respond", respondToInviteController);
+
 tenantsRouter.post("/", createTenantController);
 tenantsRouter.post("/members", requireTenant, requirePermission(PERMISSIONS.USER_MANAGE), inviteMemberController);
-tenantsRouter.post("/respond-to-invite/:token", respondToInviteController);
 tenantsRouter.post("/roles", requireTenant, requirePermission(PERMISSIONS.ROLE_MANAGE), createRoleController);
 
 tenantsRouter.put(

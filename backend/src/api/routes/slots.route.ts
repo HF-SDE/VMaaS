@@ -1,4 +1,5 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
@@ -9,7 +10,7 @@ import { getLowStockSlotsController, getSlotsController, updateSlotController } 
 
 export const slotsRouter = Router();
 
-slotsRouter.use(requireAuth, requireTenant);
+slotsRouter.use(requireAuth, requireTenant, requireSubscription);
 
 /**
  * The machine rides in the query rather than in the path — `GET /api/slots?machineId=…`

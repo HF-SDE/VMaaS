@@ -1,4 +1,5 @@
 import { requireAuth, requirePermission, requireSuperAdmin, requireTenant } from "@/api/middleware/auth";
+import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
@@ -48,7 +49,7 @@ machinesRouter.post(
   saveSlotLayoutController,
 );
 
-machinesRouter.use(requireAuth, requireTenant);
+machinesRouter.use(requireAuth, requireTenant, requireSubscription);
 
 machinesRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), getMachinesController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.

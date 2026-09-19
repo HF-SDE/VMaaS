@@ -1,4 +1,5 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
@@ -13,7 +14,7 @@ import {
 
 export const alertsRouter = Router();
 
-alertsRouter.use(requireAuth, requireTenant);
+alertsRouter.use(requireAuth, requireTenant, requireSubscription);
 
 alertsRouter.get(
   "/paginated",
