@@ -5,6 +5,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import type { PermissionKey } from "@vmaas/shared/types/permissions"
 
+import { ACCESS_REDIRECTS, resolveUserAccess } from "./access"
 import { forbiddenPath } from "./forbidden"
 import { hasPermission } from "./permissions"
 import { fetchSession, type Session } from "./session-fetch"
@@ -41,18 +42,43 @@ export async function requireUser(): Promise<Session> {
   return session
 }
 
+/**
+ * The gate for every protected page: signed in, in an organization, and that
+ * organization paid up.
+ *
+ * All three are one decision, taken by `resolveUserAccess`, so a page cannot
+ * accidentally check two of the three. `requirePermission` chains through here,
+ * which is why the existing pages need no change to be behind the paywall.
+ *
+ * The backend enforces the same three independently — this only decides where
+ * to send the browser.
+ */
+export async function requireAccess(): Promise<
+  Session & { activeTenantId: string }
+> {
+  const session = await getSession()
+  const access = resolveUserAccess(session)
+
+  if (access.accessState !== "READY") {
+    redirect(ACCESS_REDIRECTS[access.accessState])
+  }
+
+  return session as Session & { activeTenantId: string }
+}
+
+/** @deprecated Prefer `requireAccess()`, which also enforces billing. Kept so
+ *  callers that genuinely only need a tenant — the billing pages themselves —
+ *  do not have to fight the paywall they exist to resolve. */
 export async function requireTenant(): Promise<
   Session & { activeTenantId: string }
 > {
-  const session = await requireUser()
-  if (!session.activeTenantId) redirect("/welcome")
-  return session as Session & { activeTenantId: string }
+  return requireAccess()
 }
 
 /**
  * Sends a denied user to /forbidden, the same place <RoleGate> sends them, so
  * a page-level and a component-level denial look alike. `reason` is plain
- * Danish copy for that page; omit it for the generic wording.
+ * English copy for that page; omit it for the generic wording.
  *
  * Use hasPermission() instead for conditional UI, where hiding one control
  * should not take the whole page away.
@@ -61,7 +87,7 @@ export async function requirePermission(
   key: PermissionKey,
   reason?: string
 ): Promise<Session & { activeTenantId: string }> {
-  const session = await requireTenant()
+  const session = await requireAccess()
   if (!hasPermission(session, key)) redirect(forbiddenPath(reason))
   return session
 }
