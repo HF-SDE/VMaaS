@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { GalleryVerticalEnd } from "lucide-react"
 import { LoginForm } from "./components/login-form"
 import Image from "next/image"
@@ -16,7 +17,9 @@ export default function LoginPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <LoginForm />
+            <Suspense fallback={<div className="h-64" />}>
+              <LoginForm />
+            </Suspense>
           </div>
         </div>
       </div>

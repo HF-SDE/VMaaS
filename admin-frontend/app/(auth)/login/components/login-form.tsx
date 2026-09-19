@@ -1,11 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { z } from "zod"
 
 import { cn } from "cn"
 import { authClient } from "@/lib/auth-client"
+import {
+  REDIRECT_PARAM,
+  safeRedirectTarget,
+  signInPath,
+} from "@/lib/auth-redirect"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +33,11 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter()
+  // Set when the user arrived from an invitation link, so signing in returns
+  // them to the invitation instead of dropping them on the dashboard.
+  const redirectTo = safeRedirectTarget(
+    useSearchParams().get(REDIRECT_PARAM)
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -55,7 +65,7 @@ export function LoginForm({
       return
     }
 
-    router.push("/")
+    router.push(redirectTo)
     router.refresh()
   }
 
@@ -95,7 +105,8 @@ export function LoginForm({
             {loading ? "Signing in..." : "Login"}
           </Button>
           <FieldDescription className="px-6 text-center">
-            Don&apos;t have an account? <a href="/sign-up">Sign up</a>
+            Don&apos;t have an account?{" "}
+            <a href={signInPath(redirectTo, "/sign-up")}>Sign up</a>
           </FieldDescription>
         </Field>
       </FieldGroup>
