@@ -1,7 +1,7 @@
 import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
-import { getMachineSlotsService, updateSlotService } from "../services/slots.service";
+import { getLowStockSlotsService, getMachineSlotsService, updateSlotService } from "../services/slots.service";
 
 /**
  * The same shape as the machines controllers: destructure the service's `Result`
@@ -63,4 +63,28 @@ export async function updateSlotController(req: Request, res: Response) {
   }
 
   return res.status(200).json(slot).end();
+}
+
+/**
+ * Every slot in the tenant that needs restocking, emptiest first.
+ *
+ * No parse: the endpoint takes no input beyond the tenant `requireTenant` put on
+ * the request.
+ */
+export async function getLowStockSlotsController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const [error, slots] = await getLowStockSlotsService(tenantId!);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the low stock slots" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(slots).end();
 }

@@ -2,7 +2,13 @@ import { type Prisma, type Slot, inventory_movement_type } from "@/generated/pri
 import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
-import type { SlotProduct, SlotWriteData } from "@vmaas/shared/types/slot";
+import {
+  LOW_STOCK_LIMIT,
+  LOW_STOCK_RATIO,
+  type LowStockSlot,
+  type SlotProduct,
+  type SlotWriteData,
+} from "@vmaas/shared/types/slot";
 
 export type SlotNotFoundError = { reason: "SLOT_NOT_FOUND"; message: string };
 /** A read named a machine that is not this tenant's — or does not exist at all. */
@@ -124,5 +130,91 @@ export async function updateSlotService(
     if (error instanceof SlotWriteRejected) return err(error.failure);
 
     return unknownError("updating", error);
+  }
+}
+
+/** The columns the restock queue needs, joined down to the names it prints. */
+const LOW_STOCK_SELECT = {
+  id: true,
+  slotNumber: true,
+  quantity: true,
+  capacity: true,
+  product: { select: { name: true } },
+  machine: { select: { id: true, name: true, site: { select: { id: true, name: true } } } },
+} as const;
+
+export type LowStockCandidate = Prisma.SlotGetPayload<{ select: typeof LOW_STOCK_SELECT }>;
+
+/**
+ * The half of the restock queue with no database in it: which slots are low,
+ * in what order, and how many of them.
+ *
+ * The filter is applied here rather than in SQL because `quantity <= capacity *
+ * LOW_STOCK_RATIO` compares two columns, which a Prisma `where` cannot express
+ * — and doing it in TypeScript makes the rule directly testable, the way
+ * `clampAlertPaging` and `buildAlertWhere` are. The caller's query still scopes
+ * by tenant and drops zero-capacity rows, so the set that reaches here is small.
+ *
+ * Exported for its own test.
+ */
+export function selectLowStockSlots(rows: LowStockCandidate[]): LowStockSlot[] {
+  return (
+    rows
+      .filter((row) => row.capacity > 0 && row.quantity <= row.capacity * LOW_STOCK_RATIO)
+      // Emptiest first. An empty slot is selling nothing, which is strictly worse
+      // than one running down, and its ratio of 0 already sorts it to the top.
+      .sort((a, b) => a.quantity / a.capacity - b.quantity / b.capacity)
+      .slice(0, LOW_STOCK_LIMIT)
+      .flatMap((row) => {
+        const site = row.machine.site;
+        if (!site) {
+          console.error(`[slots.service] invariant violated: slot ${row.id}'s machine ${row.machine.id} has no site`);
+          return [];
+        }
+
+        return [
+          {
+            slotId: row.id,
+            slotNumber: row.slotNumber,
+            quantity: row.quantity,
+            capacity: row.capacity,
+            productName: row.product?.name ?? null,
+            machineId: row.machine.id,
+            machineName: row.machine.name,
+            siteId: site.id,
+            siteName: site.name,
+          },
+        ];
+      })
+  );
+}
+
+/**
+ * Every slot in the tenant that needs a visit.
+ *
+ * Deliberately tenant-wide, unlike `GET /api/slots`, which requires a
+ * `machineId` on the grounds that a slot only means anything next to its
+ * machine. That holds for listing one machine's slots; it does not hold here —
+ * the question the restock queue answers is which machines to drive to.
+ *
+ * `capacity > 0` is excluded in SQL: a zero-capacity slot is a misconfiguration,
+ * not an empty slot, and has no place in a restock queue.
+ */
+export async function getLowStockSlotsService(tenantId: string): Promise<Result<UnknownSlotError, LowStockSlot[]>> {
+  try {
+    const rows = await prisma.slot.findMany({
+      where: { machine: { tenantId }, capacity: { gt: 0 } },
+      select: LOW_STOCK_SELECT,
+    });
+
+    return ok(selectLowStockSlots(rows));
+  } catch (error) {
+    // TODO: capture sentry error
+    console.error("[slots.service] listing low stock failed", error);
+
+    return err({
+      reason: "UNKNOWN_ERROR",
+      message: "An unknown error occurred while listing the low stock slots.",
+    });
   }
 }

@@ -5,7 +5,7 @@ import { PERMISSIONS } from "@/lib/rbac";
 import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { Router } from "express";
 
-import { getSlotsController, updateSlotController } from "../controllers/slots.controller";
+import { getLowStockSlotsController, getSlotsController, updateSlotController } from "../controllers/slots.controller";
 
 export const slotsRouter = Router();
 
@@ -21,5 +21,11 @@ slotsRouter.use(requireAuth, requireTenant);
  * is what the write costs.
  */
 slotsRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), validate(getSlotsSchema), getSlotsController);
+
+/**
+ * A literal path, so it must stay above "/:id". Guarded by MACHINE_READ for the
+ * same reason the list above is: a slot is part of the machine it is cut into.
+ */
+slotsRouter.get("/low-stock", requirePermission(PERMISSIONS.MACHINE_READ), getLowStockSlotsController);
 
 slotsRouter.patch("/:id", requirePermission(PERMISSIONS.SLOT_MANAGE), validate(updateSlotSchema), updateSlotController);

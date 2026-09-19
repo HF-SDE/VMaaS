@@ -31,3 +31,31 @@ export interface SlotWriteData {
   capacity?: number;
   price?: number | null;
 }
+
+/**
+ * A slot at or below this share of its capacity needs a visit.
+ *
+ * A ratio rather than a fixed count because capacity varies per slot: three
+ * items left in a 40-slot is a problem, three left in a 4-slot is normal. A
+ * constant rather than a per-slot column because a `lowStockThreshold` costs a
+ * migration, a schema change and a form change for a rule unlikely to be tuned
+ * per slot.
+ */
+export const LOW_STOCK_RATIO = 0.2;
+
+/** The restock queue is a summary card, not the machines list. */
+export const LOW_STOCK_LIMIT = 50;
+
+/** One row of the restock queue, flattened for the wire like `MachineAlertRow`. */
+export interface LowStockSlot {
+  slotId: string;
+  slotNumber: number;
+  quantity: number;
+  capacity: number;
+  /** Null when nothing is assigned to the slot. */
+  productName: string | null;
+  machineId: string;
+  machineName: string;
+  siteId: string;
+  siteName: string;
+}
