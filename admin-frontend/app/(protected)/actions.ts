@@ -1,6 +1,6 @@
 "use server"
 
-import { requireUser } from "@/lib/dal"
+import { requireTenant, requireUser } from "@/lib/dal"
 import { CreateTenantFormData } from "../(auth)/welcome/client"
 import { Tenant } from "@prisma"
 import { fetchData } from "@/lib/data/data-fetch"
@@ -36,4 +36,25 @@ export async function createTenant(data: CreateTenantFormData): Promise<void> {
   if (error) throw error
 
   await switchTenant(result.id) // also invalidates the tenant/session caches
+}
+
+export async function resolveAlert(
+  alertId: string
+): Promise<Result<HttpError, unknown>> {
+  // The gate is here for the tenant, not for the permission: the backend
+  // re-checks ALERT_RESOLVE, and <RoleGate> only decides whether the button
+  // renders. Neither is a substitute for the other.
+  await requireTenant()
+
+  const [error, data] = await fetchData(`/api/alerts/${alertId}/resolve`, {
+    method: "PATCH",
+  })
+  if (error) return err(error)
+
+  // refresh(), not revalidatePath(): every dashboard section reads through
+  // fetchData, which is no-store, so there is no cached entry to invalidate —
+  // what went stale is the client router's copy of this route.
+  refresh()
+
+  return ok(data)
 }

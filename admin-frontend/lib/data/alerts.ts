@@ -1,6 +1,7 @@
 import { fetchData } from "./data-fetch"
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table"
 import type {
+  AlertsSummary,
   AlertType,
   MachineAlertRow,
 } from "@vmaas/shared/types/machineAlert"
@@ -39,4 +40,12 @@ export async function getAlertsPage(
       },
     }
   )
+}
+
+/** Tenant scope rides on the session's activeTenantId; the backend re-checks
+ *  ALERT_READ, so there is nothing to pass and nothing to trust from a caller. */
+export async function getAlertsSummary(): Promise<
+  Result<HttpError, AlertsSummary>
+> {
+  return fetchData<AlertsSummary>("/api/alerts/summary")
 }

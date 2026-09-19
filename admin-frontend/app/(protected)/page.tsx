@@ -8,19 +8,55 @@ import {
 import { requireTenant } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { fetchData } from "@/lib/data/data-fetch"
+import { KpiCards } from "./components/kpi-cards"
+import { NeedsAttentionSection } from "./components/needs-attention"
+import { RestockQueueSection } from "./components/restock-queue"
 import { SalesMapCluster } from "./components/sales-map-cluster"
-import { ErrorToast } from "./error-toast"
+import { SalesSummarySection } from "./components/sales-summary"
+import { SectionError } from "./components/section-error"
 
 // The tenant gate below reads the session, which cannot be prerendered into the
 // static shell. Same opt-out the other session-gated pages use.
 export const instant = false
 
+/**
+ * Problems first, money second: the sections are ordered by how urgent acting on
+ * them is, and each one is permission-gated on its own, so what a user sees is
+ * composed from what they may see rather than chosen by role.
+ *
+ * Each section sits in its own <Suspense> and reports its own failure inline, so
+ * one dead endpoint costs one card rather than the page.
+ */
 export default async function DashboardPage() {
   await requireTenant()
 
   return (
     <div>
       <h1 className="text-2xl font-bold">Overview</h1>
+
+      {/* The figures first: the whole state of the tenant in one row, before
+          any of the queues below ask for a click. */}
+      <div className="mt-8">
+        <Suspense fallback={<p>Loading key figures…</p>}>
+          <KpiCards />
+        </Suspense>
+      </div>
+
+      {/* Two queues of things to act on — side by side from md up, stacked on
+          a phone. */}
+      <div className="mt-8 grid items-start gap-8 md:grid-cols-2">
+        <Suspense fallback={<p>Loading alerts…</p>}>
+          <NeedsAttentionSection />
+        </Suspense>
+
+        <Suspense fallback={<p>Loading the restock queue…</p>}>
+          <RestockQueueSection />
+        </Suspense>
+      </div>
+
+      <Suspense fallback={<p>Loading sales…</p>}>
+        <SalesSummarySection />
+      </Suspense>
 
       <Suspense fallback={<p>Loading the sales map…</p>}>
         <SalesMapSection />
@@ -48,14 +84,14 @@ async function SalesMapSection() {
   return (
     <section className="mt-8">
       <h2 className="text-lg font-semibold">
-        Sales · last {DEFAULT_SALES_MAP_DAYS} days
+        Sales map · last {DEFAULT_SALES_MAP_DAYS} days
       </h2>
       <p className="mb-3 text-sm text-muted-foreground">
         Every sale where it was rung up. Each circle shows how many sales it
         holds and what they earned.
       </p>
       {error ? (
-        <ErrorToast message={error.reason} />
+        <SectionError message="Couldn't load the sales map." />
       ) : (
         <SalesMapCluster sales={sales} />
       )}
