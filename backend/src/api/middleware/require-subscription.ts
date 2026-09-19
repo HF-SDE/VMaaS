@@ -14,8 +14,18 @@ import type { NextFunction, Request, Response } from "express";
  * 402 Payment Required rather than 403: the caller is who they say they are and
  * may well hold the permission, so the frontend has to tell this apart from a
  * genuine authorization failure to route them to billing instead of /forbidden.
+ *
+ * Platform superusers pass through, the same escape hatch `getUserPermissions`,
+ * `isTenantMember` and `listTenantsForUser` all honour: a superadmin's active
+ * tenant is usually someone else's organization, and they are not the one who
+ * can pay for it.
  */
 export async function requireSubscription(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.user.isSuperAdmin) {
+    next();
+    return;
+  }
+
   const tenantId = req.tenantId;
 
   if (!tenantId) {
