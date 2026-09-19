@@ -2,7 +2,7 @@ import Link from "next/link"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { getAlertsSummary } from "@/lib/data/alerts"
-import { requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { RoleGate } from "@/components/role-gate"
 import { AlertRow } from "./alert-row"
@@ -34,7 +34,7 @@ function timeAgo(iso: string): string {
  * owner whose only missing permission is alerts.
  */
 export async function NeedsAttentionSection() {
-  const session = await requireTenant()
+  const session = await requireAccess()
   if (!hasPermission(session, PERMISSIONS.ALERT_READ)) return null
 
   const [error, summary] = await getAlertsSummary()

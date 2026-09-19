@@ -8,7 +8,7 @@ import { getAlertsSummary } from "@/lib/data/alerts"
 import { getMachines } from "@/lib/data/machines"
 import { getSalesSummary } from "@/lib/data/sales"
 import { getLowStockSlots } from "@/lib/data/slots"
-import { requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import {
   Card,
@@ -72,7 +72,7 @@ function Kpi({
  * reflows around whatever is left.
  */
 export async function KpiCards() {
-  const session = await requireTenant()
+  const session = await requireAccess()
   const canReadAlerts = hasPermission(session, PERMISSIONS.ALERT_READ)
   const canReadMachines = hasPermission(session, PERMISSIONS.MACHINE_READ)
   const canReadSales = hasPermission(session, PERMISSIONS.SALE_READ)

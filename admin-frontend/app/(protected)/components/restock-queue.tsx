@@ -2,7 +2,7 @@ import Link from "next/link"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { getLowStockSlots } from "@/lib/data/slots"
-import { requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { Progress } from "@/components/ui/progress"
 import { SectionError } from "./section-error"
@@ -13,7 +13,7 @@ import { ShowMoreList } from "./show-more-list"
  * fleet is doing, are the KPI row's job; this is the queue itself.
  */
 export async function RestockQueueSection() {
-  const session = await requireTenant()
+  const session = await requireAccess()
   if (!hasPermission(session, PERMISSIONS.MACHINE_READ)) return null
 
   const [error, lowStock] = await getLowStockSlots()

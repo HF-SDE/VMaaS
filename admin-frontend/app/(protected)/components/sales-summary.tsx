@@ -3,7 +3,7 @@ import { DEFAULT_SALES_SUMMARY_DAYS } from "@vmaas/shared/types/sale"
 import type { SalesTotals } from "@vmaas/shared/types/sale"
 
 import { getSalesSummary } from "@/lib/data/sales"
-import { requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { RevenueChart } from "./revenue-chart"
 import { SectionError } from "./section-error"
@@ -27,7 +27,7 @@ function Tile({ label, totals }: { label: string; totals: SalesTotals }) {
 }
 
 export async function SalesSummarySection() {
-  const session = await requireTenant()
+  const session = await requireAccess()
   if (!hasPermission(session, PERMISSIONS.SALE_READ)) return null
 
   const [error, summary] = await getSalesSummary()

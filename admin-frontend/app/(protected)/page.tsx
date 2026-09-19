@@ -5,7 +5,7 @@ import {
   type SaleMapPoint,
 } from "@vmaas/shared/types/sale"
 
-import { requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { fetchData } from "@/lib/data/data-fetch"
 import { KpiCards } from "./components/kpi-cards"
@@ -28,7 +28,7 @@ export const instant = false
  * one dead endpoint costs one card rather than the page.
  */
 export default async function DashboardPage() {
-  await requireTenant()
+  await requireAccess()
 
   return (
     <div>
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
  * only missing permission is sales.
  */
 async function SalesMapSection() {
-  const session = await requireTenant()
+  const session = await requireAccess()
   if (!hasPermission(session, PERMISSIONS.SALE_READ)) return null
 
   // No `days` param: the endpoint's own default window is what the heading
