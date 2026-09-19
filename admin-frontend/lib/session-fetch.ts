@@ -7,6 +7,28 @@ export type Session = {
   tenants: { id: string; name: string }[]
   tenantInvites: TenantInvite[]
   permissions: PermissionKey[]
+  /** The active tenant's billing state. `null` means either "no active tenant"
+   *  or "the lookup failed" — never "not subscribed", which is the `pending`
+   *  status. lib/access.ts is what tells those apart. */
+  subscription: SessionSubscription | null
+  /** Whether the user owns the *active* tenant. Billing is the owner's alone,
+   *  so this is what decides paywall versus locked page. */
+  isOwner: boolean
+}
+
+export type SubscriptionStatus =
+  | "pending"
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "unpaid"
+
+export type SessionSubscription = {
+  status: SubscriptionStatus
+  trialEndsAt: string | null
+  currentPeriodEnd: string | null
 }
 
 type SessionResponse = {
@@ -15,14 +37,18 @@ type SessionResponse = {
   tenants?: { id: string; name: string }[]
   tenantInvites?: TenantInvite[]
   permissions?: PermissionKey[]
+  subscription?: SessionSubscription | null
+  isOwner?: boolean
 } | null
 
-type TenantInvite = {
+export type TenantInvite = {
+  id: string
   tenantId: string
   tenantName: string
   token: string
   roleName?: string
-  expiresAt: Date
+  invitedBy?: string
+  expiresAt: string
 }
 
 /** Long enough for a restarting backend or a just-rolled rate-limit window to
@@ -88,5 +114,7 @@ export async function fetchSession(
     tenants: body.tenants ?? [],
     tenantInvites: body.tenantInvites ?? [],
     permissions: body.permissions ?? [],
+    subscription: body.subscription ?? null,
+    isOwner: body.isOwner ?? false,
   }
 }
