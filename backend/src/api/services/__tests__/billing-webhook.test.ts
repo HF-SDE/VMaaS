@@ -3,10 +3,11 @@ import { applyStripeSubscription, handleStripeWebhook } from "@/api/services/bil
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findFirst, findUnique, setSubscriptionStatus, constructEvent } = vi.hoisted(() => ({
+const { findFirst, findUnique, setSubscriptionStatus, releaseTrial, constructEvent } = vi.hoisted(() => ({
   findFirst: vi.fn(),
   findUnique: vi.fn(),
   setSubscriptionStatus: vi.fn(),
+  releaseTrial: vi.fn(),
   constructEvent: vi.fn(),
 }));
 
@@ -22,9 +23,11 @@ vi.mock("@/lib/stripe", () => ({
 vi.mock("@/api/services/subscriptions.service", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   setSubscriptionStatus,
+  releaseTrial,
 }));
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const USER = "22222222-2222-4222-8222-222222222222";
 
 /** The parts of a Stripe subscription this application reads. */
 function stripeSubscription(overrides: Record<string, unknown> = {}) {
@@ -44,10 +47,12 @@ beforeEach(() => {
   findFirst.mockReset();
   findUnique.mockReset();
   setSubscriptionStatus.mockReset();
+  releaseTrial.mockReset();
   constructEvent.mockReset();
 
   findFirst.mockResolvedValue({ tenantId: TENANT });
   setSubscriptionStatus.mockResolvedValue([null, {}]);
+  releaseTrial.mockResolvedValue([null, { released: true }]);
 });
 
 describe("applyStripeSubscription — status mapping", () => {
@@ -207,6 +212,49 @@ describe("handleStripeWebhook", () => {
     constructEvent.mockReturnValue({
       type: "customer.subscription.updated",
       data: { object: stripeSubscription() },
+    });
+
+    const [error] = await handleStripeWebhook(Buffer.from("{}"), "t=1,v1=good");
+
+    expect(error?.reason).toBe("STRIPE_ERROR");
+  });
+
+  // The trial is claimed when checkout opens, so a user who changes their mind
+  // on Stripe's page would otherwise have spent it without ever getting one.
+  it("gives the trial back when a checkout session expires unused", async () => {
+    constructEvent.mockReturnValue({
+      type: "checkout.session.expired",
+      data: { object: { metadata: { tenantId: TENANT, trialUserId: USER } } },
+    });
+
+    const [error] = await handleStripeWebhook(Buffer.from("{}"), "t=1,v1=good");
+
+    expect(error).toBeNull();
+    expect(releaseTrial).toHaveBeenCalledWith(USER, TENANT);
+  });
+
+  // A checkout opened by a user who had already used their trial carries no
+  // claim of its own. Releasing on `tenantId` alone would give back whatever
+  // claim the tenant happened to hold.
+  it("releases nothing when the expired session carried no trial", async () => {
+    constructEvent.mockReturnValue({
+      type: "checkout.session.expired",
+      data: { object: { metadata: { tenantId: TENANT } } },
+    });
+
+    const [error] = await handleStripeWebhook(Buffer.from("{}"), "t=1,v1=good");
+
+    expect(error).toBeNull();
+    expect(releaseTrial).not.toHaveBeenCalled();
+  });
+
+  // Same reasoning as a failed status write: a release that did not happen is
+  // worth retrying, because the user is otherwise left without their trial.
+  it("reports a failed release so Stripe redelivers", async () => {
+    releaseTrial.mockResolvedValue([{ reason: "UNKNOWN_ERROR", message: "connection lost" }, null]);
+    constructEvent.mockReturnValue({
+      type: "checkout.session.expired",
+      data: { object: { metadata: { tenantId: TENANT, trialUserId: USER } } },
     });
 
     const [error] = await handleStripeWebhook(Buffer.from("{}"), "t=1,v1=good");

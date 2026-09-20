@@ -7,7 +7,13 @@ import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { SubscriptionPlan } from "@vmaas/shared/schemas";
 import type Stripe from "stripe";
 
-import { getTenantSubscription, grantsAccess, setSubscriptionStatus } from "./subscriptions.service";
+import {
+  claimTrial,
+  getTenantSubscription,
+  grantsAccess,
+  releaseTrial,
+  setSubscriptionStatus,
+} from "./subscriptions.service";
 
 /**
  * Everything that talks to Stripe.
@@ -181,11 +187,16 @@ export async function applyStripeSubscriptionById(
  * session and the subscription's metadata, which is what lets the very first
  * webhook find its tenant before any id has been stored.
  *
+ * The trial is decided here too, and `trialDays` is deliberately not a
+ * parameter: it comes from `claimTrial`, which is the only thing entitled to
+ * say how long a trial this user may have. A caller cannot ask for one.
+ *
  * Creating the session grants nothing. Access is granted by the webhook, when
- * Stripe says the subscription is active.
+ * Stripe says the subscription is active or trialing.
  */
 export async function createCheckoutSession(input: {
   tenantId: string;
+  userId: string;
   plan: SubscriptionPlan;
   userEmail: string;
 }): Promise<Result<AlreadySubscribedError | StripeApiError | UnknownBillingError, { url: string }>> {
@@ -194,12 +205,21 @@ export async function createCheckoutSession(input: {
 
   // Without this a second checkout would create a second Stripe subscription
   // for the same tenant, and the tenant would be billed twice for one seat.
+  // Checked before the claim so a mistaken second checkout cannot spend a
+  // trial the tenant never gets to use.
   if (grantsAccess(subscription.status) && subscription.stripeSubscriptionId) {
     return err({
       reason: "ALREADY_SUBSCRIBED",
       message: "This organization already has an active subscription.",
     });
   }
+
+  // Claimed before Stripe is called, not after: the claim is what serialises
+  // two checkouts opened at once, and a claim recorded afterwards could not.
+  // A failure to record it stops checkout — reaching Stripe with no record of
+  // the trial is what would hand the same user a second one.
+  const [claimError, claim] = await claimTrial(input.userId, input.tenantId);
+  if (claimError) return err(claimError);
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -214,8 +234,27 @@ export async function createCheckoutSession(input: {
         ? { customer: subscription.stripeCustomerId }
         : { customer_email: input.userEmail }),
       client_reference_id: input.tenantId,
-      metadata: { tenantId: input.tenantId },
-      subscription_data: { metadata: { tenantId: input.tenantId } },
+      // `trialUserId` only when a trial was actually claimed: it is what
+      // `checkout.session.expired` gives the claim back from, and writing it
+      // unconditionally would let an abandoned no-trial checkout release a
+      // claim that belongs to a different session.
+      metadata: {
+        tenantId: input.tenantId,
+        ...(claim.trialDays > 0 ? { trialUserId: input.userId } : {}),
+      },
+      subscription_data: {
+        metadata: { tenantId: input.tenantId },
+        ...(claim.trialDays > 0 ? { trial_period_days: claim.trialDays } : {}),
+        // If the card has gone by the time the trial ends, end the
+        // subscription rather than raising an invoice nobody will pay — an
+        // unpaid invoice is a debt for a service, and access this application
+        // would then have to take back.
+        trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
+      },
+      // The trial is only free if they cancel, so the card is collected before
+      // it starts. Stated rather than left to Stripe's default:
+      // `if_required` would let a trial begin with no payment method at all.
+      payment_method_collection: "always",
       success_url: `${config.APP_URL}/billing?checkout=success`,
       cancel_url: `${config.APP_URL}/billing?checkout=canceled`,
       integration_identifier: INTEGRATION_IDENTIFIER,
@@ -224,12 +263,33 @@ export async function createCheckoutSession(input: {
     // Stripe returns no URL for an embedded session; this integration is hosted
     // checkout, so a missing URL is a broken response, not something to pass on
     // to the browser as `undefined`.
-    if (!session.url) return stripeError("opening checkout", new Error("session has no url"));
+    if (!session.url) {
+      await releaseClaimedTrial(claim.trialDays, input.userId, input.tenantId);
+      return stripeError("opening checkout", new Error("session has no url"));
+    }
 
     return ok({ url: session.url });
   } catch (error) {
+    await releaseClaimedTrial(claim.trialDays, input.userId, input.tenantId);
     return stripeError("opening checkout", error);
   }
+}
+
+/**
+ * Undoes a claim for a checkout that never opened.
+ *
+ * `checkout.session.expired` is what normally gives a claim back, but no
+ * session exists to expire here — without this a Stripe outage would cost the
+ * user their one trial for good. A release that itself fails is logged rather
+ * than reported: the caller is already returning a Stripe error, and the trial
+ * is the smaller of the two problems.
+ */
+async function releaseClaimedTrial(trialDays: number, userId: string, tenantId: string): Promise<void> {
+  if (trialDays <= 0) return;
+
+  const [error] = await releaseTrial(userId, tenantId);
+
+  if (error) console.error(`[billing.service] could not release the trial claimed by ${userId}`, error);
 }
 
 /**
@@ -348,6 +408,20 @@ async function applyEvent(event: Stripe.Event): Promise<ApplyResult | null> {
 
       const subscriptionId = idOf(session.subscription);
       return subscriptionId ? applyStripeSubscriptionById(subscriptionId) : null;
+    }
+
+    // The trial is claimed when checkout opens, so a session that Stripe gives
+    // up on has to give the claim back or changing your mind on Stripe's page
+    // costs you the trial you never started.
+    case "checkout.session.expired": {
+      const { tenantId, trialUserId } = event.data.object.metadata ?? {};
+
+      // Nothing to give back: this checkout claimed no trial of its own, and
+      // releasing on the tenant alone would take away whichever claim it holds.
+      if (!tenantId || !trialUserId) return null;
+
+      const [error] = await releaseTrial(trialUserId, tenantId);
+      return error ? err(error) : null;
     }
 
     // Renewals and dunning. Both also produce a subscription event, but not

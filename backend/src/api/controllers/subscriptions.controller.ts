@@ -60,6 +60,7 @@ export async function createCheckoutSessionController(req: Request, res: Respons
 
   const [error, session] = await createCheckoutSession({
     tenantId,
+    userId: user.id,
     plan: req.body.plan,
     userEmail: user.email,
   });
