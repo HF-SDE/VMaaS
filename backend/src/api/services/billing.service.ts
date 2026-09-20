@@ -5,6 +5,7 @@ import { STRIPE_PRICE_IDS, stripe } from "@/lib/stripe";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { SubscriptionPlan } from "@vmaas/shared/schemas";
+import type { TenantInvoice, TenantInvoicePage } from "@vmaas/shared/types/invoice";
 import type Stripe from "stripe";
 
 import {
@@ -336,6 +337,82 @@ export async function cancelSubscription(
   if (applyError) return err(applyError);
 
   return ok({ currentPeriodEnd: currentPeriodEnd(canceled) ?? null });
+}
+
+const DEFAULT_INVOICE_PAGE_SIZE = 10;
+
+/** Stripe refuses a limit above this, so the clamp is its ceiling and not a
+ *  preference of ours. */
+const MAX_INVOICE_PAGE_SIZE = 100;
+
+/** Stripe's invoice onto the shape the API returns. The `?? null` on both URLs
+ *  matters: Stripe omits the keys rather than sending null, and `undefined`
+ *  would vanish from the JSON and leave the browser reading a missing property
+ *  instead of an absent link. */
+function toTenantInvoice(invoice: Stripe.Invoice): TenantInvoice {
+  return {
+    id: invoice.id,
+    number: invoice.number,
+    created: invoice.created,
+    amountPaid: invoice.amount_paid,
+    currency: invoice.currency,
+    pdfUrl: invoice.invoice_pdf ?? null,
+    hostedUrl: invoice.hosted_invoice_url ?? null,
+  };
+}
+
+/**
+ * One page of a tenant's receipts, newest first.
+ *
+ * Nothing is stored: `stripeCustomerId` is the whole of what this tenant owns
+ * here, and the invoices themselves stay in Stripe. That also means the tenant
+ * is enforced by *which customer is asked about* — the id comes from the row
+ * `requireTenant` resolved, never from the caller, so there is no invoice id to
+ * tamper with and no list that could return another tenant's receipts.
+ *
+ * Paged by cursor because Stripe is: `startingAfter` is the previous page's
+ * last invoice id. There is no total to report and no page number to jump to.
+ */
+export async function listInvoices(
+  tenantId: string,
+  params: { limit?: number; startingAfter?: string } = {},
+): Promise<Result<StripeApiError | UnknownBillingError, TenantInvoicePage>> {
+  const [loadError, subscription] = await getTenantSubscription(tenantId);
+  if (loadError) return err(loadError);
+
+  // Null until the first webhook lands after checkout. A tenant that never got
+  // that far has no receipts rather than a broken page, and asking Stripe about
+  // a customer it has never heard of would turn the truthful answer into a 502.
+  if (!subscription.stripeCustomerId) {
+    return ok({ data: [], hasMore: false, nextCursor: null });
+  }
+
+  // Clamped rather than rejected, so a stale bookmark still renders a page.
+  const limit = Math.min(MAX_INVOICE_PAGE_SIZE, Math.max(1, Math.trunc(params.limit ?? DEFAULT_INVOICE_PAGE_SIZE)));
+
+  try {
+    const page = await stripe.invoices.list({
+      customer: subscription.stripeCustomerId,
+      // A receipt is a paid invoice. The filter is also what makes every row
+      // downloadable: Stripe leaves `invoice_pdf` null until an invoice is
+      // finalized, so an unfiltered list could return a draft with no link.
+      status: "paid",
+      limit,
+      // Omitted entirely on the first page — Stripe reads an empty
+      // `starting_after` as a cursor rather than as its absence.
+      ...(params.startingAfter ? { starting_after: params.startingAfter } : {}),
+    });
+
+    return ok({
+      data: page.data.map(toTenantInvoice),
+      hasMore: page.has_more,
+      // Null when there is no next page, so the caller is never offered a
+      // "next" that would come back empty.
+      nextCursor: page.has_more ? (page.data.at(-1)?.id ?? null) : null,
+    });
+  } catch (error) {
+    return stripeError("listing invoices", error);
+  }
 }
 
 /**

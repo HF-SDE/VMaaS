@@ -1,8 +1,14 @@
 import { isTenantOwner } from "@/lib/rbac";
 
+import { getInvoicesPageSchema } from "@vmaas/shared/schemas";
 import type { Request, Response } from "express";
 
-import { cancelSubscription, createCheckoutSession, handleStripeWebhook } from "../services/billing.service";
+import {
+  cancelSubscription,
+  createCheckoutSession,
+  handleStripeWebhook,
+  listInvoices,
+} from "../services/billing.service";
 import { getTenantSubscription, hasValidSubscription } from "../services/subscriptions.service";
 
 /** The active tenant's billing state. Read-only — every mutation goes through
@@ -114,6 +120,46 @@ export async function cancelSubscriptionController(req: Request, res: Response) 
   }
 
   return res.status(200).json({ cancelAtPeriodEnd: true, currentPeriodEnd: result.currentPeriodEnd }).end();
+}
+
+/**
+ * A page of the active tenant's receipts.
+ *
+ * Owner-only, like the other billing endpoints: an invoice carries amounts and
+ * the billing address, which is more than the "are we paid up" that
+ * `getSubscriptionController` deliberately shows every member.
+ *
+ * No `requireSubscription` on the route, and that is the point — a tenant that
+ * has cancelled still needs the receipts for what it already paid for.
+ *
+ * The tenant is never read from the query. `listInvoices` asks Stripe about the
+ * customer id on the tenant's own row, so there is no invoice id in this
+ * request to point at somebody else's receipt.
+ */
+export async function listInvoicesController(req: Request, res: Response) {
+  const tenantId = req.tenantId!;
+
+  if (!(await isTenantOwner(req.session!.user.id, tenantId))) {
+    return res.status(403).json({ error: "Only an owner can view billing history for this organization." }).end();
+  }
+
+  const { query } = getInvoicesPageSchema.parse(req);
+
+  const [error, page] = await listInvoices(tenantId, query);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "STRIPE_ERROR":
+        return res.status(502).json({ error: "Could not reach Stripe. Please try again." }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the invoices" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(page).end();
 }
 
 /**

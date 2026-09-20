@@ -1,13 +1,14 @@
 import { requireAuth, requireTenant } from "@/api/middleware/auth";
 import { validate } from "@/api/middleware/validate";
 
-import { createCheckoutSessionSchema } from "@vmaas/shared/schemas";
+import { createCheckoutSessionSchema, getInvoicesPageSchema } from "@vmaas/shared/schemas";
 import express, { Router } from "express";
 
 import {
   cancelSubscriptionController,
   createCheckoutSessionController,
   getSubscriptionController,
+  listInvoicesController,
   stripeWebhookController,
 } from "../controllers/subscriptions.controller";
 
@@ -32,6 +33,15 @@ subscriptionsRouter.use(requireAuth);
 // is paid up — that is what the locked page tells them. Only changing billing
 // is restricted, and that owner check lives in the controllers.
 subscriptionsRouter.get("/current", requireTenant, getSubscriptionController);
+
+// Owner-only, checked in the controller alongside the other billing actions.
+// A literal path, so it must stay above any "/:id" added later.
+//
+// No `requireSubscription` here, unlike most routers: a tenant that has stopped
+// paying still needs the receipts for the period it did pay for, and locking
+// its own billing history behind an active subscription would be the one place
+// the application withholds a record of money already taken.
+subscriptionsRouter.get("/invoices", requireTenant, validate(getInvoicesPageSchema), listInvoicesController);
 
 // No `requireSubscription` on either of these, for the obvious reason: they are
 // how a tenant without one gets one, and how one that has it stops paying.

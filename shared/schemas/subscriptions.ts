@@ -19,3 +19,22 @@ export const createCheckoutSessionSchema = z.object({
 });
 
 export type CreateCheckoutSessionBody = z.infer<typeof createCheckoutSessionSchema>["body"];
+
+/**
+ * `GET /api/subscriptions/invoices`. Request-shaped so it runs through
+ * `validate()` like every other schema, and every field stays optional — a bare
+ * `/invoices` is a valid request for the first page. The service clamps what it
+ * gets rather than rejecting it.
+ *
+ * `startingAfter` is an opaque Stripe invoice id taken from the previous page's
+ * `nextCursor`, not an offset: Stripe pages by cursor, so there is no page
+ * number to jump to and nothing here to do arithmetic on.
+ */
+export const getInvoicesPageSchema = z.object({
+  query: z.object({
+    limit: z.coerce.number().optional(),
+    startingAfter: z.string().optional(),
+  }),
+});
+
+export type GetInvoicesPageQuery = z.infer<typeof getInvoicesPageSchema>["query"];
