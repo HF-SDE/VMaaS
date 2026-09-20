@@ -54,6 +54,32 @@ services:
       - internal
       - public
 
+  stripe-cli:
+    container_name: stripe-cli
+    image: stripe/stripe-cli:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # The CLI authenticates with the same secret key the backend uses, so no
+      # `stripe login` and no browser flow inside the container. Comes from
+      # .env.backend.dev via --env-file (see the root package.json dev scripts).
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in config/environment-variables/.env.backend.dev}
+      # Names this listener in the Stripe dashboard's CLI list.
+      STRIPE_DEVICE_NAME: vmaas-dev
+    # Forwards straight to the backend container, not through nginx: the webhook
+    # has no session and no CORS to satisfy, so the extra hop buys nothing.
+    command:
+      - listen
+      - --forward-to
+      - http://backend:5000/api/subscriptions/webhook
+      - --all-snapshot
+    restart: unless-stopped
+    networks:
+      # internal reaches the backend, public reaches Stripe.
+      - internal
+      - public
+
   db:
     container_name: postgres
     image: bitnami/postgresql:latest
