@@ -27,9 +27,9 @@ export function grantsAccess(status: subscription_status): boolean {
   return (ACCESS_GRANTING_STATUSES as readonly subscription_status[]).includes(status);
 }
 
-function daysFromNow(days: number): Date {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-}
+/** How long a free trial lasts. A constant rather than configuration: changing
+ *  it changes what was sold, so it belongs in a commit, not an environment. */
+export const TRIAL_PERIOD_DAYS = 30;
 
 function unknownError(action: string, cause: unknown): Result<UnknownSubscriptionError, never> {
   // TODO: capture sentry error
@@ -67,11 +67,14 @@ export async function getTenantSubscription(tenantId: string): Promise<Result<Un
 /**
  * Whether `tenantId` may use the application right now.
  *
- * A trial that has run out is not access. Stripe does move such a subscription
- * on and the webhook writes the new status, but that is an event in flight —
- * and a local trial started by `startSubscriptionTrial` has no Stripe object
- * behind it at all. An elapsed `trialEndsAt` is therefore treated as expired
- * here rather than trusted blindly.
+ * A trial that has run out is not access. Every trial is a Stripe one, so
+ * Stripe does move the subscription on when it ends — but that is an event in
+ * flight, and until it lands the row still reads `trialing`. An elapsed
+ * `trialEndsAt` is therefore treated as expired here rather than trusted.
+ *
+ * That means a converting customer is refused for as long as the webhook takes
+ * to arrive, which is the right way round: the alternative is free use of the
+ * application by anyone whose trial ended and whose card then failed.
  */
 export async function hasValidSubscription(tenantId: string): Promise<Result<UnknownSubscriptionError, boolean>> {
   const [error, subscription] = await getTenantSubscription(tenantId);
@@ -97,31 +100,57 @@ export type SubscriptionFacts = {
 };
 
 /**
- * Starts a trial for a tenant that has no billing yet.
+ * Claims this user's one free trial for this tenant.
  *
- * Only moves a `pending` row: re-running it must never extend a real Stripe
- * subscription or revive a canceled one.
+ * Returns the trial length to ask Stripe for: `TRIAL_PERIOD_DAYS` if the claim
+ * was theirs to make, `0` if it was not. A used-up trial is an answer, not an
+ * error — the user still gets to subscribe, they just pay from day one.
+ *
+ * The claim is the insert itself. Reading first and then inserting would let
+ * two checkouts opened at the same moment both see "no trial yet", so the
+ * unique constraints on `userId` and `tenantId` are what actually enforce
+ * this; a `P2002` means somebody already holds the claim.
+ *
+ * Called when checkout opens rather than when Stripe confirms the trial,
+ * because a claim made after the fact cannot prevent the race it exists for.
+ * `releaseTrial` is what keeps that from punishing an abandoned checkout.
  */
-export async function startSubscriptionTrial(
+export async function claimTrial(
+  userId: string,
   tenantId: string,
-  trialDays = 14,
-): Promise<Result<UnknownSubscriptionError, Subscription>> {
+): Promise<Result<UnknownSubscriptionError, { trialDays: number }>> {
   try {
-    const existing = await prisma.subscription.findUnique({ where: { tenantId } });
+    await prisma.trialGrant.create({ data: { userId, tenantId } });
 
-    if (existing && existing.status !== "pending") return ok(existing);
-
-    const trialEndsAt = daysFromNow(trialDays);
-
-    return ok(
-      await prisma.subscription.upsert({
-        where: { tenantId },
-        update: { status: "trialing", trialEndsAt },
-        create: { tenantId, status: "trialing", trialEndsAt },
-      }),
-    );
+    return ok({ trialDays: TRIAL_PERIOD_DAYS });
   } catch (error) {
-    return unknownError("starting the trial on", error);
+    if ((error as { code?: string }).code === "P2002") return ok({ trialDays: 0 });
+
+    // Not "no trial": a database that is down would hand out one trial per
+    // failed request if this fell through to `trialDays: 0`, and would tell
+    // the user they had used a trial they never got if it did the opposite.
+    return unknownError("claiming the trial on", error);
+  }
+}
+
+/**
+ * Gives an unconverted claim back.
+ *
+ * Both ids are in the `where` on purpose. The claim row is rewritten to no
+ * other pair, so once a different checkout holds the trial nothing matches and
+ * the delete is a no-op — a stale `checkout.session.expired` cannot take away
+ * a trial that has since started.
+ */
+export async function releaseTrial(
+  userId: string,
+  tenantId: string,
+): Promise<Result<UnknownSubscriptionError, { released: boolean }>> {
+  try {
+    const { count } = await prisma.trialGrant.deleteMany({ where: { userId, tenantId } });
+
+    return ok({ released: count > 0 });
+  } catch (error) {
+    return unknownError("releasing the trial on", error);
   }
 }
 

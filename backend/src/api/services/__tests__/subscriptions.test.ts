@@ -1,17 +1,35 @@
 import {
+  TRIAL_PERIOD_DAYS,
+  claimTrial,
   grantsAccess,
   hasValidSubscription,
+  releaseTrial,
   setSubscriptionStatus,
-  startSubscriptionTrial,
 } from "@/api/services/subscriptions.service";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { upsert, findUnique } = vi.hoisted(() => ({ upsert: vi.fn(), findUnique: vi.fn() }));
+const { upsert, findUnique, grantCreate, grantDeleteMany } = vi.hoisted(() => ({
+  upsert: vi.fn(),
+  findUnique: vi.fn(),
+  grantCreate: vi.fn(),
+  grantDeleteMany: vi.fn(),
+}));
 
-vi.mock("@/lib/prisma", () => ({ prisma: { subscription: { upsert, findUnique } } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    subscription: { upsert, findUnique },
+    trialGrant: { create: grantCreate, deleteMany: grantDeleteMany },
+  },
+}));
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const USER = "22222222-2222-4222-8222-222222222222";
+
+/** What Prisma throws when a `create` collides with a unique constraint. */
+function uniqueViolation() {
+  return Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+}
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +48,8 @@ function subscription(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   upsert.mockReset();
   findUnique.mockReset();
+  grantCreate.mockReset();
+  grantDeleteMany.mockReset();
 });
 
 describe("grantsAccess", () => {
@@ -144,24 +164,90 @@ describe("setSubscriptionStatus", () => {
   });
 });
 
-describe("startSubscriptionTrial", () => {
-  it("starts a trial on a pending subscription", async () => {
-    findUnique.mockResolvedValue(subscription({ status: "pending" }));
-    upsert.mockResolvedValue(subscription({ status: "trialing" }));
+describe("claimTrial", () => {
+  it("grants the trial the first time a user asks for one", async () => {
+    grantCreate.mockResolvedValue({ userId: USER, tenantId: TENANT });
 
-    const [, result] = await startSubscriptionTrial(TENANT);
+    const [error, result] = await claimTrial(USER, TENANT);
 
-    expect(result?.status).toBe("trialing");
+    expect(error).toBeNull();
+    expect(result?.trialDays).toBe(TRIAL_PERIOD_DAYS);
   });
 
-  // Re-running onboarding must never extend a real subscription or revive a
-  // canceled one into a free trial.
-  it.each(["active", "canceled", "past_due"] as const)("leaves a %s subscription untouched", async (status) => {
-    findUnique.mockResolvedValue(subscription({ status }));
+  // The whole point of the table: a user who has had a trial does not get a
+  // second one, however many organizations they create.
+  it("refuses a user who has already had a trial", async () => {
+    grantCreate.mockRejectedValue(uniqueViolation());
 
-    const [, result] = await startSubscriptionTrial(TENANT);
+    const [error, result] = await claimTrial(USER, TENANT);
 
-    expect(upsert).not.toHaveBeenCalled();
-    expect(result?.status).toBe(status);
+    expect(error).toBeNull();
+    expect(result?.trialDays).toBe(0);
+  });
+
+  // `tenantId` is unique too, so handing an organization to a new owner cannot
+  // buy it a second trial.
+  it("refuses an organization that has already had a trial", async () => {
+    grantCreate.mockRejectedValue(uniqueViolation());
+
+    const [, result] = await claimTrial("33333333-3333-4333-8333-333333333333", TENANT);
+
+    expect(result?.trialDays).toBe(0);
+  });
+
+  // The row is written before the user reaches Stripe, so two checkouts opened
+  // at once cannot both read "no grant yet" and both start a trial. The unique
+  // constraint is the lock, which means the claim must happen on `create` —
+  // not on a find-then-create.
+  it("claims by inserting, so concurrent checkouts race on the constraint", async () => {
+    grantCreate.mockResolvedValue({ userId: USER, tenantId: TENANT });
+
+    await claimTrial(USER, TENANT);
+
+    expect(grantCreate).toHaveBeenCalledWith({ data: { userId: USER, tenantId: TENANT } });
+  });
+
+  // A database that is down must not be read as "eligible" — that would hand
+  // out a trial per failed request.
+  it("reports a write failure rather than granting a trial", async () => {
+    grantCreate.mockRejectedValue(new Error("connection lost"));
+
+    const [error] = await claimTrial(USER, TENANT);
+
+    expect(error?.reason).toBe("UNKNOWN_ERROR");
+  });
+});
+
+describe("releaseTrial", () => {
+  // Claiming at checkout means an abandoned checkout would otherwise burn the
+  // user's only trial. Stripe expires the session after 24h and this gives it
+  // back.
+  it("gives the claim back so the user can try again", async () => {
+    grantDeleteMany.mockResolvedValue({ count: 1 });
+
+    const [error] = await releaseTrial(USER, TENANT);
+
+    expect(error).toBeNull();
+    expect(grantDeleteMany).toHaveBeenCalledWith({ where: { userId: USER, tenantId: TENANT } });
+  });
+
+  // The subscription outlives the checkout session, so a released claim for a
+  // trial that did convert would be a second free trial. Only an unconverted
+  // claim is released, which `deleteMany` on both ids expresses: nothing
+  // matches once the row belongs to a different checkout.
+  it("succeeds when there is no claim left to release", async () => {
+    grantDeleteMany.mockResolvedValue({ count: 0 });
+
+    const [error] = await releaseTrial(USER, TENANT);
+
+    expect(error).toBeNull();
+  });
+
+  it("reports a failure to release", async () => {
+    grantDeleteMany.mockRejectedValue(new Error("connection lost"));
+
+    const [error] = await releaseTrial(USER, TENANT);
+
+    expect(error?.reason).toBe("UNKNOWN_ERROR");
   });
 });
