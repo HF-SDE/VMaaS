@@ -24,6 +24,7 @@ model User {
   accounts        Account[]
   sentInvites     TenantInvite[] @relation("TenantInviteSender")
   receivedInvites TenantInvite[] @relation("TenantInviteRecipient")
+  trialGrant      TrialGrant?
 
   inventoryMovements InventoryMovement[]
 
@@ -231,6 +232,29 @@ model Subscription {
   @@schema("public")
 }
 
+/// One row per free trial ever handed out. Its only job is the two unique
+/// constraints: a user gets one trial however many organizations they create,
+/// and an organization gets one however many owners it passes through.
+///
+/// The row is written when checkout opens, not when Stripe confirms the trial,
+/// so two checkouts started at once collide on the constraint instead of both
+/// reading "no trial yet". `checkout.session.expired` deletes it again, so
+/// abandoning checkout does not spend the trial.
+model TrialGrant {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("trial_grants")
+  @@schema("public")
+}
+
 enum machine_status {
   online
   offline
@@ -302,6 +326,7 @@ model Tenant {
   invites        TenantInvite[]
   sites          Site[]
   subscription   Subscription?
+  trialGrant     TrialGrant?
 
   inventoryMovements InventoryMovement[]
 
