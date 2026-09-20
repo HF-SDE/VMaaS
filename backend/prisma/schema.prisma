@@ -208,14 +208,21 @@ model Subscription {
   tenantId String @unique @db.Uuid
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  /// Null until Stripe is integrated. Unique so a webhook replay that arrives
-  /// twice cannot create a second row for the same Stripe object.
+  /// Null until the tenant has been through Stripe checkout. Unique so a webhook
+  /// replay that arrives twice cannot create a second row for the same Stripe
+  /// object.
   stripeCustomerId     String? @unique
   stripeSubscriptionId String? @unique
 
   status           subscription_status @default(pending)
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
+
+  /// Set when the owner cancels: Stripe keeps the subscription `active` until
+  /// `currentPeriodEnd`, so the status alone cannot say "canceled but still
+  /// paid up". Without this the UI would either revoke access the customer has
+  /// paid for or show no sign that anything was canceled.
+  cancelAtPeriodEnd Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

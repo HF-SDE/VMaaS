@@ -6,7 +6,7 @@ import { productsRouter } from "@/api/routes/products.route";
 import { salesRouter } from "@/api/routes/sales.route";
 import { sitesRouter } from "@/api/routes/sites.route";
 import { slotsRouter } from "@/api/routes/slots.route";
-import { subscriptionsRouter } from "@/api/routes/subscriptions.route";
+import { subscriptionsRouter, subscriptionsWebhookRouter } from "@/api/routes/subscriptions.route";
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
@@ -41,6 +41,11 @@ const api = express.Router();
 // Mounted before express.json(): Better Auth reads the raw request itself.
 // Also exposes the multi-tenant plugin's endpoints: POST /api/auth/tenant/switch, GET /api/auth/tenant/mine.
 api.all("/auth/*splat", toNodeHandler(auth));
+
+// Also before express.json(), and for the same reason: Stripe's signature is
+// computed over the exact bytes it sent, so the webhook needs the raw body. It
+// mounts its own express.raw().
+api.use("/subscriptions/webhook", subscriptionsWebhookRouter);
 
 api.use(express.json());
 

@@ -63,6 +63,18 @@ const schema = z.object({
    *  FRONTEND_URL, which is a CORS/trusted-origin list and may hold several
    *  entries — a link needs exactly one. Defaults to the first of those. */
   APP_URL: z.url({ protocol: /^https?$/ }).optional(),
+  /** Stripe secret key. Required to interact with the Stripe API. */
+  STRIPE_SECRET_KEY: z.string().min(1, { message: "STRIPE_SECRET_KEY is required" }),
+  /** Stripe price ID for the monthly plan. */
+  STRIPE_PRICE_ID_MONTHLY: z.string().min(1, { message: "STRIPE_PRICE_ID_MONTHLY is required" }),
+  /** Stripe price ID for the yearly plan. */
+  STRIPE_PRICE_ID_YEARLY: z.string().min(1, { message: "STRIPE_PRICE_ID_YEARLY is required" }),
+  /** Signing secret for the Stripe webhook endpoint (`whsec_…`). Without it the
+   *  webhook cannot tell a real Stripe event from anyone who found the URL, and
+   *  the handler grants access — so it has no default and no optional escape:
+   *  a missing value must stop the process, not silently open the paywall.
+   *  In development `stripe listen` prints the value to use. */
+  STRIPE_WEBHOOK_SECRET: z.string().min(1, { message: "STRIPE_WEBHOOK_SECRET is required" }),
 });
 
 export const config = (() => {
