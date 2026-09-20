@@ -36,6 +36,19 @@ export async function getSession(
   return session
 }
 
+/**
+ * The session as the backend has it *right now*, going around the cache above.
+ *
+ * Only for polling a change that happens without the user acting — the wait for
+ * Stripe's webhook after checkout — where the cached entry being still fresh is
+ * exactly the problem. Everything else wants `getSession`.
+ */
+export async function getFreshSession(): Promise<Session | null> {
+  const store = await cookies()
+
+  return fetchSession(getAuthCookie(store.getAll()))
+}
+
 export async function requireUser(): Promise<Session> {
   const session = await getSession()
   if (!session) redirect("/login")

@@ -44,8 +44,10 @@ function subscriptionGrantsAccess(
     return false
   }
 
-  // A trial whose end date has passed is not access. Nothing sweeps these yet
-  // — there is no Stripe and no cron — so it is checked at read time.
+  // A trial whose end date has passed is not access. Stripe's webhook does
+  // move a lapsed trial on, but that event may still be in flight, and a trial
+  // started locally has no Stripe object behind it — so it is checked at read
+  // time too. Mirrors hasValidSubscription in the backend, which enforces it.
   if (subscription.status === "trialing" && subscription.trialEndsAt) {
     return new Date(subscription.trialEndsAt) > new Date()
   }

@@ -2,9 +2,8 @@ import { redirect } from "next/navigation"
 
 import { getSession } from "@/lib/dal"
 import { resolveUserAccess } from "@/lib/access"
-import { config } from "@/lib/config"
 
-import { BillingClient } from "./client"
+import { BillingClient, type CheckoutOutcome } from "./client"
 
 export const instant = false
 
@@ -18,7 +17,11 @@ export const metadata = { title: "Billing" }
  * come here to look at billing rather than only being sent here when it is
  * broken.
  */
-export default async function BillingPage() {
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string }>
+}) {
   const session = await getSession()
   const access = resolveUserAccess(session)
 
@@ -36,15 +39,21 @@ export default async function BillingPage() {
     (tenant) => tenant.id === access.activeTenantId
   )
 
+  // Whatever Stripe sent the browser back with. It only chooses wording — the
+  // subscription itself is whatever the session says, which comes from the
+  // webhook. An attacker appending ?checkout=success gets a sentence, not
+  // access.
+  const { checkout } = await searchParams
+  const checkoutOutcome: CheckoutOutcome =
+    checkout === "success" || checkout === "canceled" ? checkout : null
+
   return (
     <BillingClient
       organizationName={organization?.name ?? "your organization"}
       subscription={access.subscription}
       accessState={access.accessState}
       isOwner={access.isOwner}
-      // The simulate button is a development affordance and must not render in
-      // production — the endpoint behind it is not mounted there either.
-      allowSimulation={config.NODE_ENV !== "production"}
+      checkoutOutcome={checkoutOutcome}
     />
   )
 }
