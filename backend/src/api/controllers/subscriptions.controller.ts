@@ -1,18 +1,12 @@
-import { config } from "@/lib/config";
 import { isTenantOwner } from "@/lib/rbac";
 
-import { simulateSubscriptionEventSchema } from "@vmaas/shared/schemas";
 import type { Request, Response } from "express";
 
-import {
-  getTenantSubscription,
-  hasValidSubscription,
-  markSubscriptionActive,
-  markSubscriptionCanceled,
-} from "../services/subscriptions.service";
+import { cancelSubscription, createCheckoutSession, handleStripeWebhook } from "../services/billing.service";
+import { getTenantSubscription, hasValidSubscription } from "../services/subscriptions.service";
 
 /** The active tenant's billing state. Read-only — every mutation goes through
- *  the dev simulation below or, later, the Stripe webhook. */
+ *  Stripe and comes back as a webhook. */
 export async function getSubscriptionController(req: Request, res: Response) {
   const tenantId = req.tenantId!;
 
@@ -36,6 +30,7 @@ export async function getSubscriptionController(req: Request, res: Response) {
       status: subscription.status,
       trialEndsAt: subscription.trialEndsAt,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       hasAccess: accessError ? false : hasAccess,
       isOwner: await isTenantOwner(req.session!.user.id, tenantId),
     })
@@ -43,66 +38,106 @@ export async function getSubscriptionController(req: Request, res: Response) {
 }
 
 /**
- * DEVELOPMENT ONLY — stands in for the Stripe webhook that does not exist yet.
+ * Opens Stripe Checkout for the active tenant and returns the URL to send the
+ * browser to.
  *
- * This is the one place "pretend the payment succeeded" is written, and it does
- * not implement activation itself: it calls the same
- * `markSubscriptionActive` / `markSubscriptionCanceled` that the real webhook
- * handler will call. Deleting this controller and its route is the whole of
- * removing the simulation.
+ * The tenant comes from `requireTenant`, which resolved it from the session and
+ * verified membership — never from the body. The plan is the only thing taken
+ * from the caller and it is a name, not a price: `createCheckoutSession` maps it
+ * to a price id from the environment, so nobody can check out at a price they
+ * chose. Ownership is checked because billing belongs to the owner.
  *
- * Four things gate it, and all four matter:
- *   - `NODE_ENV !== "production"`, checked here as well as at mount time, so
- *     the handler is inert even if a future refactor mounts the route
- *     unconditionally;
- *   - `requireAuth`, so it is never an anonymous endpoint;
- *   - `requireTenant`, which resolves the tenant from the session and verifies
- *     membership — the body's `organizationId` is never trusted;
- *   - an explicit owner check, because billing belongs to the owner.
+ * Nothing here grants access. The subscription becomes usable when Stripe's
+ * webhook says it is active.
  */
-export async function simulateSubscriptionEventController(req: Request, res: Response) {
-  if (config.NODE_ENV === "production") {
-    return res.status(404).json({ error: "Not found" }).end();
-  }
-
+export async function createCheckoutSessionController(req: Request, res: Response) {
   const tenantId = req.tenantId!;
-  const userId = req.session!.user.id;
+  const user = req.session!.user;
 
-  if (!(await isTenantOwner(userId, tenantId))) {
-    return res.status(403).json({ error: "Only an owner can change billing for this tenant." }).end();
+  if (!(await isTenantOwner(user.id, tenantId))) {
+    return res.status(403).json({ error: "Only an owner can change billing for this organization." }).end();
   }
 
-  const { data, error: parseError } = simulateSubscriptionEventSchema.safeParse(req.body ?? {});
-  if (parseError) {
-    return res.status(400).json({ error: "Unrecognised simulated event." }).end();
-  }
-
-  // The event may name an organization, mirroring a real webhook payload, but
-  // it is only ever compared against the session's tenant — never used to pick
-  // one. A browser cannot activate a tenant it is not the owner of.
-  if (data.organizationId && data.organizationId !== tenantId) {
-    return res.status(403).json({ error: "That event is not for your active organization." }).end();
-  }
-
-  const suffix = tenantId.slice(0, 8);
-
-  const [error, subscription] =
-    data.type === "subscription.canceled"
-      ? await markSubscriptionCanceled(tenantId)
-      : await markSubscriptionActive(tenantId, {
-          stripeCustomerId: data.customerId ?? `cus_dev_${suffix}`,
-          stripeSubscriptionId: data.subscriptionId ?? `sub_dev_${suffix}`,
-        });
+  const [error, session] = await createCheckoutSession({
+    tenantId,
+    plan: req.body.plan,
+    userEmail: user.email,
+  });
 
   if (error) {
     const reason = error.reason;
     switch (reason) {
+      case "ALREADY_SUBSCRIBED":
+        return res.status(409).json({ error: "This organization already has an active subscription." }).end();
+      case "STRIPE_ERROR":
+        return res.status(502).json({ error: "Could not reach Stripe. Please try again." }).end();
       case "UNKNOWN_ERROR":
-        return res.status(500).json({ error: "An unknown error occurred while updating the subscription" }).end();
+        return res.status(500).json({ error: "An unknown error occurred while starting checkout" }).end();
       default:
         throw new Error(`Unhandled error reason ${reason satisfies never}`);
     }
   }
 
-  return res.status(200).json({ status: subscription.status, currentPeriodEnd: subscription.currentPeriodEnd }).end();
+  return res.status(200).json(session).end();
+}
+
+/**
+ * Cancels the active tenant's subscription at the end of the paid period.
+ *
+ * Same guards as checkout, for the same reasons: the tenant is the session's,
+ * and only an owner may act on billing.
+ */
+export async function cancelSubscriptionController(req: Request, res: Response) {
+  const tenantId = req.tenantId!;
+
+  if (!(await isTenantOwner(req.session!.user.id, tenantId))) {
+    return res.status(403).json({ error: "Only an owner can change billing for this organization." }).end();
+  }
+
+  const [error, result] = await cancelSubscription(tenantId);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "NO_STRIPE_SUBSCRIPTION":
+        return res.status(409).json({ error: "This organization has no subscription to cancel." }).end();
+      case "STRIPE_ERROR":
+        return res.status(502).json({ error: "Could not reach Stripe. Please try again." }).end();
+      case "UNKNOWN_TENANT":
+        return res.status(404).json({ error: "No subscription was found for this organization." }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while canceling the subscription" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json({ cancelAtPeriodEnd: true, currentPeriodEnd: result.currentPeriodEnd }).end();
+}
+
+/**
+ * Stripe's webhook endpoint.
+ *
+ * Unauthenticated by necessity — Stripe has no session — so the signature is
+ * the whole of the authentication, and it is checked before anything is read
+ * out of the payload. `req.body` is a Buffer here, not an object: the route
+ * mounts `express.raw` because a re-serialised body does not verify.
+ */
+export async function stripeWebhookController(req: Request, res: Response) {
+  const [error] = await handleStripeWebhook(req.body as Buffer, req.header("stripe-signature"));
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      // Covers both a payload that is not from Stripe and a failure to apply a
+      // genuine one. 400 tells Stripe to redeliver, which is what a transient
+      // database failure needs and costs nothing on a forged request.
+      case "STRIPE_ERROR":
+        return res.status(400).json({ error: error.message }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json({ received: true }).end();
 }

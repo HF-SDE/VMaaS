@@ -1,8 +1,7 @@
 import {
   grantsAccess,
   hasValidSubscription,
-  markSubscriptionActive,
-  markSubscriptionCanceled,
+  setSubscriptionStatus,
   startSubscriptionTrial,
 } from "@/api/services/subscriptions.service";
 
@@ -23,6 +22,7 @@ function subscription(overrides: Record<string, unknown> = {}) {
     status: "pending",
     trialEndsAt: null,
     currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
     ...overrides,
   };
 }
@@ -89,45 +89,58 @@ describe("hasValidSubscription", () => {
   });
 });
 
-describe("markSubscriptionActive", () => {
-  it("clears a trial end date when the subscription becomes paid", async () => {
+describe("setSubscriptionStatus", () => {
+  it("writes the status and the Stripe facts that came with it", async () => {
+    const periodEnd = new Date("2027-01-01T00:00:00Z");
     upsert.mockResolvedValue(subscription({ status: "active" }));
 
-    await markSubscriptionActive(TENANT);
+    await setSubscriptionStatus(TENANT, "active", {
+      stripeCustomerId: "cus_123",
+      stripeSubscriptionId: "sub_123",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    });
 
-    expect(upsert.mock.calls[0]![0].update).toMatchObject({ status: "active", trialEndsAt: null });
+    expect(upsert.mock.calls[0]![0].update).toMatchObject({
+      status: "active",
+      stripeCustomerId: "cus_123",
+      stripeSubscriptionId: "sub_123",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    });
   });
 
-  // Stripe delivers webhooks at least once, so the same activation may arrive
-  // twice. Keyed on tenantId with a fixed status, the second write is the first.
+  // Stripe delivers webhooks at least once, so the same event may arrive twice.
+  // Keyed on tenantId with a status the caller decided, the second write is the
+  // first.
   it("is idempotent: it upserts on the tenant rather than inserting", async () => {
     upsert.mockResolvedValue(subscription({ status: "active" }));
 
-    await markSubscriptionActive(TENANT, { stripeSubscriptionId: "sub_dev_1" });
-    await markSubscriptionActive(TENANT, { stripeSubscriptionId: "sub_dev_1" });
+    await setSubscriptionStatus(TENANT, "active", { stripeSubscriptionId: "sub_123" });
+    await setSubscriptionStatus(TENANT, "active", { stripeSubscriptionId: "sub_123" });
 
     expect(upsert).toHaveBeenCalledTimes(2);
     for (const [args] of upsert.mock.calls) expect(args.where).toEqual({ tenantId: TENANT });
   });
 
-  // A later status-only event must not blank out ids an earlier event set.
-  it("leaves the Stripe identifiers alone when none are supplied", async () => {
-    upsert.mockResolvedValue(subscription({ status: "active" }));
+  // A later status-only event must not blank out ids or a period end that an
+  // earlier event set.
+  it("leaves fields the caller did not supply alone", async () => {
+    upsert.mockResolvedValue(subscription({ status: "past_due" }));
 
-    await markSubscriptionActive(TENANT);
+    await setSubscriptionStatus(TENANT, "past_due");
 
-    expect(upsert.mock.calls[0]![0].update).not.toHaveProperty("stripeCustomerId");
-    expect(upsert.mock.calls[0]![0].update).not.toHaveProperty("stripeSubscriptionId");
+    expect(upsert.mock.calls[0]![0].update).toEqual({ status: "past_due" });
   });
-});
 
-describe("markSubscriptionCanceled", () => {
-  it("keeps the Stripe identifiers so the customer can be found again", async () => {
-    upsert.mockResolvedValue(subscription({ status: "canceled" }));
+  // Cancelation is not a status: Stripe keeps the subscription active until the
+  // paid period runs out, so this flag is the only thing that says it is ending.
+  it("records a cancelation that has not taken effect yet", async () => {
+    upsert.mockResolvedValue(subscription({ status: "active", cancelAtPeriodEnd: true }));
 
-    await markSubscriptionCanceled(TENANT);
+    await setSubscriptionStatus(TENANT, "active", { cancelAtPeriodEnd: true });
 
-    expect(upsert.mock.calls[0]![0].update).toEqual({ status: "canceled" });
+    expect(upsert.mock.calls[0]![0].update).toMatchObject({ status: "active", cancelAtPeriodEnd: true });
   });
 });
 

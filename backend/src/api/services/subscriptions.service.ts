@@ -6,18 +6,17 @@ import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 /**
  * The one place subscription state changes.
  *
- * Nothing outside this file may write `subscriptions` rows. The development
- * simulation in `subscriptions.controller.ts` and the Stripe webhook that will
- * eventually replace it both call `markSubscriptionActive` /
- * `markSubscriptionCanceled` here, so there is a single definition of what
- * "active" means and no "fake payment" branch anywhere else in the app.
+ * Nothing outside this file may write `subscriptions` rows. The Stripe webhook
+ * handler in `billing.service.ts` is the only caller that grants access, and it
+ * does so through `setSubscriptionStatus` here, so there is a single definition
+ * of what "active" means and no second "the payment went through" branch
+ * anywhere in the app.
  *
- * Stripe itself is deliberately absent — no SDK, no checkout, no webhook
- * secret. Adding it later means adding a caller to these functions, not
- * changing them.
+ * Stripe itself stays out of this file: it knows about `subscription_status`
+ * and nothing about checkout sessions, events or price ids. The mapping from
+ * Stripe's vocabulary onto these functions lives in `billing.service.ts`.
  */
 
-export type SubscriptionNotFoundError = { reason: "SUBSCRIPTION_NOT_FOUND"; message: string };
 export type UnknownSubscriptionError = { reason: "UNKNOWN_ERROR"; message: string };
 
 /** The states that let a user into the application. Everything else — pending,
@@ -27,9 +26,6 @@ export const ACCESS_GRANTING_STATUSES = ["active", "trialing"] as const satisfie
 export function grantsAccess(status: subscription_status): boolean {
   return (ACCESS_GRANTING_STATUSES as readonly subscription_status[]).includes(status);
 }
-
-/** How long a simulated or future Stripe period runs for. */
-const PERIOD_DAYS = 30;
 
 function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -54,9 +50,7 @@ function unknownError(action: string, cause: unknown): Result<UnknownSubscriptio
  * instead of `null` that every caller would have to re-interpret. `pending`
  * grants no access, so materialising the row cannot let anyone in.
  */
-export async function getTenantSubscription(
-  tenantId: string,
-): Promise<Result<UnknownSubscriptionError, Subscription>> {
+export async function getTenantSubscription(tenantId: string): Promise<Result<UnknownSubscriptionError, Subscription>> {
   try {
     return ok(
       await prisma.subscription.upsert({
@@ -73,9 +67,11 @@ export async function getTenantSubscription(
 /**
  * Whether `tenantId` may use the application right now.
  *
- * A trial that has run out is not access: Stripe would move such a row to
- * `past_due` via webhook, but until Stripe exists nothing does, so an elapsed
- * `trialEndsAt` is treated as expired here rather than trusted blindly.
+ * A trial that has run out is not access. Stripe does move such a subscription
+ * on and the webhook writes the new status, but that is an event in flight —
+ * and a local trial started by `startSubscriptionTrial` has no Stripe object
+ * behind it at all. An elapsed `trialEndsAt` is therefore treated as expired
+ * here rather than trusted blindly.
  */
 export async function hasValidSubscription(tenantId: string): Promise<Result<UnknownSubscriptionError, boolean>> {
   const [error, subscription] = await getTenantSubscription(tenantId);
@@ -90,66 +86,15 @@ export async function hasValidSubscription(tenantId: string): Promise<Result<Unk
   return ok(true);
 }
 
-export type MarkActiveInput = {
+export type SubscriptionFacts = {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   currentPeriodEnd?: Date;
+  /** Stripe keeps a canceled-at-period-end subscription `active` until the
+   *  period runs out, so this cannot be inferred from the status. */
+  cancelAtPeriodEnd?: boolean;
+  trialEndsAt?: Date | null;
 };
-
-/**
- * Moves a tenant's subscription to `active`.
- *
- * This is what a `customer.subscription.created` / `.updated` webhook will
- * call, and what the development simulation calls today. It is idempotent by
- * construction — an upsert keyed on `tenantId` writing a fixed status — so a
- * Stripe webhook delivered twice produces the same row, which is the delivery
- * guarantee Stripe actually offers.
- */
-export async function markSubscriptionActive(
-  tenantId: string,
-  input: MarkActiveInput = {},
-): Promise<Result<UnknownSubscriptionError, Subscription>> {
-  const currentPeriodEnd = input.currentPeriodEnd ?? daysFromNow(PERIOD_DAYS);
-
-  // Only overwrite the Stripe identifiers when the caller supplied them: a
-  // later status-only update must not blank out ids an earlier event set.
-  const stripeFields = {
-    ...(input.stripeCustomerId !== undefined ? { stripeCustomerId: input.stripeCustomerId } : {}),
-    ...(input.stripeSubscriptionId !== undefined ? { stripeSubscriptionId: input.stripeSubscriptionId } : {}),
-  };
-
-  try {
-    return ok(
-      await prisma.subscription.upsert({
-        where: { tenantId },
-        update: { status: "active", currentPeriodEnd, trialEndsAt: null, ...stripeFields },
-        create: { tenantId, status: "active", currentPeriodEnd, ...stripeFields },
-      }),
-    );
-  } catch (error) {
-    return unknownError("activating", error);
-  }
-}
-
-/**
- * Moves a tenant's subscription to `canceled`. The Stripe identifiers are kept:
- * they are how a later reactivation finds the same customer.
- */
-export async function markSubscriptionCanceled(
-  tenantId: string,
-): Promise<Result<UnknownSubscriptionError, Subscription>> {
-  try {
-    return ok(
-      await prisma.subscription.upsert({
-        where: { tenantId },
-        update: { status: "canceled" },
-        create: { tenantId, status: "canceled" },
-      }),
-    );
-  } catch (error) {
-    return unknownError("canceling", error);
-  }
-}
 
 /**
  * Starts a trial for a tenant that has no billing yet.
@@ -181,30 +126,36 @@ export async function startSubscriptionTrial(
 }
 
 /**
- * Applies an arbitrary Stripe status to a tenant.
+ * Applies a status to a tenant, with whatever Stripe facts came with it.
  *
- * The mapping from Stripe's own status strings onto `subscription_status` is
- * the last thing the Stripe integration will need, and it lands here rather
- * than in the webhook handler so the handler stays a signature check plus a
- * lookup.
+ * The single write behind the Stripe webhook, and the only function that
+ * grants access. Idempotent by construction — an upsert keyed on `tenantId`
+ * writing a status the caller decided — so an event Stripe delivers twice
+ * produces the same row, which is the at-least-once guarantee Stripe actually
+ * offers.
+ *
+ * Every field is applied only when the caller supplied it: a status-only event
+ * must not blank out identifiers or a period end that an earlier event set.
  */
 export async function setSubscriptionStatus(
   tenantId: string,
   status: subscription_status,
-  input: MarkActiveInput = {},
+  input: SubscriptionFacts = {},
 ): Promise<Result<UnknownSubscriptionError, Subscription>> {
-  const stripeFields = {
+  const fields = {
     ...(input.stripeCustomerId !== undefined ? { stripeCustomerId: input.stripeCustomerId } : {}),
     ...(input.stripeSubscriptionId !== undefined ? { stripeSubscriptionId: input.stripeSubscriptionId } : {}),
     ...(input.currentPeriodEnd !== undefined ? { currentPeriodEnd: input.currentPeriodEnd } : {}),
+    ...(input.cancelAtPeriodEnd !== undefined ? { cancelAtPeriodEnd: input.cancelAtPeriodEnd } : {}),
+    ...(input.trialEndsAt !== undefined ? { trialEndsAt: input.trialEndsAt } : {}),
   };
 
   try {
     return ok(
       await prisma.subscription.upsert({
         where: { tenantId },
-        update: { status, ...stripeFields },
-        create: { tenantId, status, ...stripeFields },
+        update: { status, ...fields },
+        create: { tenantId, status, ...fields },
       }),
     );
   } catch (error) {
