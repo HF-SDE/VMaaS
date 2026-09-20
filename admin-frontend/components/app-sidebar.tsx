@@ -55,6 +55,8 @@ import { UserAvatarProps, UserAvatar } from "./user-avatar"
 import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
 import { PermissionKey } from "@vmaas/shared/types"
+import { subscription_status } from "@/generated/prisma/browser"
+import { Badge } from "./ui/badge"
 
 interface NavItem {
   title: string
@@ -299,7 +301,8 @@ export function AppSidebarSkeleton() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
-  const { user, hasPermission } = useSession()
+  const { user, hasPermission, subscriptionStatus } = useSession()
+  console.log("🚀 ~ AppSidebar ~ subscriptionStatus:", subscriptionStatus)
   const navItems = getVisibleNavItems(
     data.navMain,
     (item) =>
@@ -333,8 +336,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar {...props}>
       <SidebarHeader className="m-0 mb-4 flex justify-between p-0">
-        <Link href="/" className="h-max">
+        <Link href="/" className="flex h-max items-center gap-2">
           <h1 className="text-lg font-bold">VMaaS</h1>
+          <Link href="/account" className="flex h-max items-center gap-2">
+            {subscriptionStatus === subscription_status.trialing && (
+              <Badge variant="outline" className="text-xs outline-1">
+                Trial
+              </Badge>
+            )}
+          </Link>
         </Link>
         <TeamSwitcher />
         {process.env["NEXT_PUBLIC_APP_VERSION"] && (

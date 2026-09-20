@@ -29,6 +29,10 @@ export type SessionSubscription = {
   status: SubscriptionStatus
   trialEndsAt: string | null
   currentPeriodEnd: string | null
+  /** Set when the owner has canceled. Stripe keeps the subscription `active`
+   *  until `currentPeriodEnd`, so this is the only thing that distinguishes
+   *  "renews then" from "ends then". */
+  cancelAtPeriodEnd?: boolean
 }
 
 type SessionResponse = {
