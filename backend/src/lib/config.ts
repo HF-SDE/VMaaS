@@ -24,7 +24,7 @@ const schema = z.object({
   /** What a machine is told to connect to. Public, not the compose service name. */
   MQTT_PUBLIC_HOST: z.string().min(1).default("localhost"),
   MQTT_PUBLIC_PORT: z.coerce.number().int().positive().default(8883),
-  /** Where the backend itself connects, as an MQTT client (spec §4.2). */
+  /** Where the backend itself connects, as an MQTT client. */
   MQTT_URL: z.string().min(1).default("mqtts://emqx:8883"),
   MQTT_CLIENT_CERT: z.string().min(1).default("/pki/backend.crt"),
   MQTT_CLIENT_KEY: z.string().min(1).default("/pki/backend.key"),

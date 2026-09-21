@@ -4,7 +4,7 @@ import { createPublish } from "@/mqtt/client";
 
 /**
  * Unit-tests the one property of the real MQTT wiring that matters and can be
- * tested without a broker: a command is never published retained (§5). A
+ * tested without a broker: a command is never published retained. A
  * retained command would be replayed to a machine at every reconnect.
  */
 describe("createPublish", () => {

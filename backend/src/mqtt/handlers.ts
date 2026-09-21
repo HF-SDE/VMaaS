@@ -11,8 +11,8 @@ import type { ParsedTopic } from "./topics";
  * half only: a machine reports the outcome of a command it was sent.
  *
  * Every handler re-derives tenant, site and machine from the topic and
- * confirms they match a machine row. A payload's own identifiers grant nothing
- * (§6); a message whose topic does not resolve is dropped.
+ * confirms they match a machine row. A payload's own identifiers grant
+ * nothing; a message whose topic does not resolve is dropped.
  *
  * `isCommandOpen` is imported from device.service.ts rather than re-expressed
  * here: it is the one rule for "is this command still open", shared with the
@@ -71,7 +71,7 @@ export async function handleCommandResult(
   })) as { id: string; status: string } | null;
 
   if (!command) return;
-  // Replays are expected from the offline queue (§10); applying one twice is not.
+  // Replays are expected from the offline queue; applying one twice is not.
   if (!isCommandOpen(command.status)) return;
 
   const failed = payload.status !== "completed";

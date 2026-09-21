@@ -132,7 +132,7 @@ async function main() {
 
   // The platform's own MQTT client. It is authenticated by EMQX's built-in
   // database rather than by the webhook, so the backend can connect while it
-  // is itself starting (spec §4.2); the certificate satisfies the listener.
+  // is itself starting; the certificate satisfies the listener.
   if (!existsSync(path.join(DIR, "backend.crt"))) {
     const issued = await createServerCertificate(ca, "vmaas-platform", ["backend", "localhost"], 825);
     await write("backend.crt", issued.certificatePem, MODE_PUBLIC);

@@ -10,7 +10,7 @@ import { webcrypto } from "node:crypto";
  * record has been validated, which is why this lives next to the services
  * rather than behind a separate CA service.
  *
- * The subject is the contract with both proxies (spec §6.3):
+ * The subject is the contract with both proxies:
  *
  *   CN=<machineId>, OU=<certificate serial>, O=VMaaS
  *

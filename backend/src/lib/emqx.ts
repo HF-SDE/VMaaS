@@ -3,7 +3,7 @@ import { config } from "./config";
 /**
  * An established MQTT session is never re-authenticated, so revoking a
  * certificate in the database does not disconnect a machine that is already
- * connected. This is what makes a disable take effect immediately (spec §9).
+ * connected. This is what makes a disable take effect immediately.
  *
  * The client id is the machine id: EMQX derives it from the certificate's
  * common name, and the authn webhook refuses any connection where the two

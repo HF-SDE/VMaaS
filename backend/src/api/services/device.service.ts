@@ -7,7 +7,7 @@ import { type CertificateAuthority, signDeviceCsr } from "@/lib/pki";
 /**
  * Everything a machine may do over HTTP. The machine is `req.machine`, resolved
  * from its client certificate, and every query is scoped by it — there is no
- * identifier in any request for a device to point somewhere else (spec §8).
+ * identifier in any request for a device to point somewhere else.
  */
 
 export type ConfigurationNotFound = { reason: "CONFIGURATION_NOT_FOUND"; message: string };
@@ -102,8 +102,8 @@ export async function recordCommandResultService(
     }
 
     // A replayed result is not an error — the offline queue is allowed to send
-    // the same thing twice (§10, §13). It is simply not applied again, and no
-    // second MachineEvent is written for it.
+    // the same thing twice. It is simply not applied again, and no second
+    // MachineEvent is written for it.
     if (!isCommandOpen(command.status)) {
       return ok({ applied: false });
     }
@@ -114,10 +114,10 @@ export async function recordCommandResultService(
     // Without a transaction, a crash or a failed event write after the update
     // has already landed would leave the command CLOSED with no event — and
     // because a closed command short-circuits at `isCommandOpen` above, a
-    // retried result could never recreate that missing event (§10, §13). A
-    // transaction makes the failure recoverable instead of permanent: if the
-    // event write fails, the update rolls back with it, the command is still
-    // open, and the next replay from the offline queue can complete both.
+    // retried result could never recreate that missing event. A transaction
+    // makes the failure recoverable instead of permanent: if the event write
+    // fails, the update rolls back with it, the command is still open, and the
+    // next replay from the offline queue can complete both.
     await db.$transaction(async (tx) => {
       const t = tx as unknown as CommandResultTx;
 
@@ -134,7 +134,7 @@ export async function recordCommandResultService(
       // outcome, using the same type names, so history reads the same
       // regardless of which transport a device happened to use. Stamped from
       // the verified credential (`machine`), never from the request body,
-      // which carries no machine/tenant/site id at all (spec §8).
+      // which carries no machine/tenant/site id at all.
       await t.machineEvent.create({
         data: {
           machineId: machine.id,

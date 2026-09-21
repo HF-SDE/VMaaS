@@ -14,8 +14,8 @@ import {
 /**
  * Every controller here reads `req.machine!` — set by `requireMachine` from a
  * verified client certificate — and never a machine/tenant/site id out of the
- * body, query or params. There is no such id in these requests to read
- * (spec §8): a device cannot name a machine other than itself.
+ * body, query or params. There is no such id in these requests to read: a
+ * device cannot name a machine other than itself.
  */
 
 export async function getDeviceConfigurationController(req: Request, res: Response) {
