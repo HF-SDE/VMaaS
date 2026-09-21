@@ -12,10 +12,9 @@ import {
 } from "../services/device.service";
 
 /**
- * Every controller here reads `req.machine!` — set by `requireMachine` from a
- * verified client certificate — and never a machine/tenant/site id out of the
- * body, query or params. There is no such id in these requests to read: a
- * device cannot name a machine other than itself.
+ * Every controller here reads `req.machine!`, set by `requireMachine` from a
+ * verified client certificate, and never a machine, tenant or site id out of
+ * the body, query or params. The requests carry no such id to read.
  */
 
 export async function getDeviceConfigurationController(req: Request, res: Response) {
@@ -75,9 +74,9 @@ export async function postDeviceEventController(req: Request, res: Response) {
 }
 
 /**
- * Rotation. The current certificate authorises its successor — signing uses
- * `req.machine!.id`, never anything from the body, so a device cannot mint a
- * certificate for another machine's identity.
+ * Rotation: the current certificate authorises its successor. Signing uses
+ * `req.machine!.id`, never the body, so a device cannot mint a certificate for
+ * another machine.
  */
 export async function renewCertificateController(req: Request, res: Response) {
   const { body } = renewCertificateSchema.parse(req);

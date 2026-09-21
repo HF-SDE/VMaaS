@@ -33,13 +33,12 @@ namespace Config
 
     /// MQTT keepalive towards the broker, in seconds.
     ///
-    /// esp-mqtt's default is 120, and EMQX declares a client dead at 1.5x the
-    /// keepalive. That is the detection window for an ungraceful drop - a
-    /// yanked power cable or a dead access point, where nothing gets to send a
-    /// DISCONNECT - and so it is how long a dead machine keeps reading Online
-    /// in the admin UI. 30 s puts that at roughly 45 s instead of three
-    /// minutes, for one small packet every 15 s (the client talks at half the
-    /// interval it is given).
+    /// EMQX declares a client dead at 1.5x the keepalive, which is how long a
+    /// machine that dropped ungracefully - yanked power, dead access point,
+    /// no DISCONNECT sent - keeps reading Online in the admin UI. 30 s puts
+    /// that at roughly 45 s instead of the three minutes esp-mqtt's default of
+    /// 120 would give, and costs one small packet every 15 s, since the client
+    /// talks at half the interval it is given.
     constexpr int broker_keepalive_s = 30;
 
     /// Stack for the one-shot broker connect task in bytes. It runs SNTP and

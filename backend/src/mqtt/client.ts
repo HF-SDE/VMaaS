@@ -9,23 +9,17 @@ import { handleCommandResult } from "./handlers";
 import { parseTopic } from "./topics";
 
 /**
- * The platform's own MQTT connection.
- *
- * Failures are logged and retried, never thrown: the HTTP API must keep serving
- * when the broker is down.
+ * The platform's own MQTT connection. Failures are logged and retried, never
+ * thrown: the HTTP API has to keep serving while the broker is down.
  */
 
 const SUBSCRIPTIONS = ["v1/+/+/+/command-results/#"];
 
 let client: MqttClient | null = null;
 
-/**
- * Extracted so the never-retained invariant is unit-testable against a fake
- * MqttClient, without needing a live broker.
- */
+/** Extracted so the retain flag can be tested against a fake MqttClient. */
 export function createPublish(mqttClient: MqttClient): (topic: string, payload: Record<string, unknown>) => Promise<void> {
   return async (topic, payload) => {
-    // Commands are never retained: a restarting machine must not replay ones.
     await mqttClient.publishAsync(topic, JSON.stringify(payload), { qos: 1, retain: false });
   };
 }

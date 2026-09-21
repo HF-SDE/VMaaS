@@ -3,24 +3,16 @@ import { isCommandOpen } from "@/api/services/device.service";
 import type { ParsedTopic } from "./topics";
 
 /**
- * Phase 3 of docs/image.png.
+ * Machine-to-platform messages only: a machine reporting the outcome of a
+ * command. Configuration now goes over HTTP (`GET /api/device/configuration`,
+ * mTLS), so nothing device-initiated arrives on MQTT any more.
  *
- * Configuration delivery happens over HTTP now (`GET
- * /api/device/configuration`, mTLS-authenticated) — nothing device-initiated
- * happens on MQTT any more. This module is left with the machine-to-platform
- * half only: a machine reports the outcome of a command it was sent.
+ * Every handler re-derives tenant, site and machine from the topic and checks
+ * them against a machine row. Identifiers in the payload grant nothing, and a
+ * message whose topic does not resolve is dropped.
  *
- * Every handler re-derives tenant, site and machine from the topic and
- * confirms they match a machine row. A payload's own identifiers grant
- * nothing; a message whose topic does not resolve is dropped.
- *
- * `isCommandOpen` is imported from device.service.ts rather than re-expressed
- * here: it is the one rule for "is this command still open", shared with the
- * HTTP device path so the two transports cannot disagree about whether a
- * result lands on a command that has already been settled.
- *
- * No machine status column is written anywhere here. The outcome lives in the
- * command row and the event, which is the whole record of what happened.
+ * The outcome lives in the command row and the event; no machine status column
+ * is written here.
  */
 
 export type HandlerDb = {
@@ -30,9 +22,6 @@ export type HandlerDb = {
     update(args: unknown): Promise<unknown>;
   };
   machineEvent: { create(args: unknown): Promise<unknown> };
-  // See the matching note on `ClaimDb.$transaction` in activation.service.ts:
-  // `tx: any` keeps the real PrismaClient's overloaded `$transaction`
-  // structurally assignable here with no cast at the call site.
   $transaction<T>(fn: (tx: any) => Promise<T>, options?: unknown): Promise<T>;
 };
 
@@ -71,18 +60,11 @@ export async function handleCommandResult(
   })) as { id: string; status: string } | null;
 
   if (!command) return;
-  // Replays are expected from the offline queue; applying one twice is not.
   if (!isCommandOpen(command.status)) return;
 
   const failed = payload.status !== "completed";
   const completedAt = payload.completedAt ? new Date(payload.completedAt) : new Date();
 
-  // Settling the command and recording the event must be one atomic write, the
-  // same as the HTTP device path (device.service.ts). If the event write failed
-  // after the command update committed, the command would be closed forever
-  // while no event recorded it: isCommandOpen would then short-circuit every
-  // replay and the event would be lost, leaving the two transports with
-  // divergent history for the same outcome.
   await db.$transaction(async (tx) => {
     const t = tx as unknown as HandlerTx;
 

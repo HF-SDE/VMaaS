@@ -1,14 +1,12 @@
 import { type MachineIdentity, type TopicChannel, parseTopic } from "./topics";
 
 /**
- * Deny by default, per docs/VMaaS-MQTT-arkitektur.html. EMQX is also
- * configured with `no_match = deny`, so a topic this function does not reach
- * is refused by the broker anyway; this is the layer that decides the ones it
- * does reach.
+ * Deny by default. EMQX also runs with `no_match = deny`, so a topic this
+ * function never reaches is refused by the broker anyway.
  *
- * The rule is the whole tenant boundary: the three identifiers in the topic
- * must equal the three on the machine behind the verified certificate. A
- * tenant id in the payload grants nothing.
+ * The rule is the tenant boundary: the three identifiers in the topic must
+ * equal the three on the machine behind the verified certificate. A tenant id
+ * in the payload grants nothing.
  */
 
 export type MqttAction = "publish" | "subscribe";

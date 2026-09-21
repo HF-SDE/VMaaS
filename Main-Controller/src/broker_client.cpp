@@ -18,14 +18,14 @@ namespace
     constexpr const char* TAG = "BrokerClient";
 
     /**
-     * esp-mqtt does not copy the PEMs it is handed - the config struct
-     * documents them as "not copied nor freed by the client" - so every buffer
-     * below has to outlive the client, which lives for the rest of uptime.
-     * Statics rather than a heap block freed after start(), which would leave
-     * the TLS layer reading freed memory on its first reconnect.
+     * esp-mqtt does not copy the PEMs it is handed ("not copied nor freed by
+     * the client"), so every buffer below has to outlive the client, which
+     * lives for the rest of uptime. Statics rather than a heap block freed
+     * after start(), which would leave the TLS layer reading freed memory on
+     * its first reconnect.
      *
      * An EC P-256 key in PEM is about 240 bytes and a certificate under a
-     * kilobyte, with room to spare for a longer chain.
+     * kilobyte, so there is room for a longer chain.
      */
     constexpr size_t CERT_PEM_LEN = 2048;
     constexpr size_t KEY_PEM_LEN  = 512;
@@ -41,9 +41,8 @@ namespace
     esp_mqtt_client_handle_t client = nullptr;
     volatile bool connected = false;
 
-    /// Guards start(). Not `client != nullptr`: that is assigned by the connect
-    /// task, minutes later if Wi-Fi is slow, so it would still read null to a
-    /// second start() and let a second task through.
+    /// Guards start(). Not `client != nullptr`: the connect task assigns that
+    /// minutes later if Wi-Fi is slow, so a second start() would still see null.
     bool started = false;
 
     /// Gap between polls while waiting for the first IP address.
@@ -132,20 +131,17 @@ namespace
         cfg.credentials.authentication.certificate = cert_pem;
         cfg.credentials.authentication.key         = key_pem;
 
-        // EMQX overrides this from the certificate CN
-        // (peer_cert_as_clientid = cn), which is what lets
-        // connection.service.ts trust the reported clientid as a machine id at
-        // all. Set anyway so the two agree in the broker client list and in a
-        // packet capture.
+        // EMQX overrides this from the certificate CN (peer_cert_as_clientid =
+        // cn), which is why connection.service.ts can trust the reported
+        // clientid as a machine id. Set anyway so the two agree in the broker
+        // client list and in a packet capture.
         cfg.credentials.client_id = identity.machine_id;
 
-        // Not a credential, and carries no authority: decideAuthn in
-        // mqtt-auth.controller.ts resolves the machine from `cert_subject`
-        // alone and never reads `username`, so nothing here can grant or deny
-        // anything. It is set because a CONNECT carrying no username at all
-        // can be refused by a `password_based` authenticator before the
-        // certificate webhook behind it is ever reached, with an error that
-        // reads as a credential problem.
+        // Not a credential: decideAuthn in mqtt-auth.controller.ts resolves the
+        // machine from `cert_subject` and never reads `username`. It is set
+        // because a CONNECT with no username at all can be refused by a
+        // `password_based` authenticator before the certificate webhook behind
+        // it is reached, with an error that reads as a credential problem.
         cfg.credentials.username                = identity.machine_id;
         cfg.credentials.authentication.password = "unused-see-comment-above";
 
@@ -182,13 +178,12 @@ namespace
     /**
      * The first connect, and only the first: esp-mqtt reconnects on its own
      * afterwards, including across a Wi-Fi drop, so this task starts the client
-     * once and then has nothing left to do.
+     * once and then exits.
      *
-     * It waits rather than gives up, and waits without a deadline. A machine
-     * whose Wi-Fi never comes up is offline, which is exactly what the admin UI
-     * will show; giving up after a timeout would instead leave a machine that
-     * gets its network back an hour later permanently reading Offline until
-     * someone power-cycles it.
+     * It waits for the network without a deadline. A machine whose Wi-Fi never
+     * comes up reads Offline anyway; giving up after a timeout would leave one
+     * that gets its network back an hour later stuck Offline until someone
+     * power-cycles it.
      */
     void connect_task(void*)
     {

@@ -6,17 +6,14 @@ import * as x509 from "@peculiar/x509";
 import { webcrypto } from "node:crypto";
 
 /**
- * The backend is its own CA. It signs a device CSR only after the activation
- * record has been validated, which is why this lives next to the services
- * rather than behind a separate CA service.
+ * The backend is its own CA and signs a device CSR once the activation record
+ * checks out.
  *
- * The subject is the contract with both proxies:
+ * Device subject: CN=<machineId>, OU=<certificate serial>, O=VMaaS
  *
- *   CN=<machineId>, OU=<certificate serial>, O=VMaaS
- *
- * nginx hands Express `$ssl_client_serial`, EMQX hands the webhook the peer
- * DN. The serial is the one identifier both can produce, so it is the lookup
- * key; the CN is what EMQX derives the MQTT client id from.
+ * nginx gives us `$ssl_client_serial`, EMQX gives the webhook the peer DN. The
+ * serial is the only identifier both can produce, so lookups go by serial.
+ * EMQX derives the MQTT client id from the CN.
  */
 
 x509.cryptoProvider.set(webcrypto as unknown as Crypto);
@@ -24,9 +21,9 @@ x509.cryptoProvider.set(webcrypto as unknown as Crypto);
 const ALGORITHM = { name: "ECDSA", namedCurve: "P-256" } as const;
 const SIGNING = { name: "ECDSA", hash: "SHA-256" } as const;
 const DAY_MS = 86_400_000;
-/** Backdate `notBefore` by this much so a device whose clock runs a few minutes fast doesn't see a not-yet-valid certificate on first connect. */
+/** Backdate `notBefore`, or a device with a fast clock rejects a fresh certificate as not-yet-valid. */
 const CLOCK_SKEW_MS = 5 * 60_000;
-/** Characters that would let a DN attribute value be read as more than one RDN — see `buildDeviceSubject`. */
+/** Anything that could split a DN attribute value into extra RDNs. */
 const FORBIDDEN_DN_CHARS = /[,+=<>#;"\\\r\n]/;
 
 export type CertificateAuthority = {
@@ -53,19 +50,16 @@ function toPem(der: ArrayBuffer, label: string): string {
 function fromPem(pem: string): ArrayBuffer {
   const body = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
   const buffer = Buffer.from(body, "base64");
-  // Node pools small Buffers, so `.buffer` can be a larger, shared
-  // ArrayBuffer at a nonzero offset — slice out exactly this data.
+  // Node pools small Buffers, so `.buffer` may be a larger shared one at an
+  // offset. Slice out just this buffer's bytes.
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
 }
 
 function randomSerial(): string {
   const bytes = webcrypto.getRandomValues(new Uint8Array(16));
-  // DER strips a leading 0x00 byte (the certificate's real serial would come
-  // back shorter than what we generated and embedded in OU=) and prepends a
-  // 0x00 sign byte when the top bit is set (harmless — the library strips it
-  // straight back off on read). Keeping the first byte in 0x01..0x7f makes
-  // both cases a no-op, so the serial we generate, store, and put in OU= is
-  // byte-for-byte identical to what the certificate reports.
+  // Keep the first byte in 0x01..0x7f. DER drops a leading 0x00 and adds a
+  // sign byte when the top bit is set, and either would make the certificate
+  // report a different serial than the one we stored and put in OU=.
   bytes[0] = (bytes[0] % 0x7f) + 1;
   return Buffer.from(bytes).toString("hex");
 }
@@ -76,10 +70,8 @@ async function fingerprintOf(certificate: x509.X509Certificate): Promise<string>
 }
 
 export function buildDeviceSubject(machineId: string, serial: string): string {
-  // A machineId or serial containing an RDN separator would let its value be
-  // read back as extra attributes (e.g. an injected OU= landing ahead of the
-  // real one) — reject rather than escape, since a legitimate value never
-  // needs one of these characters.
+  // Reject rather than escape: a real machineId or serial never contains these
+  // characters, and one that does could smuggle in its own OU=.
   if (FORBIDDEN_DN_CHARS.test(machineId) || FORBIDDEN_DN_CHARS.test(serial)) {
     throw new Error(
       'Invalid machineId or serial: must not contain , + = < > # ; " \\ or a line break',
@@ -91,9 +83,8 @@ export function buildDeviceSubject(machineId: string, serial: string): string {
 /** Reads the two fields the proxies need back out of a distinguished name. */
 export function parseSubject(dn: string): { machineId: string | null; serial: string | null } {
   const count = (key: string) => (dn.match(new RegExp(`(?:^|,)\\s*${key}=`, "gi")) ?? []).length;
-  // A DN carrying a repeated CN= or OU= is either malformed or has been
-  // tampered with (an injected attribute ahead of the genuine one). Either
-  // way, a first-match read can't tell which one is real, so refuse to guess.
+  // A repeated CN= or OU= is malformed or tampered with, and a first-match
+  // read cannot tell which one is genuine.
   if (count("CN") > 1 || count("OU") > 1) {
     return { machineId: null, serial: null };
   }
@@ -154,23 +145,19 @@ export async function loadCertificateAuthority(
 }
 
 /**
- * Signs a device CSR. The subject is built from `machineId` — the identity the
- * activation record proved — not from whatever the CSR asked to be called, so
- * a device cannot name itself.
+ * Signs a device CSR. The subject comes from `machineId`, proved by the
+ * activation record, and not from the CSR, so a device cannot name itself.
  */
 export async function signDeviceCsr(ca: CertificateAuthority, csrPem: string, machineId: string, days: number): Promise<IssuedCertificate> {
   let csr: x509.Pkcs10CertificateRequest;
   try {
     csr = new x509.Pkcs10CertificateRequest(csrPem);
-    // Proof of possession: the request must be signed by the key it carries.
     if (!(await csr.verify())) throw new Error("signature does not verify");
   } catch (cause) {
     throw new Error(`CSR_REJECTED: ${cause instanceof Error ? cause.message : "unreadable"}`);
   }
 
   const serial = randomSerial();
-  // Backdated for clock skew; notAfter is computed from notBefore, not "now",
-  // so the requested lifetime (days) stays exact — see CLOCK_SKEW_MS.
   const notBefore = new Date(Date.now() - CLOCK_SKEW_MS);
   const notAfter = new Date(notBefore.getTime() + days * DAY_MS);
 
@@ -211,7 +198,6 @@ export async function createServerCertificate(
   days: number,
 ): Promise<{ certificatePem: string; privateKeyPem: string }> {
   const keys = await webcrypto.subtle.generateKey(ALGORITHM, true, ["sign", "verify"]);
-  // Backdated for clock skew — see CLOCK_SKEW_MS.
   const notBefore = new Date(Date.now() - CLOCK_SKEW_MS);
   const notAfter = new Date(notBefore.getTime() + days * DAY_MS);
 

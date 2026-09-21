@@ -2,8 +2,7 @@ import { z } from "zod/v4";
 
 /**
  * None of these carry a machine, tenant or site id. The machine is implicit in
- * the client certificate, so there is no identifier in the request for a device
- * to tamper with.
+ * the client certificate.
  */
 
 export const commandResultSchema = z.object({
