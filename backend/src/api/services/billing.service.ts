@@ -256,8 +256,8 @@ export async function createCheckoutSession(input: {
       // it starts. Stated rather than left to Stripe's default:
       // `if_required` would let a trial begin with no payment method at all.
       payment_method_collection: "always",
-      success_url: `${config.APP_URL}/billing?checkout=success`,
-      cancel_url: `${config.APP_URL}/billing?checkout=canceled`,
+      success_url: `${config.FRONTEND_URL}/billing?checkout=success`,
+      cancel_url: `${config.FRONTEND_URL}/billing?checkout=canceled`,
       integration_identifier: INTEGRATION_IDENTIFIER,
     });
 

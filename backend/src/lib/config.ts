@@ -59,10 +59,7 @@ const schema = z.object({
   /** The From: address on transactional mail. Must be a domain verified in
    *  Resend, or Resend rejects the send. */
   EMAIL_FROM: z.string().min(1).default("no-reply@vmaas.dk"),
-  /** Public origin used to build links inside emails. Distinct from
-   *  FRONTEND_URL, which is a CORS/trusted-origin list and may hold several
-   *  entries — a link needs exactly one. Defaults to the first of those. */
-  APP_URL: z.url({ protocol: /^https?$/ }).optional(),
+
   /** Stripe secret key. Required to interact with the Stripe API. */
   STRIPE_SECRET_KEY: z.string().min(1, { message: "STRIPE_SECRET_KEY is required" }),
   /** Stripe price ID for the monthly plan. */
@@ -79,5 +76,5 @@ const schema = z.object({
 
 export const config = (() => {
   const parsed = schema.parse(process.env);
-  return { ...parsed, APP_URL: parsed.APP_URL ?? parsed.FRONTEND_URL[0]! };
+  return { ...parsed };
 })();

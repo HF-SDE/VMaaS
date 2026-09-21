@@ -5,7 +5,7 @@ import type { PermissionKey } from "../../shared/types/permissions"
 
 import { hasPermission } from "./permissions"
 import type { Session, SessionSubscription } from "./session-fetch"
-import { subscription_status } from "@/generated/prisma/enums"
+import { subscription_status } from "@prisma"
 
 type SessionContextValue = {
   user: Session["user"]

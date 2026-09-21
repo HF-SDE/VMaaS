@@ -58,3 +58,7 @@ config/environment-variables/.env.*.prod*
 
 # Local CA material exported for the fake-machine smoke test
 backend/ca.crt
+
+# local repo stats
+.VSCodeCounter/**
+    
