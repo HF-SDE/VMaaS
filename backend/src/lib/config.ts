@@ -75,6 +75,8 @@ const schema = z.object({
 });
 
 export const config = (() => {
-  const parsed = schema.parse(process.env);
+  // Filter out keys with empty values
+  const env = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== ""));
+  const parsed = schema.parse(env);
   return { ...parsed };
 })();
