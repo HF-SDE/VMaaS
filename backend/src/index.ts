@@ -10,8 +10,9 @@ import { subscriptionsRouter, subscriptionsWebhookRouter } from "@/api/routes/su
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { prisma } from "@/lib/prisma";
 import { attachWebSocketServer } from "@/lib/ws/server";
-import { startMqttClient } from "@/mqtt/client";
+import { startMqttClient, stopMqttClient } from "@/mqtt/client";
 
 import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
@@ -30,7 +31,7 @@ const limiter = rateLimit({
 });
 
 app.set("trust proxy", 1);
-app.set("json spaces", 4);
+if (config.NODE_ENV !== "production") app.set("json spaces", 4);
 
 app.use(helmet());
 app.use(cors({ origin: config.FRONTEND_URL, credentials: true }));
@@ -74,3 +75,24 @@ server.listen(config.PORT, () => {
   // down or still starting must not stop the API from serving.
   void startMqttClient().catch((error) => console.error("mqtt: failed to start:", error));
 });
+
+/** How long in-flight requests get to finish before the process exits anyway.
+ *  Below Docker's default 10 s stop timeout, so the exit is ours, not a SIGKILL. */
+const SHUTDOWN_TIMEOUT_MS = 8000;
+
+function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down`);
+
+  setTimeout(() => {
+    console.error("shutdown: timed out, exiting");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+
+  server.close();
+  server.closeIdleConnections();
+
+  void Promise.allSettled([stopMqttClient(), prisma.$disconnect()]).then(() => process.exit(0));
+}
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));
