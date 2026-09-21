@@ -37,6 +37,26 @@ const DIR = process.env.PKI_DIR ?? "/pki";
  */
 const EMQX_UID = Number(process.env.EMQX_UID ?? 1000);
 
+/**
+ * Extra names to put in the nginx and EMQX server certificates, comma
+ * separated. Empty by default, which is right for a stack reached only from
+ * the host and from inside the Docker network.
+ *
+ * A physical device on the LAN is neither. It reaches nginx and EMQX at the
+ * developer's host address, and TLS checks that address against the
+ * certificate, so without it here an ESP32 fails the handshake with an error
+ * that says nothing about why. That address differs per developer, which is
+ * why this is an environment variable and not a line in the list below.
+ *
+ * Changing it does NOT reissue a certificate that already exists: delete
+ * /pki/nginx.crt and /pki/nginx.key (never ca.crt - that would invalidate
+ * every certificate already issued to a machine) and let pki-init run again.
+ */
+const EXTRA_HOSTS = (process.env.PKI_EXTRA_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter((host) => host.length > 0);
+
 /** Certificates: every consumer needs to read them; a public certificate leaking is not a concern. */
 const MODE_PUBLIC = 0o644;
 /** Private keys: owner-only. Combined with the right owner below, this is what keeps ca.key out of reach of anything but the backend/root. */
@@ -90,9 +110,13 @@ async function main() {
   // ssl_certificate/ssl_certificate_key) runs as root, so root's default
   // ownership already suffices for it, same as ca.key/backend.key below.
   const servers: { name: string; hosts: string[]; keyOwner?: number }[] = [
-    { name: "emqx", hosts: ["emqx", "localhost", "127.0.0.1"], keyOwner: EMQX_UID },
-    { name: "nginx", hosts: ["nginx", "reverse-proxy", "localhost", "127.0.0.1"] },
+    { name: "emqx", hosts: ["emqx", "localhost", "127.0.0.1", ...EXTRA_HOSTS], keyOwner: EMQX_UID },
+    { name: "nginx", hosts: ["nginx", "reverse-proxy", "localhost", "127.0.0.1", ...EXTRA_HOSTS] },
   ];
+
+  if (EXTRA_HOSTS.length > 0) {
+    console.log(`pki-init: PKI_EXTRA_HOSTS adds ${EXTRA_HOSTS.join(", ")} to the server certificates`);
+  }
 
   for (const server of servers) {
     if (!existsSync(path.join(DIR, `${server.name}.crt`))) {

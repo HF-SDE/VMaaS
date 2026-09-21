@@ -172,64 +172,6 @@ export function MachineForm({
   )
 }
 
-export function CreateMachineForm({
-  triggerCloseDialog,
-}: {
-  triggerCloseDialog: () => void
-}) {
-  const router = useRouter()
-
-  return (
-    <MachineForm
-      defaultValues={{ name: "", siteId: "" }}
-      submitLabel="Create machine"
-      onCancel={triggerCloseDialog}
-      onSubmit={async (values) => {
-        const [error, machine] = await fetchData<MachineListItem>(
-          "/api/machines",
-          {
-            method: "POST",
-            body: { name: values.name, siteId: values.siteId },
-          }
-        )
-
-        // The action's own permission gate redirects to /forbidden, so a
-        // `forbidden` here means the backend itself denied the write — no
-        // redirect happens there, which would otherwise leave the button silent.
-        if (error) {
-          const reason = error.reason
-          switch (reason) {
-            case "FORBIDDEN":
-              router.push(
-                "/forbidden?reason=" +
-                  encodeURIComponent(
-                    "You do not have permission to create machines."
-                  )
-              )
-              break
-            case "UNAUTHORIZED":
-              router.push("/login")
-              break
-            // No NOT_FOUND or CONFLICT arm: POST /api/machines answers neither,
-            // so CreateMachineError does not carry them.
-            case "BAD_REQUEST":
-            case "BACKEND_ERROR":
-            case "NETWORK_ERROR":
-              toast.error(machineWriteErrorMessage(error.status))
-              break
-            default:
-              throw new Error(`Unhandled error - reason: ${reason}`)
-          }
-        } else {
-          triggerCloseDialog()
-          router.push("/machines/" + machine.id)
-        }
-        return null
-      }}
-    />
-  )
-}
-
 export function EditMachineForm({
   id,
   defaultValues,
