@@ -25,7 +25,7 @@ let client: MqttClient | null = null;
  */
 export function createPublish(mqttClient: MqttClient): (topic: string, payload: Record<string, unknown>) => Promise<void> {
   return async (topic, payload) => {
-    // Commands are never retained: a restarting machine must not replay one (§5).
+    // Commands are never retained: a restarting machine must not replay ones.
     await mqttClient.publishAsync(topic, JSON.stringify(payload), { qos: 1, retain: false });
   };
 }
