@@ -152,9 +152,9 @@ describe("claimMachineService", () => {
     expect(error?.reason).toBe("MACHINE_ALREADY_CLAIMED");
   });
 
-  // C2 (cross-tenant takeover through claim). createMachineService stamps the
-  // creating tenant's id onto a machine whose status stays `unregistered`, so
-  // "unregistered" must NOT mean "claimable by anyone".
+  // C2 (cross-tenant takeover through claim). A machine can carry a tenant's id
+  // while its status stays `unregistered`, so "unregistered" must NOT mean
+  // "claimable by anyone".
   it("refuses to claim an unregistered machine owned by another tenant (pre-check)", async () => {
     const OTHER = "55555555-5555-4555-8555-555555555555";
     const db = fakeDb({ id: MACHINE, registrationStatus: "unregistered", tenantId: OTHER });

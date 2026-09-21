@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-coin",
+  "version": "0.1.0",
+  "description": "Pulse-train decoder for the HX-916 multi-coin acceptor",
+  "keywords": ["coin", "payment", "hx-916", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["coin_acceptor.h", "esp_coin_port.h"]
+}

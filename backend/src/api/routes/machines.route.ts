@@ -48,6 +48,7 @@ machinesRouter.post(
   validate(saveSlotLayoutSchema),
   saveSlotLayoutController,
 );
+machinesRouter.post("/", requireAuth, requireSuperAdmin, validate(createMachineSchema), createMachineController);
 
 machinesRouter.use(requireAuth, requireTenant, requireSubscription);
 
@@ -72,12 +73,6 @@ machinesRouter.post(
   requirePermission(PERMISSIONS.MACHINE_WRITE),
   validate(claimMachineSchema),
   claimMachineController,
-);
-machinesRouter.post(
-  "/",
-  requirePermission(PERMISSIONS.MACHINE_WRITE),
-  validate(createMachineSchema),
-  createMachineController,
 );
 
 machinesRouter.get(
