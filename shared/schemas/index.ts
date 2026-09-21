@@ -10,3 +10,4 @@ export * from "./slots";
 export * from "./subscriptions";
 export * from "./tenants";
 export * from "./ws";
+export * from "./user";
