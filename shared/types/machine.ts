@@ -27,8 +27,8 @@ export interface MachineUsage {
   canDelete: boolean;
 }
 
-/** A machine that has a tenant always has a site — `claimMachineService` and
- *  `createMachineService` both set them in the same write — so the list and
+/** A machine that has a tenant always has a site — `claimMachineService` sets
+ *  them in the same write, and `createMachineService` sets neither — so the list and
  *  the detail both include the site the UI has to name, rather than leaving
  *  the client to resolve an id. A machine with neither is a different type:
  *  see `MachineWithoutTenant`. */
