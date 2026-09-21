@@ -13,15 +13,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { InvoicesCard } from "./invoices-card"
+import { PaymentMethodCard } from "./payment-method-card"
+import { PlanCard } from "./plan-card"
 
 export default function AccountPage() {
   return (
     <main>
       {/* Static: prerendered into the shell. */}
-      <h1>Konto</h1>
+      <h1>Account</h1>
 
       {/* Reads the session, so it streams in behind the boundary. */}
-      <Suspense fallback={<p>Indlæser konto…</p>}>
+      <Suspense fallback={<p>Loading account…</p>}>
         <AccountSection />
       </Suspense>
     </main>
@@ -53,19 +55,11 @@ async function AccountSection() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="subscription">
-          <Card>
-            <CardHeader>
-              <CardTitle>Subscription</CardTitle>
-              <CardDescription>
-                Manage your subscription plan and billing details. Upgrade or
-                cancel your subscription as needed.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Page views are up 25% compared to last month.
-            </CardContent>
-          </Card>
+        <TabsContent value="subscription" className="grid gap-4">
+          {/* The plan is read off the session this page already has; only the
+              portal button needs the browser. */}
+          <PlanCard subscription={session.subscription} />
+          <PaymentMethodCard />
         </TabsContent>
         <TabsContent value="invoices">
           <InvoicesCard />

@@ -1,4 +1,4 @@
-import { type Subscription, type subscription_status } from "@/generated/prisma/client";
+import { type Subscription, type subscription_plan, type subscription_status } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
@@ -97,6 +97,10 @@ export type SubscriptionFacts = {
    *  period runs out, so this cannot be inferred from the status. */
   cancelAtPeriodEnd?: boolean;
   trialEndsAt?: Date | null;
+  /** `null` is "Stripe is billing a price this application does not sell", and
+   *  is deliberately different from omitting the field: the plan on the row has
+   *  to be cleared rather than left claiming a plan the tenant is no longer on. */
+  plan?: subscription_plan | null;
 };
 
 /**
@@ -177,6 +181,7 @@ export async function setSubscriptionStatus(
     ...(input.currentPeriodEnd !== undefined ? { currentPeriodEnd: input.currentPeriodEnd } : {}),
     ...(input.cancelAtPeriodEnd !== undefined ? { cancelAtPeriodEnd: input.cancelAtPeriodEnd } : {}),
     ...(input.trialEndsAt !== undefined ? { trialEndsAt: input.trialEndsAt } : {}),
+    ...(input.plan !== undefined ? { plan: input.plan } : {}),
   };
 
   try {

@@ -153,6 +153,27 @@ describe("setSubscriptionStatus", () => {
     expect(upsert.mock.calls[0]![0].update).toEqual({ status: "past_due" });
   });
 
+  // Which plan the tenant is on is Stripe's answer, not this application's: the
+  // webhook reads it off the price and it is written here like any other fact.
+  it("writes the plan the webhook read off the price", async () => {
+    upsert.mockResolvedValue(subscription({ status: "active" }));
+
+    await setSubscriptionStatus(TENANT, "active", { plan: "yearly" });
+
+    expect(upsert.mock.calls[0]![0].update).toMatchObject({ status: "active", plan: "yearly" });
+  });
+
+  // Distinct from not supplying it: a subscription billed against a price this
+  // application no longer sells has a plan it cannot name, and the stale one
+  // has to go rather than keep being displayed.
+  it("clears the plan when the caller says it is unknown", async () => {
+    upsert.mockResolvedValue(subscription({ status: "active" }));
+
+    await setSubscriptionStatus(TENANT, "active", { plan: null });
+
+    expect(upsert.mock.calls[0]![0].update).toMatchObject({ plan: null });
+  });
+
   // Cancelation is not a status: Stripe keeps the subscription active until the
   // paid period runs out, so this flag is the only thing that says it is ending.
   it("records a cancelation that has not taken effect yet", async () => {

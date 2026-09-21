@@ -80,6 +80,40 @@ describe("applyStripeSubscription — status mapping", () => {
   });
 });
 
+describe("applyStripeSubscription — the plan", () => {
+  /** A subscription billed against `priceId`. */
+  function priced(priceId: string | undefined) {
+    return stripeSubscription({
+      items: { data: [{ current_period_end: 1800000000, price: priceId ? { id: priceId } : undefined }] },
+    });
+  }
+
+  it.each([
+    ["price_monthly", "monthly"],
+    ["price_yearly", "yearly"],
+  ] as const)("recognises %s as the %s plan", async (priceId, plan) => {
+    await applyStripeSubscription(priced(priceId));
+
+    expect(setSubscriptionStatus).toHaveBeenCalledWith(TENANT, "active", expect.objectContaining({ plan }));
+  });
+
+  // A price this application does not sell — an old one, or one created by hand
+  // in the dashboard. Naming it as either plan would be a guess, and leaving
+  // the previous plan in place would keep claiming a plan they are no longer
+  // on, so the honest write is "unknown".
+  it("names no plan for a price it does not sell", async () => {
+    await applyStripeSubscription(priced("price_something_else"));
+
+    expect(setSubscriptionStatus).toHaveBeenCalledWith(TENANT, "active", expect.objectContaining({ plan: null }));
+  });
+
+  it("names no plan when the subscription carries no price at all", async () => {
+    await applyStripeSubscription(priced(undefined));
+
+    expect(setSubscriptionStatus).toHaveBeenCalledWith(TENANT, "active", expect.objectContaining({ plan: null }));
+  });
+});
+
 describe("applyStripeSubscription — the facts it carries across", () => {
   // Since Basil, current_period_end lives on the items, not the subscription.
   // Reading subscription.current_period_end would quietly write undefined.

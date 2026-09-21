@@ -98,6 +98,30 @@ export async function startCheckout(
 }
 
 /**
+ * Opens the Stripe Customer Portal for the active organization and hands back
+ * the URL — where the card the subscription is billed to gets changed.
+ *
+ * The organization is not named here either: the backend takes it from the
+ * session and re-checks ownership. No cache is invalidated, for the same reason
+ * as `startCheckout` — nothing has changed yet, and whatever the user does on
+ * Stripe's page comes back as a webhook.
+ */
+export async function openBillingPortal(): Promise<
+  Result<HttpError, { url: string }>
+> {
+  await requireUser()
+
+  const [error, data] = await fetchData<{ url: string }>(
+    "/api/subscriptions/portal",
+    { method: "POST" }
+  )
+
+  if (error) return err(error)
+
+  return ok(data)
+}
+
+/**
  * Where the user stands right now, read past the session cache.
  *
  * Coming back from Stripe is a plain navigation, so no action has run and

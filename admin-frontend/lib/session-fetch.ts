@@ -1,4 +1,5 @@
 import type { PermissionKey } from "../../shared/types/permissions"
+import type { SubscriptionPlan } from "@vmaas/shared/schemas"
 import { config } from "./config"
 
 export type Session = {
@@ -27,6 +28,10 @@ export type SubscriptionStatus =
 
 export type SessionSubscription = {
   status: SubscriptionStatus
+  /** Which plan is being billed. `null` before checkout, and for a Stripe price
+   *  the backend does not recognise — never a default, which would name a plan
+   *  nobody chose. */
+  plan?: SubscriptionPlan | null
   trialEndsAt: string | null
   currentPeriodEnd: string | null
   /** Set when the owner has canceled. Stripe keeps the subscription `active`
