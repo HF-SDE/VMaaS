@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "docker:dev": "docker compose -f ../docker/docker-compose.yml up -d backend && docker image prune -f",
+    "docker:dev": "docker compose --env-file ../config/environment-variables/.env.backend.dev -f ../docker/docker-compose.yml up -d backend emqx stripe-cli && docker image prune -f",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -36,7 +36,10 @@
     "mqtt": "^5.16.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
-    "undici": "^7.29.1"
+    "resend": "^6.28.1",
+    "stripe": "^22.6.2",
+    "undici": "^7.29.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
@@ -45,6 +48,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.5.0",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
     "prisma": "^7.10.0",
     "tsc-alias": "^1.9.4",
     "tsx": "^4.23.13",

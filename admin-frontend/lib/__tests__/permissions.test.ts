@@ -9,6 +9,8 @@ const session: Session = {
   tenants: [{ id: "t1", name: "Tenant One" }],
   tenantInvites: [],
   permissions: [PERMISSIONS.MACHINE_READ],
+  subscription: { status: "active", trialEndsAt: null, currentPeriodEnd: null },
+  isOwner: false,
 }
 
 describe("hasPermission", () => {

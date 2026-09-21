@@ -1,6 +1,7 @@
 import { Prisma, type TenantInvite } from "@/generated/prisma/client";
+import { invitationUrl, sendInvitationEmail } from "@/lib/emails";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_TENANT_ROLES, ROLE_PERMISSIONS, createRolesWithPermissions, listTenantsForUser } from "@/lib/rbac";
+import { DEFAULT_TENANT_ROLES, createRolesWithPermissions, listTenantsForUser } from "@/lib/rbac";
 
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
@@ -45,6 +46,16 @@ export type UnknownMemberError = { reason: "UNKNOWN_ERROR"; message: string };
 export type InviteRoleNotFoundError = { reason: "INVITE_ROLE_NOT_FOUND"; message: string };
 export type InviteUserNotFoundError = { reason: "INVITE_USER_NOT_FOUND"; message: string };
 export type AlreadyMemberError = { reason: "ALREADY_MEMBER"; message: string };
+export type InviteNotFoundError = { reason: "INVITE_NOT_FOUND"; message: string };
+export type InviteExpiredError = { reason: "INVITE_EXPIRED"; message: string };
+export type InviteNotPendingError = { reason: "INVITE_NOT_PENDING"; message: string };
+export type InviteEmailMismatchError = { reason: "INVITE_EMAIL_MISMATCH"; message: string };
+export type InviteEmailFailedError = { reason: "INVITE_EMAIL_FAILED"; message: string };
+
+/** Thrown only to roll the invite transaction back when the email does not go
+ *  out. It never leaves `inviteMemberService`, which turns it back into an
+ *  `InviteEmailFailedError`. */
+class InviteEmailFailure extends Error {}
 
 function isSortField(value: string): value is MemberSortField {
   return (MEMBER_SORT_FIELDS as readonly string[]).includes(value);
@@ -152,6 +163,12 @@ export async function createTenantService(userId: string, name: string) {
 
   await prisma.userRole.create({ data: { userId, roleId: ownerRole.id, tenantId: tenant.id } });
 
+  // A brand new tenant starts unpaid, which is what sends its owner to the
+  // paywall. Created here rather than left to `getTenantSubscription`'s upsert
+  // so the row exists from the tenant's first moment and billing has something
+  // to attach to.
+  await prisma.subscription.create({ data: { tenantId: tenant.id, status: "pending" } });
+
   return { ok: true as const, tenant };
 }
 
@@ -165,6 +182,12 @@ export async function createTenantService(userId: string, name: string) {
  *
  * Re-inviting someone who already has a pending invite is not a failure: the
  * upsert re-points it at the role just picked and the invite stands.
+ *
+ * The row and its email are written in one transaction: an invitation the
+ * invitee never receives is worse than no invitation at all, because the member
+ * list would show someone as invited who has no way to accept. If the send
+ * fails the upsert is rolled back — including a re-invite, which leaves the
+ * previous invitation exactly as it was.
  */
 export async function inviteMemberService(
   tenantId: string,
@@ -172,53 +195,224 @@ export async function inviteMemberService(
   invitedById: string,
   role: string,
 ): Promise<
-  Result<InviteRoleNotFoundError | InviteUserNotFoundError | AlreadyMemberError | UnknownMemberError, TenantInvite>
+  Result<InviteRoleNotFoundError | AlreadyMemberError | InviteEmailFailedError | UnknownMemberError, TenantInvite>
 > {
+  // Addresses are compared case-insensitively everywhere, so they are stored
+  // folded — otherwise "Kenni@x.dk" and "kenni@x.dk" would be two invitations
+  // that the unique index does not recognise as the same.
+  const normalisedEmail = email.trim().toLowerCase();
+
   try {
     const roleRecord = await prisma.role.findFirst({ where: { name: role, tenantId } });
     if (!roleRecord) return err({ reason: "INVITE_ROLE_NOT_FOUND", message: `Unknown role: ${role}.` });
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return err({ reason: "INVITE_USER_NOT_FOUND", message: `No user with the email ${email}.` });
+    // An account for this address may not exist yet — that is the point of
+    // inviting by email. When one does, it is linked now so the invite shows up
+    // for them immediately; when it does not, `userId` stays null and the
+    // address is what binds the invite after they sign up.
+    const user = await prisma.user.findFirst({ where: { email: { equals: normalisedEmail, mode: "insensitive" } } });
 
-    const existing = await prisma.userRole.findFirst({ where: { userId: user.id, tenantId } });
-    if (existing) return err({ reason: "ALREADY_MEMBER", message: `${email} is already a member of this tenant.` });
+    if (user) {
+      const existing = await prisma.userRole.findFirst({ where: { userId: user.id, tenantId } });
+      if (existing) return err({ reason: "ALREADY_MEMBER", message: `${email} is already a member of this tenant.` });
+    }
 
     const expireAfterDays = 7;
     const expiresAt = new Date(Date.now() + expireAfterDays * 24 * 60 * 60 * 1000);
 
-    return ok(
-      await prisma.tenantInvite.upsert({
-        where: { userId_tenantId_status: { userId: user.id, tenantId, status: "pending" } },
-        update: { roleId: roleRecord.id },
-        create: {
-          userId: user.id,
-          tenantId,
-          roleId: roleRecord.id,
-          expiresAt,
-          token: crypto.randomUUID(),
-          invitedById,
-        },
-      }),
+    // The email is sent inside the transaction so a failed send takes the row
+    // with it. The timeout is raised from Prisma's 5s default because the send
+    // is a network call to the mail provider, not just a query.
+    const invite = await prisma.$transaction(
+      async (tx) => {
+        // Re-inviting someone who already has a pending invite is not a failure:
+        // the upsert re-points it at the role just picked and extends its life.
+        const created = await tx.tenantInvite.upsert({
+          where: { email_tenantId_status: { email: normalisedEmail, tenantId, status: "pending" } },
+          update: { roleId: roleRecord.id, userId: user?.id ?? null, expiresAt },
+          create: {
+            email: normalisedEmail,
+            userId: user?.id ?? null,
+            tenantId,
+            roleId: roleRecord.id,
+            expiresAt,
+            token: crypto.randomUUID(),
+            invitedById,
+          },
+          include: { tenant: true, role: true, invitedBy: { select: { name: true, email: true } } },
+        });
+
+        const [sendError] = await sendInvitationEmail(normalisedEmail, {
+          tenantName: created.tenant.name,
+          roleName: created.role.name,
+          invitedBy: created.invitedBy?.name ?? created.invitedBy?.email,
+          acceptUrl: invitationUrl(created.id),
+          expiresAt: created.expiresAt,
+        });
+
+        // A server with no `RESEND_API_KEY` is the local-dev setup, where
+        // `sendEmail` logs the invitation link instead of sending it — rolling
+        // back there would make inviting impossible without mail credentials.
+        // Every other failure is a real one and undoes the invitation.
+        if (sendError && sendError.reason !== "EMAIL_NOT_CONFIGURED") {
+          throw new InviteEmailFailure(sendError.message);
+        }
+
+        return created;
+      },
+      { timeout: 15_000 },
     );
+
+    return ok(invite);
   } catch (error) {
+    if (error instanceof InviteEmailFailure) {
+      // TODO: capture sentry error
+      console.error(`[tenants.service] inviting ${normalisedEmail} failed to send`, error);
+
+      return err({
+        reason: "INVITE_EMAIL_FAILED",
+        message: `We could not send the invitation email to ${email}, so no invitation was created. Please try again.`,
+      });
+    }
+
     return unknownError("inviting the member", error);
   }
 }
 
-export async function respondToInviteService(token: string, userId: string, status: InviteResponses) {
-  const invite = await prisma.tenantInvite.findUnique({ where: { token } });
+/** What the `/invite/[id]` page renders before the user decides. Deliberately
+ *  narrow: enough to recognise the invitation, nothing about the tenant beyond
+ *  its name. */
+export type InviteDetail = {
+  id: string;
+  email: string;
+  tenantId: string;
+  tenantName: string;
+  roleName: string;
+  invitedBy?: string;
+  status: TenantInvite["status"];
+  expiresAt: Date;
+  /** Whether the signed-in user's address matches the invited one. The page
+   *  shows a "signed in as someone else" message rather than an accept button
+   *  when this is false. */
+  matchesViewer: boolean;
+  /** Whether the viewer is already a member of the tenant — an invitation that
+   *  has been overtaken by events. */
+  alreadyMember: boolean;
+};
 
-  if (!invite) throw new APIError("NOT_FOUND", { message: "Invite not found" });
-  if (invite.userId !== userId) throw new APIError("FORBIDDEN", { message: "This invite is not for you" });
-  if (invite.status !== "pending") throw new APIError("BAD_REQUEST", { message: "This invite is no longer valid" });
-  if (invite.expiresAt < new Date()) throw new APIError("BAD_REQUEST", { message: "This invite has expired" });
+/**
+ * Reads one invitation for display.
+ *
+ * Requires a signed-in viewer and reports whether the invitation is theirs,
+ * rather than 404-ing when it is not: the page has to be able to say "this
+ * invitation is for another address" instead of pretending it does not exist,
+ * which is the one edge case users actually hit.
+ */
+export async function getInviteService(
+  inviteId: string,
+  viewer: { id: string; email: string },
+): Promise<Result<InviteNotFoundError | UnknownMemberError, InviteDetail>> {
+  try {
+    const invite = await prisma.tenantInvite.findUnique({
+      where: { id: inviteId },
+      include: { tenant: true, role: true, invitedBy: { select: { name: true, email: true } } },
+    });
 
-  await prisma.userRole.create({ data: { userId, tenantId: invite.tenantId, roleId: invite.roleId } });
+    if (!invite) return err({ reason: "INVITE_NOT_FOUND", message: "This invitation does not exist." });
 
-  await prisma.tenantInvite.update({ where: { id: invite.id }, data: { status } });
+    const alreadyMember =
+      (await prisma.userRole.count({ where: { userId: viewer.id, tenantId: invite.tenantId } })) > 0;
 
-  return { ok: true as const };
+    return ok({
+      id: invite.id,
+      email: invite.email,
+      tenantId: invite.tenantId,
+      tenantName: invite.tenant.name,
+      roleName: invite.role.name,
+      invitedBy: invite.invitedBy?.name ?? invite.invitedBy?.email,
+      status: invite.status,
+      expiresAt: invite.expiresAt,
+      matchesViewer: invite.email.toLowerCase() === viewer.email.toLowerCase(),
+      alreadyMember,
+    });
+  } catch (error) {
+    return unknownError("loading the invitation", error);
+  }
+}
+
+/**
+ * Accepts or declines an invitation on behalf of the signed-in user.
+ *
+ * Every precondition is re-checked here, because the page that offered the
+ * button is not a security boundary: the address must match the signed-in
+ * account, the invite must still be pending, and it must not have expired.
+ * Accepting is idempotent about membership — a user who joined by another route
+ * in the meantime has their invite closed rather than a duplicate `UserRole`
+ * created.
+ */
+export async function respondToInviteService(
+  inviteId: string,
+  viewer: { id: string; email: string },
+  status: InviteResponses,
+): Promise<
+  Result<
+    InviteNotFoundError | InviteExpiredError | InviteNotPendingError | InviteEmailMismatchError | UnknownMemberError,
+    { tenantId: string }
+  >
+> {
+  try {
+    const invite = await prisma.tenantInvite.findUnique({ where: { id: inviteId } });
+
+    if (!invite) return err({ reason: "INVITE_NOT_FOUND", message: "This invitation does not exist." });
+
+    if (invite.email.toLowerCase() !== viewer.email.toLowerCase()) {
+      return err({
+        reason: "INVITE_EMAIL_MISMATCH",
+        message: `This invitation was sent to ${invite.email}.`,
+      });
+    }
+
+    if (invite.status !== "pending") {
+      return err({
+        reason: "INVITE_NOT_PENDING",
+        message:
+          invite.status === "accepted"
+            ? "This invitation has already been accepted."
+            : "This invitation is no longer valid.",
+      });
+    }
+
+    if (invite.expiresAt < new Date()) {
+      // Reflect the expiry in the row so it stops being offered as pending.
+      await prisma.tenantInvite.update({ where: { id: invite.id }, data: { status: "expired" } });
+      return err({ reason: "INVITE_EXPIRED", message: "This invitation has expired." });
+    }
+
+    if (status === "accepted") {
+      const alreadyMember = await prisma.userRole.findFirst({
+        where: { userId: viewer.id, tenantId: invite.tenantId },
+      });
+
+      if (!alreadyMember) {
+        await prisma.userRole.create({
+          data: { userId: viewer.id, tenantId: invite.tenantId, roleId: invite.roleId },
+        });
+      }
+    }
+
+    await prisma.tenantInvite.update({
+      where: { id: invite.id },
+      data: {
+        status,
+        userId: viewer.id,
+        acceptedAt: status === "accepted" ? new Date() : null,
+      },
+    });
+
+    return ok({ tenantId: invite.tenantId });
+  } catch (error) {
+    return unknownError("responding to the invitation", error);
+  }
 }
 
 export async function removeMemberService(tenantId: string, userId: string) {

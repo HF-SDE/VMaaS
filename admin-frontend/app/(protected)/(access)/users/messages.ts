@@ -19,10 +19,17 @@ export function membersErrorMessage(status: number): string {
 }
 
 /**
- * Wording for an invite, where the two statuses that matter are about the person
- * being invited rather than about the request: a 404 is an email no account
- * answers to, and a 409 is someone who is already in the tenant. Both are shown
- * against the email field, so they name the address the user typed.
+ * Wording for an invite. Only one status is about the person being invited
+ * rather than about the request — a 409, someone already in the tenant — and it
+ * is shown against the email field so it names the address the user typed.
+ *
+ * There is deliberately no "no account uses that address" case any more:
+ * invitations are keyed on the email, so inviting someone who has never signed
+ * up is the normal path, not an error.
+ *
+ * A 502 is the one status that needs to say what did *not* happen: the backend
+ * writes the invitation and sends its email in one transaction, so a failed
+ * send leaves nothing behind and retrying is safe.
  */
 export function memberInviteErrorMessage(
   status: number,
@@ -34,7 +41,7 @@ export function memberInviteErrorMessage(
     case 403:
       return "You do not have permission to invite members."
     case 404:
-      return `No account uses ${email}. They need to sign up before they can be invited.`
+      return "That organization no longer exists. Reload the page and try again."
     case 409:
       return `${email} is already a member of this tenant.`
     case 400:
@@ -43,6 +50,8 @@ export function memberInviteErrorMessage(
       return "That role no longer exists. Reload the page and try again."
     case 500:
       return "An unexpected error occurred. Please try again."
+    case 502:
+      return `We could not email the invitation to ${email}, so nobody was invited. Please try again.`
     default:
       throw new Error(`Unexpected error - status: ${status}`)
   }

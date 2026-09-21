@@ -1,20 +1,8 @@
-import { getAlertsPageSchema } from "@vmaas/shared/schemas";
+import { getAlertsPageSchema, resolveAlertSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
-import { getAlertsPageService } from "../services/alerts.service";
+import { getAlertsPageService, getAlertsSummaryService, resolveAlertService } from "../services/alerts.service";
 
-/**
- * One page of the tenant's machine alert log.
- *
- * The tenant comes from `req.tenantId` — set by `requireTenant` after it
- * verified membership — and never from the query, which only ever narrows
- * within it.
- *
- * The parse throws rather than answering 400 itself: the router's
- * `validate(getAlertsPageSchema)` has already rejected a malformed query
- * against the same schema, so a throw here means the two disagree — a bug, not
- * bad input.
- */
 export async function getAlertsPageController(req: Request, res: Response) {
   const { tenantId } = req;
 
@@ -33,4 +21,46 @@ export async function getAlertsPageController(req: Request, res: Response) {
   }
 
   return res.status(200).json(page).end();
+}
+
+export async function getAlertsSummaryController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const [error, summary] = await getAlertsSummaryService(tenantId!);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while loading the alert summary" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(summary).end();
+}
+
+export async function resolveAlertController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { params } = resolveAlertSchema.parse(req);
+
+  const [error, alert] = await resolveAlertService(tenantId!, params.id);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "ALERT_NOT_FOUND":
+        return res.status(404).json({ error: "Alert not found" }).end();
+      case "ALERT_ALREADY_RESOLVED":
+        return res.status(409).json({ error: "That alert has already been resolved" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while resolving the alert" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(alert).end();
 }

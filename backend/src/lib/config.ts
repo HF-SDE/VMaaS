@@ -51,6 +51,30 @@ const schema = z.object({
   MQTT_INTERNAL_SECRET: z.string().min(16, {
     message: "MQTT_INTERNAL_SECRET must be at least 16 characters",
   }),
+  /** Resend API key. Optional on purpose: without it `lib/emails` logs the
+   *  message instead of sending it, so onboarding still works end-to-end on a
+   *  machine that has no mail credentials. A missing key must never be the
+   *  reason an invitation cannot be created. */
+  RESEND_API_KEY: z.string().min(1).optional(),
+  /** The From: address on transactional mail. Must be a domain verified in
+   *  Resend, or Resend rejects the send. */
+  EMAIL_FROM: z.string().min(1).default("no-reply@vmaas.dk"),
+
+  /** Stripe secret key. Required to interact with the Stripe API. */
+  STRIPE_SECRET_KEY: z.string().min(1, { message: "STRIPE_SECRET_KEY is required" }),
+  /** Stripe price ID for the monthly plan. */
+  STRIPE_PRICE_ID_MONTHLY: z.string().min(1, { message: "STRIPE_PRICE_ID_MONTHLY is required" }),
+  /** Stripe price ID for the yearly plan. */
+  STRIPE_PRICE_ID_YEARLY: z.string().min(1, { message: "STRIPE_PRICE_ID_YEARLY is required" }),
+  /** Signing secret for the Stripe webhook endpoint (`whsec_…`). Without it the
+   *  webhook cannot tell a real Stripe event from anyone who found the URL, and
+   *  the handler grants access — so it has no default and no optional escape:
+   *  a missing value must stop the process, not silently open the paywall.
+   *  In development `stripe listen` prints the value to use. */
+  STRIPE_WEBHOOK_SECRET: z.string().min(1, { message: "STRIPE_WEBHOOK_SECRET is required" }),
 });
 
-export const config = schema.parse(process.env);
+export const config = (() => {
+  const parsed = schema.parse(process.env);
+  return { ...parsed };
+})();

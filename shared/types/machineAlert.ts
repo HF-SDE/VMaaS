@@ -1,24 +1,6 @@
-/**
- * The alert types `alert_type` declares in the Prisma schema.
- *
- * Spelled out here rather than imported from the generated client: the enum
- * lives behind the `@prisma` alias, which only the frontend's tsconfig defines,
- * so importing it would make this file untypecheckable from the backend. The
- * same reason `MACHINE_SORT_FIELDS` is a `const` array rather than a generated
- * type. `rbac-contract`-style drift is caught by the backend's own test, which
- * asserts this list against the generated enum.
- */
 export const ALERT_TYPES = ["tamper", "offline", "error"] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
 
-/**
- * One row of the machine alert log, flattened for the wire.
- *
- * The machine and the site are joined in and reduced to the names the table
- * prints, so the client never resolves an id. The dates are strings, not
- * `Date`: every one of them is JSON by the time a caller sees it, and typing
- * them as `Date` only hides the `new Date(...)` the consumer still has to do.
- */
 export interface MachineAlertRow {
   id: string;
   type: AlertType;
@@ -38,13 +20,15 @@ export interface MachineAlertRow {
   contactEmail: string | null;
 }
 
-/**
- * What the alert log sends to `GET /api/alerts/paginated`.
- *
- * Every filter is optional and an empty array means "not filtered", so the
- * unfiltered log is the request with no query at all. The id arrays are
- * intersected with the tenant's own rows by the service, never trusted.
- */
+export const ALERTS_SUMMARY_RECENT_LIMIT = 50;
+export interface AlertsSummary {
+  /** Open alerts only — `resolvedAt` is null. One key per `ALERT_TYPES` member. */
+  openByType: Record<AlertType, number>;
+  openTotal: number;
+  /** At most `ALERTS_SUMMARY_RECENT_LIMIT`, newest first by `occurredAt`. */
+  recent: MachineAlertRow[];
+}
+
 export interface GetAlertsParams {
   page?: number; // 0-based
   pageSize?: number;

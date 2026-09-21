@@ -15,7 +15,8 @@
     "seed": "cd backend && npx prisma migrate deploy && npx prisma db seed",
     "seed:dev": "cd backend && npx prisma migrate deploy && npm run db:seed:dev",
     "prisma:generate": "cd backend && npm run prisma:generate",
-    "create-envs": "node config/environment-variables/copy-env-dev.mjs"
+    "create-envs": "node config/environment-variables/copy-env-dev.mjs",
+    "stripe:secret": "docker compose --env-file ./config/environment-variables/.env.backend.dev -f ./docker/docker-compose.yml run --rm --no-deps stripe-cli listen --print-secret"
   },
   "dependencies": {
     "zod": "^4.3.6"

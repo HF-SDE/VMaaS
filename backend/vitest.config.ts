@@ -16,6 +16,13 @@ export default defineConfig({
       MQTT_PASSWORD: "test-mqtt-password-value",
       EMQX_API_KEY: "test-emqx-api-key",
       EMQX_API_SECRET: "test-emqx-api-secret-value",
+      // Stripe is never called in tests — the SDK is mocked — but config.ts
+      // requires these to exist, and a test suite that only passes because a
+      // gitignored .env happens to be present is not a passing test suite.
+      STRIPE_SECRET_KEY: "sk_test_value",
+      STRIPE_PRICE_ID_MONTHLY: "price_test_monthly",
+      STRIPE_PRICE_ID_YEARLY: "price_test_yearly",
+      STRIPE_WEBHOOK_SECRET: "whsec_test_value",
     },
   },
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },

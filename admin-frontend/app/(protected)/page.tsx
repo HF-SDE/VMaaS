@@ -1,54 +1,100 @@
 import { Suspense } from "react"
-import { PERMISSIONS } from "../../../shared/types/permissions"
+import { PERMISSIONS } from "@vmaas/shared/types/permissions"
+import {
+  DEFAULT_SALES_MAP_DAYS,
+  type SaleMapPoint,
+} from "@vmaas/shared/types/sale"
 
-import { getMachines, Machine } from "@/lib/data/machines"
-import { requirePermission, requireTenant } from "@/lib/dal"
+import { requireAccess } from "@/lib/dal"
+import { hasPermission } from "@/lib/permissions"
 import { fetchData } from "@/lib/data/data-fetch"
-import { ErrorToast } from "./error-toast"
+import { KpiCards } from "./components/kpi-cards"
+import { NeedsAttentionSection } from "./components/needs-attention"
+import { RestockQueueSection } from "./components/restock-queue"
+import { SalesMapCluster } from "./components/sales-map-cluster"
+import { SalesSummarySection } from "./components/sales-summary"
+import { SectionError } from "./components/section-error"
 
 // The tenant gate below reads the session, which cannot be prerendered into the
 // static shell. Same opt-out the other session-gated pages use.
 export const instant = false
 
+/**
+ * Problems first, money second: the sections are ordered by how urgent acting on
+ * them is, and each one is permission-gated on its own, so what a user sees is
+ * composed from what they may see rather than chosen by role.
+ *
+ * Each section sits in its own <Suspense> and reports its own failure inline, so
+ * one dead endpoint costs one card rather than the page.
+ */
 export default async function DashboardPage() {
-  // Login lands here, so this is where a brand new account has to be sent on to
-  // /welcome to create its first tenant. Gating before the shell renders makes
-  // that a real redirect instead of a dashboard that flashes and then moves.
-  // The per-permission gate stays on the read below, so someone who has a tenant
-  // but no machine access still gets the page rather than a denial.
-  await requireTenant()
+  await requireAccess()
 
   return (
     <div>
       <h1 className="text-2xl font-bold">Overview</h1>
 
-      <Suspense fallback={<p>Loading machines…</p>}>
-        <MachineList />
+      {/* The figures first: the whole state of the tenant in one row, before
+          any of the queues below ask for a click. */}
+      <div className="mt-8">
+        <Suspense fallback={<p>Loading key figures…</p>}>
+          <KpiCards />
+        </Suspense>
+      </div>
+
+      {/* Two queues of things to act on — side by side from md up, stacked on
+          a phone. */}
+      <div className="mt-8 grid items-start gap-8 md:grid-cols-2">
+        <Suspense fallback={<p>Loading alerts…</p>}>
+          <NeedsAttentionSection />
+        </Suspense>
+
+        <Suspense fallback={<p>Loading the restock queue…</p>}>
+          <RestockQueueSection />
+        </Suspense>
+      </div>
+
+      <Suspense fallback={<p>Loading sales…</p>}>
+        <SalesSummarySection />
+      </Suspense>
+
+      <Suspense fallback={<p>Loading the sales map…</p>}>
+        <SalesMapSection />
       </Suspense>
     </div>
   )
 }
 
-const NO_READ_ACCESS = "You do not have access to machines."
+/**
+ * The heading lives in here with the map so that a user without sales access
+ * loses the whole section rather than being left with a title over nothing.
+ *
+ * `hasPermission` rather than `requirePermission`: this is one section of a
+ * dashboard, and a redirect would take the machine list away from someone whose
+ * only missing permission is sales.
+ */
+async function SalesMapSection() {
+  const session = await requireAccess()
+  if (!hasPermission(session, PERMISSIONS.SALE_READ)) return null
 
-async function MachineList() {
-  // Gate first, then the read — never the other way around. This is also what
-  // sends a user with no active tenant to /welcome: login lands here, so
-  // without this call a brand new account would sit on an empty dashboard with
-  // no way to reach the tenant it still has to create.
-  await requirePermission(PERMISSIONS.MACHINE_READ, NO_READ_ACCESS)
-
-  const [error, machines] = await fetchData<Machine[]>("/api/machines")
-  if (error) return <ErrorToast message={error.reason} />
+  // No `days` param: the endpoint's own default window is what the heading
+  // names, so passing it here would be two places to change it.
+  const [error, sales] = await fetchData<SaleMapPoint[]>("/api/sales/map")
 
   return (
-    <ul>
-      {machines.map((machine) => (
-        <li key={machine.id}>
-          {machine.name}
-          {` — ${machine.site.name}`}
-        </li>
-      ))}
-    </ul>
+    <section className="mt-8">
+      <h2 className="text-lg font-semibold">
+        Sales map · last {DEFAULT_SALES_MAP_DAYS} days
+      </h2>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Every sale where it was rung up. Each circle shows how many sales it
+        holds and what they earned.
+      </p>
+      {error ? (
+        <SectionError message="Couldn't load the sales map." />
+      ) : (
+        <SalesMapCluster sales={sales} />
+      )}
+    </section>
   )
 }

@@ -43,12 +43,21 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  render,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // A `render` of anything but a real <button> — a Link, an <a> — has no native
+  // button semantics, so Base UI has to supply them itself. Deciding it here
+  // saves every call site from passing `nativeButton={false}` by hand.
+  const nativeButton =
+    render == null || typeof render === "function" || render.type === "button"
+
   return (
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      render={render}
+      nativeButton={nativeButton}
       {...props}
     />
   )

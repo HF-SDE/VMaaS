@@ -6,9 +6,11 @@ import { productsRouter } from "@/api/routes/products.route";
 import { salesRouter } from "@/api/routes/sales.route";
 import { sitesRouter } from "@/api/routes/sites.route";
 import { slotsRouter } from "@/api/routes/slots.route";
+import { subscriptionsRouter, subscriptionsWebhookRouter } from "@/api/routes/subscriptions.route";
 import { tenantsRouter } from "@/api/routes/tenants.route";
 import { auth } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { attachWebSocketServer } from "@/lib/ws/server";
 import { startMqttClient } from "@/mqtt/client";
 
 import { toNodeHandler } from "better-auth/node";
@@ -16,6 +18,7 @@ import cors from "cors";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
+import http from "http";
 
 const app = express();
 
@@ -39,6 +42,11 @@ const api = express.Router();
 // Also exposes the multi-tenant plugin's endpoints: POST /api/auth/tenant/switch, GET /api/auth/tenant/mine.
 api.all("/auth/*splat", toNodeHandler(auth));
 
+// Also before express.json(), and for the same reason: Stripe's signature is
+// computed over the exact bytes it sent, so the webhook needs the raw body. It
+// mounts its own express.raw().
+api.use("/subscriptions/webhook", subscriptionsWebhookRouter);
+
 api.use(express.json());
 
 api.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -49,13 +57,17 @@ api.use("/machines", machinesRouter);
 api.use("/products", productsRouter);
 api.use("/sites", sitesRouter);
 api.use("/slots", slotsRouter);
+api.use("/subscriptions", subscriptionsRouter);
 api.use("/sales", salesRouter);
 api.use("/device", deviceRouter);
 api.use("/internal", internalRouter);
 
 app.use("/api", api);
 
-app.listen(config.PORT, () => {
+const server = http.createServer(app);
+attachWebSocketServer(server);
+
+server.listen(config.PORT, () => {
   console.log(`Server listening on port ${config.PORT}`);
 
   // Started after the HTTP server is up, and never awaited: a broker that is

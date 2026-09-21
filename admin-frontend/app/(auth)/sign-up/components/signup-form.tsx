@@ -1,7 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import {
+  REDIRECT_PARAM,
+  safeRedirectTarget,
+  signInPath,
+} from "@/lib/auth-redirect"
 import { z } from "zod"
 
 import { cn } from "cn"
@@ -36,6 +41,12 @@ export function SignupForm({
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter()
+  // Carried through from an invitation link, so someone who signs up *because*
+  // they were invited lands back on the invitation rather than on onboarding
+  // with no idea what happened to it.
+  const redirectTo = safeRedirectTarget(
+    useSearchParams().get(REDIRECT_PARAM)
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,7 +80,7 @@ export function SignupForm({
       return
     }
 
-    router.push("/")
+    router.push(redirectTo)
     router.refresh()
   }
 
@@ -151,7 +162,8 @@ export function SignupForm({
             Sign up with GitHub
           </Button>
           <FieldDescription className="px-6 text-center">
-            Already have an account? <a href="/login">Sign in</a>
+            Already have an account?{" "}
+            <a href={signInPath(redirectTo, "/login")}>Sign in</a>
           </FieldDescription>
         </Field>
       </FieldGroup>

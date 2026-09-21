@@ -77,6 +77,11 @@ describe("fetchSession", () => {
         },
       ],
       permissions: ["machine:read"],
+      // Absent from this payload. `null` means "no active tenant, or the
+      // lookup failed" — deliberately not a billing status, so the access
+      // resolver can tell an outage apart from an unpaid organization.
+      subscription: null,
+      isOwner: false,
     })
   })
 

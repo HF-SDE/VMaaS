@@ -1,4 +1,5 @@
 import { requireAuth, requirePermission, requireTenant } from "@/api/middleware/auth";
+import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
@@ -23,7 +24,7 @@ import {
 
 export const productsRouter = Router();
 
-productsRouter.use(requireAuth, requireTenant);
+productsRouter.use(requireAuth, requireTenant, requireSubscription);
 
 productsRouter.get("/", requirePermission(PERMISSIONS.PRODUCT_READ), getProductsController);
 // Must stay above "/:id", which would otherwise match "paginated" as an id.
