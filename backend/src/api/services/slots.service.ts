@@ -18,8 +18,9 @@ export type SlotProductNotFoundError = { reason: "PRODUCT_NOT_FOUND"; message: s
 export type SlotOverfilledError = { reason: "SLOT_OVERFILLED"; message: string };
 export type UnknownSlotError = { reason: "UNKNOWN_ERROR"; message: string };
 
-/** A slot row with the product loaded in it, as every read returns it. */
-export type SlotListItem = Slot & { product: SlotProduct };
+/** A slot row with the product loaded in it, as every read returns it.
+ *  for an empty slot: `productId` is nullable. */
+export type SlotListItem = Slot & { product: SlotProduct | null };
 
 /** What `SlotProduct` carries — enough to name the product and link to it. */
 const PRODUCT_SELECT = { select: { id: true, name: true } } as const;
