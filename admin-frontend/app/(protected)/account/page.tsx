@@ -3,18 +3,12 @@ import { PERMISSIONS } from "../../../../shared/types/permissions"
 
 import { requireUser } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { InvoicesCard } from "./invoices-card"
 import { PaymentMethodCard } from "./payment-method-card"
 import { PlanCard } from "./plan-card"
+import { ProfileCard } from "./profile-card"
 
 export default function AccountPage() {
   return (
@@ -35,25 +29,14 @@ async function AccountSection() {
 
   return (
     <>
-      <Tabs defaultValue="overview" className="w-[400px]">
+      <Tabs defaultValue="overview" className="w-full max-w-2xl">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="subscription">Subscription</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overview</CardTitle>
-              <CardDescription>
-                View your key metrics and recent project activity. Track
-                progress across all your active projects.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              You have 12 active projects and 3 pending tasks.
-            </CardContent>
-          </Card>
+          <ProfileCard name={session.user.name} email={session.user.email} />
         </TabsContent>
         <TabsContent value="subscription" className="grid gap-4">
           {/* The plan is read off the session this page already has; only the
