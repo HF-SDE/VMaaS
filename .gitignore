@@ -58,3 +58,8 @@ config/environment-variables/.env.*.prod*
 
 # Local CA material exported for the fake-machine smoke test
 backend/ca.crt
+
+# Per-deployment trust anchor for the device API. A bench or on-premise
+# stack serves its API from a private CA; a production unit must not ship
+# trusting one, so this is never committed.
+Main-Controller/data/api_ca.pem

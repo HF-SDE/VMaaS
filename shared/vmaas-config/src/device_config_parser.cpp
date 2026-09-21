@@ -9,8 +9,6 @@ namespace vmaas
 {
     namespace
     {
-        constexpr long long PORT_MIN = 1;
-        constexpr long long PORT_MAX = 65535;
         constexpr long long TIMING_MIN = 1;
         constexpr long long TIMING_MAX = 600000;
 
@@ -102,9 +100,7 @@ namespace vmaas
         DeviceConfig c{};
         c.name[0] = '\0';
         c.machine_id[0] = '\0';
-        c.mqtt_host[0] = '\0';
-        c.mqtt_port = 8883;
-        c.mqtt_client_id[0] = '\0';
+        c.api_base_url[0] = '\0';
         c.keypad_debounce_ms = 20;
         c.slot_entry_timeout_ms = 10000;
         c.slot_entry_result_hold_ms = 2000;
@@ -157,11 +153,8 @@ namespace vmaas
 
         if (const cJSON* backend = section(r, root, "backend"))
         {
-            read_string(r, backend, "mqtt_host", r.config.mqtt_host, MAX_MQTT_HOST, "backend.mqtt_host");
-            read_string(r, backend, "client_id", r.config.mqtt_client_id, MAX_CLIENT_ID, "backend.client_id");
-            long long port = r.config.mqtt_port;
-            read_int(r, backend, "mqtt_port", PORT_MIN, PORT_MAX, "backend.mqtt_port", port);
-            r.config.mqtt_port = static_cast<uint16_t>(port);
+            read_string(r, backend, "api_base_url", r.config.api_base_url, MAX_API_BASE_URL,
+                        "backend.api_base_url");
         }
 
         if (const cJSON* timings = section(r, root, "timings"))

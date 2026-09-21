@@ -14,9 +14,27 @@ import { buildTopicPrefix } from "@/mqtt/topics";
  * does not yield a working credential.
  */
 
-/** No I, O, 0 or 1: the code is read off a screen and typed on a device. */
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CODE_LENGTH = 12;
+/**
+ * Digits only.
+ *
+ * The code is read off this screen and typed on a vending machine's twelve-key
+ * keypad. With letters, each character had to be picked out of a scrolling
+ * table - about forty-five key presses for one code. With digits, key 7 types a
+ * 7, so eight characters are eight presses. It also ends the confusable
+ * problem outright rather than working around it: there is no I/1 or O/0 pair
+ * left to avoid.
+ */
+const ALPHABET = "0123456789";
+const CODE_LENGTH = 8;
+
+/**
+ * The largest multiple of ALPHABET.length that fits in a byte.
+ *
+ * Bytes at or above this are thrown away rather than folded in. `byte % 10`
+ * would look uniform and is not: 256 is 25*10 + 6, so 0-5 would come up 26
+ * times in 256.
+ */
+const UNBIASED_CEILING = 256 - (256 % ALPHABET.length);
 
 export type ClaimDb = {
   machine: { findUnique(args: unknown): Promise<unknown> };
@@ -42,8 +60,21 @@ export type ClaimError = MachineNotFound | MachineAlreadyClaimed | SiteNotFound 
 export type ClaimResult = { machineId: string; oneTimeCode: string; expiresAt: Date };
 
 export function generateOneTimeCode(): string {
-  const bytes = webcrypto.getRandomValues(new Uint8Array(CODE_LENGTH));
-  return Array.from(bytes, (byte) => ALPHABET[byte % ALPHABET.length]).join("");
+  const out: string[] = [];
+
+  // Draws a batch, keeps what is in range, and draws again if that was not
+  // enough. Each byte is kept with probability 250/256, so a second batch is
+  // needed roughly once in ten codes and a third essentially never.
+  while (out.length < CODE_LENGTH) {
+    const bytes = webcrypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+    for (const byte of bytes) {
+      if (byte >= UNBIASED_CEILING) continue;
+      out.push(ALPHABET[byte % ALPHABET.length]);
+      if (out.length === CODE_LENGTH) break;
+    }
+  }
+
+  return out.join("");
 }
 
 export async function claimMachineService(

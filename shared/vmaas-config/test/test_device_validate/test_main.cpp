@@ -44,12 +44,13 @@ void test_name_of_exactly_sixteen_chars_is_accepted()
     TEST_ASSERT_EQUAL_STRING("ABCDEFGHIJKLMNOP", r.config.name);
 }
 
-void test_port_out_of_range_is_rejected_and_default_kept()
+void test_timing_above_its_ceiling_is_rejected_and_default_kept()
 {
-    const DeviceParseResult r = parse_device_config(R"({"backend": {"mqtt_port": 70000}})");
+    // 600000 ms is the ceiling; one above it must not be accepted.
+    const DeviceParseResult r = parse_device_config(R"({"timings": {"slot_entry_timeout_ms": 600001}})");
     TEST_ASSERT_FALSE(r.ok);
-    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::OutOfRange, "backend.mqtt_port"));
-    TEST_ASSERT_EQUAL_UINT16(8883, r.config.mqtt_port);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::OutOfRange, "timings.slot_entry_timeout_ms"));
+    TEST_ASSERT_EQUAL_UINT32(10000, r.config.slot_entry_timeout_ms);
 }
 
 void test_zero_timing_is_rejected_and_default_kept()
@@ -71,10 +72,10 @@ void test_long_timing_field_path_is_not_truncated()
 
 void test_wrong_type_is_rejected_and_default_kept()
 {
-    const DeviceParseResult r = parse_device_config(R"({"backend": {"mqtt_port": "8883"}})");
+    const DeviceParseResult r = parse_device_config(R"({"timings": {"slot_entry_timeout_ms": "8000"}})");
     TEST_ASSERT_FALSE(r.ok);
-    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::WrongType, "backend.mqtt_port"));
-    TEST_ASSERT_EQUAL_UINT16(8883, r.config.mqtt_port);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::WrongType, "timings.slot_entry_timeout_ms"));
+    TEST_ASSERT_EQUAL_UINT32(10000, r.config.slot_entry_timeout_ms);
 }
 
 void test_section_of_wrong_type_is_reported_once()
@@ -91,7 +92,7 @@ void test_malformed_json_still_yields_defaults()
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_EQUAL_UINT32(20, r.config.keypad_debounce_ms);
-    TEST_ASSERT_EQUAL_UINT16(8883, r.config.mqtt_port);
+    TEST_ASSERT_EQUAL_STRING("", r.config.api_base_url);
 }
 
 void test_nullptr_is_safe()
@@ -134,7 +135,7 @@ void test_issue_list_saturates_without_overflowing()
     // Twelve bad fields, room for eight issues.
     const DeviceParseResult r = parse_device_config(R"({
         "device":  { "name": 1, "machine_id": 2 },
-        "backend": { "mqtt_host": 3, "client_id": 4, "mqtt_port": 0 },
+        "backend": { "api_base_url": 3 },
         "timings": { "keypad_debounce_ms": 0, "slot_entry_timeout_ms": 0,
                      "slot_entry_result_hold_ms": 0 }
     })");
@@ -147,10 +148,10 @@ void test_issue_list_saturates_without_overflowing()
 // undefined behaviour, not a wrap-around. The range test has to run first.
 void test_astronomical_number_is_rejected_before_any_cast()
 {
-    const DeviceParseResult r = parse_device_config(R"({"backend": {"mqtt_port": 1e300}})");
+    const DeviceParseResult r = parse_device_config(R"({"timings": {"slot_entry_timeout_ms": 1e300}})");
     TEST_ASSERT_FALSE(r.ok);
-    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::OutOfRange, "backend.mqtt_port"));
-    TEST_ASSERT_EQUAL_UINT16(8883, r.config.mqtt_port);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::OutOfRange, "timings.slot_entry_timeout_ms"));
+    TEST_ASSERT_EQUAL_UINT32(10000, r.config.slot_entry_timeout_ms);
 }
 
 // 1e400 overflows double itself, so cJSON yields infinity.
@@ -166,7 +167,7 @@ int main(int, char**)
     UNITY_BEGIN();
     RUN_TEST(test_over_long_name_is_rejected_and_default_kept);
     RUN_TEST(test_name_of_exactly_sixteen_chars_is_accepted);
-    RUN_TEST(test_port_out_of_range_is_rejected_and_default_kept);
+    RUN_TEST(test_timing_above_its_ceiling_is_rejected_and_default_kept);
     RUN_TEST(test_zero_timing_is_rejected_and_default_kept);
     RUN_TEST(test_long_timing_field_path_is_not_truncated);
     RUN_TEST(test_wrong_type_is_rejected_and_default_kept);

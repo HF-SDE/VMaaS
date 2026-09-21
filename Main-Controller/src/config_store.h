@@ -13,6 +13,19 @@ namespace config_store
     constexpr const char* PARTITION_LABEL = "storage";              ///< Name in partitions.csv.
     constexpr const char* CONFIG_PATH     = "/storage/config.json"; ///< Device configuration file.
 
+    /**
+     * @brief Optional trust anchor for the API, if it is not behind a public root.
+     *
+     * Absent on a production unit, where esp_crt_bundle's Mozilla roots verify
+     * the API host. Present on a bench or on-premise deployment whose API is
+     * served by a private CA - the local dev stack's nginx is exactly that.
+     *
+     * It lives on the filesystem rather than in the firmware because it is
+     * per-deployment data, the same as backend.api_base_url beside it: pointing
+     * a machine at a different environment should not need a new build.
+     */
+    constexpr const char* API_CA_PATH     = "/storage/api_ca.pem";
+
     /// Largest config.json accepted, in bytes including the NUL. Bigger files are rejected.
     constexpr size_t MAX_CONFIG_BYTES = 2048;
 
