@@ -30,4 +30,29 @@ namespace Config
 
     /// Priority of the keypad scan task. Above the idle work, below the UART.
     constexpr int keypad_task_priority = 5;
+
+    /// MQTT keepalive towards the broker, in seconds.
+    ///
+    /// EMQX declares a client dead at 1.5x the keepalive, which is how long a
+    /// machine that dropped ungracefully - yanked power, dead access point,
+    /// no DISCONNECT sent - keeps reading Online in the admin UI. 30 s puts
+    /// that at roughly 45 s instead of the three minutes esp-mqtt's default of
+    /// 120 would give, and costs one small packet every 15 s, since the client
+    /// talks at half the interval it is given.
+    constexpr int broker_keepalive_s = 30;
+
+    /// Stack for the one-shot broker connect task in bytes. It runs SNTP and
+    /// the esp-mqtt setup, then exits; the TLS handshake itself happens on
+    /// esp-mqtt's own task, not this one.
+    constexpr int broker_task_stack = 4096;
+
+    /// Priority of the broker connect task. Below the keypad: it spends its
+    /// life in vTaskDelay and must never delay a key press.
+    constexpr int broker_task_priority = 4;
+
+    /// How long to wait for the first SNTP answer, in milliseconds.
+    constexpr uint32_t broker_sntp_timeout_ms = 10000;
+
+    /// Gap before retrying the clock when SNTP did not answer, in milliseconds.
+    constexpr uint32_t broker_clock_retry_ms = 30000;
 }

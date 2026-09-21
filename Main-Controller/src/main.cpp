@@ -17,6 +17,7 @@
 #include "slot_entry.h"
 #include "activation.h"
 #include "onboarding.h"
+#include "broker_client.h"
 
 namespace
 {
@@ -219,6 +220,8 @@ extern "C" void app_main()
     {
         ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
     }
+
+    broker_client::start();
 
     show_prompt();
 

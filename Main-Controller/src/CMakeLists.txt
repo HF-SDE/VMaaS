@@ -24,6 +24,9 @@ idf_component_register(
         esp_http_client
         espressif__cjson   # cJSON (a managed component since ESP-IDF 6)
 
+        # The broker connection the admin UI reads Online/Offline from.
+        espressif__mqtt
+
         # Storage and peripherals.
         esp_partition
         spi_flash
