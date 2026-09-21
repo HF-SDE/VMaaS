@@ -30,7 +30,12 @@ services:
     env_file:
       - ../config/environment-variables/.env.backend.dev
     environment:
-      FRONTEND_URL: http://localhost,http://localhost:3000
+      # Overrides the env_file value — `environment:` wins in Compose. Both
+      # origins are allowed for CORS; the FIRST is canonical, i.e. what every
+      # backend-built link points at (Stripe redirects, invitation emails).
+      # `next dev` on the host is first because that is how the frontend is run
+      # today; put http://localhost first if you serve it through nginx instead.
+      FRONTEND_URL: http://localhost:3000,http://localhost
       BETTER_AUTH_URL: http://localhost
       MQTT_URL: mqtts://emqx:8884
       MQTT_PUBLIC_HOST: localhost

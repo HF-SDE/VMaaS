@@ -13,7 +13,9 @@ const schema = z.object({
   BETTER_AUTH_SECRET: z.string().min(1, { message: "BETTER_AUTH_SECRET is required" }),
   GITHUB_CLIENT_ID: z.string().min(1, { message: "GITHUB_CLIENT_ID is required" }).optional(),
   GITHUB_CLIENT_SECRET: z.string().min(1, { message: "GITHUB_CLIENT_SECRET is required" }).optional(),
-  /** One or more browser origins, comma separated. See lib/frontend-origins.ts. */
+  /** One or more browser origins, comma separated — the CORS and Better Auth
+   *  allow-list. It is an **array**: to build a link use `config.APP_URL`
+   *  below, never this. See lib/frontend-origins.ts. */
   FRONTEND_URL: z.string().default("http://localhost:3000").transform(parseFrontendOrigins),
   RATE_LIMIT_RESET_MINUTES: z.coerce.number().int().positive().default(5),
   RATE_LIMIT_COUNT: z.coerce.number().int().positive().default(1000),
@@ -76,5 +78,12 @@ const schema = z.object({
 
 export const config = (() => {
   const parsed = schema.parse(process.env);
-  return { ...parsed };
+  return {
+    ...parsed,
+    /** The one origin every link this backend hands out is built from — Stripe
+     *  redirects, invitation emails. `FRONTEND_URL` is the allow-list and may
+     *  hold several origins; interpolating that array into a template literal
+     *  joins it with commas and produces a URL no browser can follow. */
+    APP_URL: parsed.FRONTEND_URL[0],
+  };
 })();

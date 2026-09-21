@@ -12,6 +12,9 @@ export default defineConfig({
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
       BETTER_AUTH_URL: "http://localhost:5000",
       BETTER_AUTH_SECRET: "test-secret-value",
+      // Two origins, as docker-compose supplies. Links built from the config
+      // must pick one rather than stringifying the list.
+      FRONTEND_URL: "http://localhost:3000,http://localhost",
       MQTT_INTERNAL_SECRET: "test-internal-secret-value",
       MQTT_PASSWORD: "test-mqtt-password-value",
       EMQX_API_KEY: "test-emqx-api-key",

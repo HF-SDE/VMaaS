@@ -90,7 +90,10 @@ describe("createBillingPortalSession — the session", () => {
   it("sends the customer back to the account page when they are done", async () => {
     await createBillingPortalSession(TENANT);
 
-    expect(sentToStripe().return_url).toContain("/account");
+    // Exact, not `toContain`: `FRONTEND_URL` is the list of allowed origins,
+    // and interpolating the list would produce a comma-joined URL that still
+    // ends in `/account` but that no browser can follow.
+    expect(sentToStripe().return_url).toBe("http://localhost:3000/account");
   });
 
   it("reports a Stripe failure rather than throwing", async () => {
