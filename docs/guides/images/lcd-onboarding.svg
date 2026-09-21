@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 552 595" width="552" height="595" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="552" height="595" fill="#ffffff"/>
+  <text x="20" y="32" font-size="15" font-weight="600" fill="#0f172a">Setup screens on the 16 x 2 display</text>
+  <rect x="20" y="60" width="236" height="74" rx="6" fill="#0050ff" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="92" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">VMaaS-0042      </text>
+  <text x="34" y="118" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">PIN 1234 5678   </text>
+  <text x="20" y="154" font-size="12" font-weight="600" fill="#0f172a">Power on, first 5 seconds</text>
+  <text x="20" y="170" font-size="11" fill="#475569">The name the phone app shows, and the PIN.</text>
+  <rect x="296" y="60" width="236" height="74" rx="6" fill="#0050ff" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="92" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">VMaaS-0042      </text>
+  <text x="310" y="118" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">* = manual setup</text>
+  <text x="296" y="154" font-size="12" font-weight="600" fill="#0f172a">Power on, next 3 seconds</text>
+  <text x="296" y="170" font-size="11" fill="#475569">Row 1 alternates between these two.</text>
+  <rect x="20" y="196" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="228" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">Select network  </text>
+  <text x="34" y="254" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">[HomeWiFi]      </text>
+  <text x="20" y="290" font-size="12" font-weight="600" fill="#0f172a">Network list, after pressing *</text>
+  <text x="20" y="306" font-size="11" fill="#475569">1 and 3 move, 5 chooses.</text>
+  <rect x="296" y="196" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="228" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">SSID            </text>
+  <text x="310" y="254" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">[a]b c d e f g h</text>
+  <text x="296" y="290" font-size="12" font-weight="600" fill="#0f172a">Manual SSID entry</text>
+  <text x="296" y="306" font-size="11" fill="#475569">Only via the [Enter manually] row.</text>
+  <rect x="20" y="332" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="364" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">*****t          </text>
+  <text x="34" y="390" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">a b[c]d e f g h </text>
+  <text x="20" y="426" font-size="12" font-weight="600" fill="#0f172a">Password entry</text>
+  <text x="20" y="442" font-size="11" fill="#475569">Masked except the character just typed.</text>
+  <rect x="296" y="332" width="236" height="74" rx="6" fill="#ffc800" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="364" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#3a2c00">Connecting...   </text>
+  <text x="310" y="390" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#3a2c00">HomeWiFi        </text>
+  <text x="296" y="426" font-size="12" font-weight="600" fill="#0f172a">Connecting, up to 15 seconds</text>
+  <text x="296" y="442" font-size="11" fill="#475569">Keys do nothing on this screen.</text>
+  <rect x="20" y="468" width="236" height="74" rx="6" fill="#ff0000" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="500" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">Wrong password  </text>
+  <text x="34" y="526" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">5=retry  *=back </text>
+  <text x="20" y="562" font-size="12" font-weight="600" fill="#0f172a">Wrong password</text>
+  <text x="20" y="578" font-size="11" fill="#475569">The credentials are discarded.</text>
+  <rect x="296" y="468" width="236" height="74" rx="6" fill="#00ff00" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="500" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#063a06">WiFi connected  </text>
+  <text x="310" y="526" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#063a06">HomeWiFi        </text>
+  <text x="296" y="562" font-size="12" font-weight="600" fill="#0f172a">Done, 2 seconds</text>
+  <text x="296" y="578" font-size="11" fill="#475569">Then the sales loop starts.</text>
+</svg>

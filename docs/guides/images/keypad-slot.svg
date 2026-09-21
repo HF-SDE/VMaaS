@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 352" width="560" height="352" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="560" height="352" fill="#ffffff"/>
+  <text x="14" y="28" font-size="15" font-weight="600" fill="#0f172a">Sales loop: pick a slot</text>
+  <rect x="14" y="46" width="274" height="290" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="24" y="56" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="63" y="84" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">1</text>
+  <text x="63" y="104" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="112" y="56" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="151" y="84" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">2</text>
+  <text x="151" y="104" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="200" y="56" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="239" y="84" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">3</text>
+  <text x="239" y="104" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="24" y="126" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="63" y="154" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">4</text>
+  <text x="63" y="174" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="112" y="126" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="151" y="154" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">5</text>
+  <text x="151" y="174" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="200" y="126" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="239" y="154" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">6</text>
+  <text x="239" y="174" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="24" y="196" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="63" y="224" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">7</text>
+  <text x="63" y="244" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="112" y="196" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="151" y="224" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">8</text>
+  <text x="151" y="244" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="200" y="196" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="239" y="224" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">9</text>
+  <text x="239" y="244" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="24" y="266" width="78" height="60" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="63" y="294" text-anchor="middle" font-size="21" font-weight="600" fill="#7f1d1d">*</text>
+  <text x="63" y="314" text-anchor="middle" font-size="9.5" fill="#7f1d1d">delete</text>
+  <rect x="112" y="266" width="78" height="60" rx="8" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="151" y="294" text-anchor="middle" font-size="21" font-weight="600" fill="#1e293b">0</text>
+  <text x="151" y="314" text-anchor="middle" font-size="9.5" fill="#1e293b">digit</text>
+  <rect x="200" y="266" width="78" height="60" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="239" y="294" text-anchor="middle" font-size="21" font-weight="600" fill="#14532d">#</text>
+  <text x="239" y="314" text-anchor="middle" font-size="9.5" fill="#14532d">confirm</text>
+  <rect x="308" y="60" width="15" height="15" rx="4" fill="#e2e8f0" stroke="#64748b" stroke-width="1.5"/>
+  <text x="331" y="72" font-size="11.5" fill="#334155">0 to 9  digits of the slot number</text>
+  <text x="331" y="87" font-size="11.5" fill="#334155">Two digits at most</text>
+  <rect x="308" y="105" width="15" height="15" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="331" y="117" font-size="11.5" fill="#334155">* deletes the last digit</text>
+  <text x="331" y="132" font-size="11.5" fill="#334155">Cancels when the entry is empty</text>
+  <rect x="308" y="150" width="15" height="15" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="331" y="162" font-size="11.5" fill="#334155"># confirms the slot</text>
+  <text x="331" y="177" font-size="11.5" fill="#334155">Cancels when the entry is empty</text>
+</svg>
