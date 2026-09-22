@@ -4,6 +4,7 @@ import { customSession } from "better-auth/plugins";
 
 import { getTenantSubscription } from "../api/services/subscriptions.service";
 import { config } from "./config";
+import { sendPasswordResetEmail, sendVerifyEmail } from "./emails";
 import { multiTenant } from "./plugins/multi-tenant";
 import { prisma } from "./prisma";
 import { getUserInvites, getUserPermissions, isTenantOwner, listTenantsForUser } from "./rbac";
@@ -22,12 +23,32 @@ if (github.clientId && github.clientSecret) {
   };
 }
 
+/** Lifetime of a password reset link, in seconds. Also printed in the email. */
+const RESET_PASSWORD_TOKEN_TTL_SECONDS = 60 * 60;
+
 const options = {
   secret: config.BETTER_AUTH_SECRET,
   trustedOrigins: config.FRONTEND_URL,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   advanced: { database: { generateId: "uuid" } },
-  emailAndPassword: { enabled: true },
+  emailAndPassword: {
+    enabled: true,
+    resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      void sendPasswordResetEmail(user.email, {
+        resetUrl: url,
+        expiresInMinutes: RESET_PASSWORD_TOKEN_TTL_SECONDS / 60,
+      });
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      void sendVerifyEmail(user.email, { verifyUrl: url });
+    },
+  },
   plugins: [multiTenant()],
   socialProviders,
   user: { additionalFields: { isSuperAdmin: { type: "boolean", defaultValue: false, input: false } } },

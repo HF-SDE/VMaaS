@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "docker:dev": "docker compose --env-file ../config/environment-variables/.env.backend.dev -f ../docker/docker-compose.yml up -d backend emqx stripe-cli && docker image prune -f",
     "build": "tsc && tsc-alias",
-    "start": "node dist/index.js",
+    "start": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

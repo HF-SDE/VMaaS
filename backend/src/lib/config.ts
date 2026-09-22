@@ -39,6 +39,7 @@ const schema = z.object({
   }),
   /** Resend API key. Optional on purpose: without it `lib/emails` logs the
    *  message instead of sending it, so onboarding still works end-to-end on a
+   *  machine without mail credentials. */
   RESEND_API_KEY: z.string().min(1).optional(),
   /** The From: address on transactional mail. Must be a domain verified in
    *  Resend, or the send is rejected. */
