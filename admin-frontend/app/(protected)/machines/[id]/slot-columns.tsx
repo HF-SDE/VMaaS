@@ -31,9 +31,13 @@ import type { SlotProduct } from "@vmaas/shared/types/slot"
 
 import { EditSlotForm } from "./slot-form"
 
-/** One row of the slots table — a slot with the product loaded in it, as
- *  `GET /api/slots` returns it. */
-export type SlotListItem = Slot & { product: SlotProduct }
+/** One row of the slots table, as `GET /api/slots` returns it.
+ *
+ *  `product` is nullable because `Slot.productId` is: a slot exists as soon as
+ *  a machine has a layout, and stays empty until someone decides what goes in
+ *  it. A freshly claimed machine is all empty slots, so this is the first thing
+ *  a new customer sees — not an edge case. */
+export type SlotListItem = Slot & { product: SlotProduct | null }
 
 function SlotActionsCell({ slot }: { slot: SlotListItem }) {
   const [editOpen, setEditOpen] = React.useState(false)
@@ -53,11 +57,13 @@ function SlotActionsCell({ slot }: { slot: SlotListItem }) {
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
               Edit slot
             </DropdownMenuItem>
-            <DropdownMenuItem
-              render={
-                <Link href={`/products/${slot.product.id}`}>View product</Link>
-              }
-            />
+            {slot.product && (
+              <DropdownMenuItem
+                render={
+                  <Link href={`/products/${slot.product.id}`}>View product</Link>
+                }
+              />
+            )}
             <DropdownMenuItem
               onClick={() => navigator.clipboard.writeText(slot.id)}
             >
@@ -75,12 +81,14 @@ function SlotActionsCell({ slot }: { slot: SlotListItem }) {
           <DialogHeader>
             <DialogTitle>Edit slot {slot.slotNumber}</DialogTitle>
             <DialogDescription>
-              Change what slot {slot.slotNumber} holds of {slot.product.name},
-              how much fits, and what it costs.
+              {slot.product
+                ? `Change how much of ${slot.product.name} fits in slot ${slot.slotNumber}, and what it costs.`
+                : `Slot ${slot.slotNumber} is empty. Set how much fits and what it costs.`}
             </DialogDescription>
           </DialogHeader>
           <EditSlotForm
             id={slot.id}
+            defaultProduct={slot.product}
             defaultValues={{
               quantity: slot.quantity,
               capacity: slot.capacity,
@@ -126,18 +134,21 @@ export const slotColumns: ColumnDef<DataTableFeatures, SlotListItem>[] = [
   },
   {
     id: "product",
-    accessorFn: (row) => row.product.name,
+    accessorFn: (row) => row.product?.name ?? "",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Product" />
     ),
-    cell: ({ row }) => (
-      <Link
-        href={`/products/${row.original.product.id}`}
-        className="font-medium hover:underline"
-      >
-        {row.original.product.name}
-      </Link>
-    ),
+    cell: ({ row }) =>
+      row.original.product ? (
+        <Link
+          href={`/products/${row.original.product.id}`}
+          className="font-medium hover:underline"
+        >
+          {row.original.product.name}
+        </Link>
+      ) : (
+        <span className="text-muted-foreground italic">Empty</span>
+      ),
   },
   {
     // Sorts on what is left in the slot rather than on how full it is: an empty

@@ -21,4 +21,13 @@ namespace Pins
     /// Front door lock relay. Free, and not a strapping pin, so it cannot
     /// disturb boot. See door_lock.h for the polarity.
     constexpr int DOOR_RELAY = 13;
+
+    /// HX-916 COIN, through a PC817 optocoupler. GPIO34-39 are input-only and
+    /// have no internal pull-up, which normally rules them out for an
+    /// open-collector input — but the optocoupler needs an external 10k
+    /// pull-up anyway, so the limitation costs nothing and a general-purpose
+    /// GPIO stays free.
+    constexpr int COIN_IN = 35;
+    /// HX-916 INHIBIT, if the harness exposes it. -1 disables the feature.
+    constexpr int INHIBIT_OUT = 13;
 }

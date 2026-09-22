@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "cash": {
+    "currency": "DKK",
+    "valueByPulses": { "1": 500, "2": 1000, "3": 2000 },
+    "activeLow": true,
+    "minPulseMs": 15,
+    "trainGapMs": 250,
+    "paymentTimeoutMs": 60000,
+    "hasInhibit": false
+  },
+  "prices": [
+    { "slot": 1, "priceMinor": 1500 },
+    { "slot": 2, "priceMinor": 2000 },
+    { "slot": 3, "priceMinor": 500 },
+    { "slot": 4, "priceMinor": 1000 }
+  ]
+}

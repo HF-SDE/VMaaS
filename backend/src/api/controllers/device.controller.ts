@@ -64,6 +64,8 @@ export async function postDeviceEventController(req: Request, res: Response) {
   if (error) {
     const reason = error.reason;
     switch (reason) {
+      case "CASH_SALE_PAYLOAD_INVALID":
+        return res.status(422).json({ error: error.message }).end();
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while storing the event" }).end();
       default:

@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include "activation.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -63,6 +64,10 @@ namespace
             s_connected = true;
             s_backoff_ms = BACKOFF_MIN_MS;
             ESP_LOGI(TAG, "connected, ip " IPSTR, IP2STR(&e->ip_info.ip));
+
+            if (activation::sync_time(5000) != ESP_OK) {
+                ESP_LOGW(TAG, "time sync failed; sales will carry uptime instead of a timestamp");
+            }
         }
     }
 }

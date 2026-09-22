@@ -8,10 +8,14 @@ import {
   PRODUCT_SORT_FIELDS,
   type ProductSortField,
   type ProductUsage,
+  type SimpleProduct,
+  type SimpleProductSearchParams,
 } from "@vmaas/shared/types/product";
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 25;
 const DEFAULT_SORT_BY: ProductSortField = "createdAt";
 const DEFAULT_SORT_ORDER = "desc" as const;
 
@@ -103,6 +107,45 @@ export async function getProductsPageService(
     });
   } catch (error) {
     return unknownError("listing", error);
+  }
+}
+
+/**
+ * A short list of matching products for a picker — id, name and price only.
+ *
+ * Deliberately not a page: a picker shows the first handful and asks the user to
+ * type more, so there is no count to run and no offset to carry. `limit` is
+ * clamped rather than rejected for the same reason the paginated list clamps.
+ *
+ * Archived products are left out with no way to ask for them: a picker exists to
+ * choose a product to *use*, and one taken out of service is not a choice.
+ *
+ * The `price` is stringified here rather than left as a `Decimal`, so the type
+ * the client is handed matches what `JSON.stringify` would have made of it
+ * anyway.
+ */
+export async function simpleProductSearchService(
+  tenantId: string,
+  params: SimpleProductSearchParams,
+): Promise<Result<UnknownProductError, SimpleProduct[]>> {
+  const search = params.search.trim();
+  const limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(params.limit ?? DEFAULT_SEARCH_LIMIT)));
+
+  try {
+    const products = await prisma.product.findMany({
+      where: {
+        tenantId,
+        archivedAt: null,
+        name: { contains: search, mode: "insensitive" },
+      },
+      select: { id: true, name: true, price: true },
+      orderBy: { name: "asc" },
+      take: limit,
+    });
+
+    return ok(products.map((product) => ({ ...product, price: product.price.toString() })));
+  } catch (error) {
+    return unknownError("searching", error);
   }
 }
 

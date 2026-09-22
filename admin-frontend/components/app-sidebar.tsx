@@ -55,7 +55,6 @@ import { UserAvatarProps, UserAvatar } from "./user-avatar"
 import { useSession } from "@/lib/session-provider"
 import { TeamSwitcher } from "./team-switcher"
 import { PermissionKey } from "@vmaas/shared/types"
-import { subscription_status } from "@prisma"
 import { Badge } from "./ui/badge"
 
 interface NavItem {
@@ -341,7 +340,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <h1 className="text-lg font-bold">VMaaS</h1>
           </Link>
           <Link href="/account" className="flex h-max items-center gap-2">
-            {subscriptionStatus === subscription_status.trialing && (
+            {subscriptionStatus === "trialing" && (
               <Badge variant="outline" className="text-xs outline-1">
                 Trial
               </Badge>

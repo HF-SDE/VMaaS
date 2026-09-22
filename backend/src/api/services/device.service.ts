@@ -1,6 +1,8 @@
 import { type Result, err, ok } from "@vmaas/shared/lib";
+import { cashSalePayloadSchema } from "@vmaas/shared/schemas";
 
 import type { MachineContext } from "@/api/middleware/require-machine";
+import { Prisma } from "@/generated/prisma/client";
 import { config } from "@/lib/config";
 import { type CertificateAuthority, signDeviceCsr } from "@/lib/pki";
 
@@ -14,6 +16,7 @@ export type ConfigurationNotFound = { reason: "CONFIGURATION_NOT_FOUND"; message
 export type CommandNotFound = { reason: "COMMAND_NOT_FOUND"; message: string };
 export type CsrRejected = { reason: "CSR_REJECTED"; message: string };
 export type UnknownDeviceError = { reason: "UNKNOWN_ERROR"; message: string };
+export type CashSalePayloadInvalid = { reason: "CASH_SALE_PAYLOAD_INVALID"; message: string };
 
 export type DeviceDb = {
   machineConfiguration: { findFirst(args: unknown): Promise<unknown> };
@@ -27,6 +30,12 @@ export type DeviceDb = {
   };
   machineCertificate: {
     create(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  sale: { create(args: unknown): Promise<unknown> };
+  inventoryMovement: { create(args: unknown): Promise<unknown> };
+  slot: {
+    findFirst(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
   };
   $transaction<T>(fn: (tx: any) => Promise<T>, options?: unknown): Promise<T>;
@@ -141,9 +150,110 @@ export async function recordDeviceEventService(
     payload: Record<string, unknown>;
     eventId?: string;
     sequenceNumber?: number;
-    occurredAt: string;
+    occurredAt?: string;
+    uptimeMs?: number;
   },
-): Promise<Result<UnknownDeviceError, { stored: boolean }>> {
+): Promise<
+  Result<
+    UnknownDeviceError | CashSalePayloadInvalid,
+    { stored: boolean } | { saleId: string; duplicate: false } | { duplicate: true }
+  >
+> {
+  const occurredAt =
+    input.occurredAt !== undefined
+      ? new Date(input.occurredAt)
+      : new Date(Date.now() - (input.uptimeMs ?? 0));
+  if (input.type === "cash_sale") {
+    const parsed = cashSalePayloadSchema.safeParse(input.payload);
+    if (!parsed.success) {
+      return err({
+        reason: "CASH_SALE_PAYLOAD_INVALID",
+        message: `cash_sale payload rejected: ${parsed.error.message}`,
+      });
+    }
+
+    const cash = parsed.data;
+    const priceMajor = new Prisma.Decimal(cash.price_minor).div(100);
+
+    try {
+      return ok(
+        await db.$transaction(async (tx) => {
+          try {
+            await tx.machineEvent.create({
+              data: {
+                machineId: machine.id,
+                tenantId: machine.tenantId,
+                type: input.type,
+                payload: input.payload,
+                eventId: input.eventId,
+                sequenceNumber: input.sequenceNumber,
+                occurredAt,
+              },
+            });
+          } catch (cause) {
+            // eventId is @unique precisely so a replayed offline queue is
+            // recognised. Answering anything but success here would jam the
+            // device's queue behind a sale that is already booked. Checked
+            // against meta.target rather than the P2002 code alone, so a
+            // future unique index on this table is never silently mistaken
+            // for "already booked" — which would drop the event with no
+            // error, no sale and no trace.
+            const prismaError = cause as { code?: string; meta?: { target?: unknown } };
+            const target = prismaError.meta?.target;
+            const hitsEventId = Array.isArray(target) ? target.includes("eventId") : target === "eventId";
+            if (prismaError.code === "P2002" && hitsEventId) {
+              return { duplicate: true as const };
+            }
+            throw cause;
+          }
+
+          const slot = (await tx.slot.findFirst({
+            where: { machineId: machine.id, slotNumber: cash.slot },
+            select: { id: true, productId: true },
+          })) as { id: string; productId: string | null } | null;
+
+          const sale = (await tx.sale.create({
+            data: {
+              tenantId: machine.tenantId,
+              machineId: machine.id,
+              productId: slot?.productId ?? null,
+              status: cash.status,
+              price: priceMajor,
+              completedAt: cash.status === "completed" ? occurredAt : null,
+            },
+          })) as { id: string };
+          
+          if (cash.status === "completed" && slot) {
+            await tx.slot.update({
+              where: { id: slot.id },
+              data: { quantity: { decrement: 1 } },
+            });
+          }
+
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId: machine.tenantId,
+              slotId: slot?.id ?? null,
+              type: cash.status === "completed" ? "sale" : "dispense_failure",
+              quantity: cash.status === "completed" ? -1 : 0,
+              saleId: sale.id,
+              note: cash.reason ?? null,
+              occurredAt,
+            },
+          });
+
+          return { saleId: sale.id, duplicate: false as const };
+        }),
+      );
+    } catch (cause) {
+      console.error("[device.service] recording the cash sale failed", cause);
+      return err({
+        reason: "UNKNOWN_ERROR",
+        message: cause instanceof Error ? cause.message : "Unknown error while recording the cash sale.",
+      });
+    }
+  }
+
   try {
     await db.machineEvent.create({
       data: {
@@ -153,7 +263,7 @@ export async function recordDeviceEventService(
         payload: input.payload,
         eventId: input.eventId ? `${machine.id}:${input.eventId}` : undefined,
         sequenceNumber: input.sequenceNumber,
-        occurredAt: new Date(input.occurredAt),
+        occurredAt,
       },
     });
 

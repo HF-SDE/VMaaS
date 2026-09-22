@@ -6,14 +6,11 @@
 #include <ctime>
 
 #include "cJSON.h"
-#include "config_store.h"
-#include "esp_crt_bundle.h"
-#include "esp_http_client.h"
+#include "device_api.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "storage.h"
 
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_csr.h"
@@ -45,9 +42,6 @@ namespace
     constexpr size_t CSR_PEM_LEN  = 1024;
     constexpr size_t REQ_LEN      = 2048;
     constexpr size_t RESP_LEN     = 8192;
-
-    /// One PEM certificate with room to spare.
-    constexpr size_t CA_PEM_LEN   = 2560;
 
     /// "CN=" plus an id, so the two cannot drift apart.
     constexpr size_t SUBJECT_LEN = activation::ID_MAX + 4;
@@ -272,10 +266,8 @@ namespace activation
         mbedtls_pk_init(&key);
 
         Result result = Result::Unreachable;
-        esp_http_client_handle_t client = nullptr;
 
         auto finish = [&](Result r) {
-            if (client != nullptr) esp_http_client_cleanup(client);
             mbedtls_pk_free(&key);
             std::free(resp);
             std::free(req_body);
@@ -308,58 +300,12 @@ namespace activation
         char url[192];
         std::snprintf(url, sizeof(url), "%s/device/activate", api_base_url);
 
-        esp_http_client_config_t cfg = {};
-        cfg.url = url;
-        cfg.method = HTTP_METHOD_POST;
-        cfg.timeout_ms = 15000;
+  
+        device_api::Response r{};
+        esp_err_t err = device_api::post_json(url, req_body, resp, RESP_LEN, r);
+        if (err != ESP_OK) return finish(Result::Unreachable);
 
-        static char ca_pem[CA_PEM_LEN];
-        const int ca_len = vmaas::fs::read_text_file(config_store::API_CA_PATH, ca_pem, sizeof(ca_pem));
-        if (ca_len > 0)
-        {
-            ESP_LOGW(TAG, "verifying the API against the private CA in %s (%d bytes), not the bundle", config_store::API_CA_PATH, ca_len);
-            cfg.cert_pem = ca_pem;
-        }
-        else
-        {
-            cfg.crt_bundle_attach = esp_crt_bundle_attach;
-        }
-
-        client = esp_http_client_init(&cfg);
-        if (client == nullptr)
-        {
-            ESP_LOGE(TAG, "http_client_init failed");
-            return finish(Result::Unreachable);
-        }
-
-        esp_http_client_set_header(client, "Content-Type", "application/json");
-        esp_http_client_set_post_field(client, req_body, static_cast<int>(std::strlen(req_body)));
-
-        esp_err_t err = esp_http_client_open(client, static_cast<int>(std::strlen(req_body)));
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "cannot open %s: %s", url, esp_err_to_name(err));
-            return finish(Result::Unreachable);
-        }
-
-        const int written = esp_http_client_write(client, req_body, static_cast<int>(std::strlen(req_body)));
-        if (written < 0)
-        {
-            ESP_LOGE(TAG, "write failed");
-            return finish(Result::Unreachable);
-        }
-
-        if (esp_http_client_fetch_headers(client) < 0)
-        {
-            ESP_LOGE(TAG, "fetch_headers failed");
-            return finish(Result::Unreachable);
-        }
-
-        const int status = esp_http_client_get_status_code(client);
-        const int read = esp_http_client_read_response(client, resp, RESP_LEN - 1);
-        if (read >= 0) resp[read] = '\0';
-
-        ESP_LOGI(TAG, "POST %s -> %d (%d bytes)", url, status, read);
+        const int status = r.status;
 
         if (status == 400)
         {

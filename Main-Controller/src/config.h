@@ -57,6 +57,24 @@ namespace Config
     /// Gap before retrying the clock when SNTP did not answer, in milliseconds.
     constexpr uint32_t broker_clock_retry_ms = 30000;
 
+    /// Stack for the outbox drain task in bytes. It runs a full mTLS POST
+    /// (handshake plus request/response) via device_api::drain_outbox_once(),
+    /// which alone wants roughly 8 KB, on top of that function's own
+    /// line[600]/resp[256] locals and post_json_mtls()'s url[256]. The only
+    /// other place in this firmware that has actually run an HTTPS POST -
+    /// activation - does it on app_main's CONFIG_ESP_MAIN_TASK_STACK_SIZE
+    /// (12288) stack, not a smaller dedicated task, so that is the one
+    /// figure this firmware has proven safe; matched here rather than
+    /// guessing a smaller number, per the prior stack overflow in activation
+    /// for exactly this reason.
+    constexpr int drain_task_stack = 12288;
+
+    /// Priority of the outbox drain task. Same footing as the broker connect
+    /// task: below the keypad, and it spends nearly all its life either in
+    /// vTaskDelay or blocked on an HTTPS round trip, so it must never
+    /// contend for the CPU during a live keypress or a coin-triggered sale.
+    constexpr int drain_task_priority = 4;
+
     /// Relay modules of this kind energise the coil when their input is pulled
     /// LOW. With fail-secure wiring the de-energised state is "locked", so a
     /// floating pin during boot, a reset and a brown-out all leave the door shut.
