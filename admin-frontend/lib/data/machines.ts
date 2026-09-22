@@ -10,7 +10,7 @@ export type Machine = {
   name: string
   siteId: string
   site: { id: string; name: string; city: string | null }
-  status: "online" | "offline" | "error"
+  status: "never_seen" | "online" | "offline" | "error"
   createdAt: string
 }
 

@@ -12,9 +12,11 @@ import { KpiCard } from "./card-container"
  * The badge beside the page title already carries the same state in
  * `STATUS_VARIANT`; repeating it here would be two of the same control, so the
  * card colours the word itself instead. Muted for offline on purpose — a
- * machine that is off is not a fault, only a fact.
+ * machine that is off is not a fault, only a fact. `never_seen` is muted
+ * further still: it reports an absence of news, not news.
  */
 const STATUS_TONE: Record<machine_status, string> = {
+  never_seen: "text-muted-foreground",
   online: "text-emerald-600 dark:text-emerald-400",
   offline: "text-red-600 dark:text-red-400",
   error: "text-destructive",

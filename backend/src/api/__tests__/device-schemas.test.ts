@@ -1,4 +1,4 @@
-import { deviceEventSchema } from "@vmaas/shared/schemas";
+import { deviceEventBatchSchema, deviceEventSchema } from "@vmaas/shared/schemas";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -43,8 +43,6 @@ describe("deviceEventSchema", () => {
     expect(body({ occurredAt: "2026-09-21T13:04:11Z", type: "" }).success).toBe(false);
   });
 });
-import { deviceEventBatchSchema, deviceEventSchema } from "@vmaas/shared/schemas";
-import { describe, expect, it } from "vitest";
 
 /**
  * The batch schema a machine's offline journal drains through. Spec §10

@@ -257,6 +257,8 @@ async function seedTenant(tenantNumber: number) {
     });
 
     for (let machineIndex = 0; machineIndex < 2; machineIndex++) {
+      const status = faker.helpers.arrayElement(["online", "online", "online", "offline", "error"] as const);
+
       const machine = await prisma.machine.create({
         data: {
           tenantId: tenant.id,
@@ -264,7 +266,8 @@ async function seedTenant(tenantNumber: number) {
           serialNumber: generateSerialNumber(),
           name: `VM-${faker.string.alphanumeric({ length: 5, casing: "upper" })}`,
           description: faker.company.catchPhrase(),
-          status: faker.helpers.arrayElement(["online", "online", "online", "offline", "error"]),
+          status,
+          lastConnectionEventAt: faker.date.recent({ days: 3 }),
         },
       });
 

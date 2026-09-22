@@ -20,16 +20,29 @@ export const commandResultSchema = z.object({
  * a record it may send on its own, which is what makes the sender's fallback
  * from a rejected batch to single posts safe.
  */
-const deviceEventBody = z.object({
-  // 64 matches the firmware's MAX_TYPE (32, including the NUL) with room to
-  // spare — the journal itself already refuses anything that would not fit.
-  type: z.string().trim().min(1, { message: "type is required" }).max(64, { message: "type is too long" }),
-  payload: z.record(z.string(), z.unknown()).default({}),
-  /** Device-supplied id, for deduplicating a replayed offline queue. */
-  eventId: z.string().trim().min(1).max(128).optional(),
-  sequenceNumber: z.coerce.number().int().nonnegative().optional(),
-  occurredAt: z.iso.datetime(),
-});
+const deviceEventBody = z
+  .object({
+    // 64 matches the firmware's MAX_TYPE (32, including the NUL) with room to
+    // spare — the journal itself already refuses anything that would not fit.
+    type: z.string().trim().min(1, { message: "type is required" }).max(64, { message: "type is too long" }),
+    payload: z.record(z.string(), z.unknown()).default({}),
+    /** Device-supplied id, for deduplicating a replayed offline queue. */
+    eventId: z.string().trim().min(1).max(128).optional(),
+    sequenceNumber: z.coerce.number().int().nonnegative().optional(),
+    /**
+     * Absent when the device had no clock. An ESP32 has no battery-backed
+     * RTC, so a cold boot with no network cannot date its own sales — and a
+     * coin cannot be rolled back while it waits for one. `uptimeMs` then
+     * says how long before this request the sale happened, and the server
+     * dates it from receipt. An approximate timestamp is usable; a
+     * fabricated 1970 one is worse than none.
+     */
+    occurredAt: z.iso.datetime().optional(),
+    uptimeMs: z.coerce.number().int().nonnegative().optional(),
+  })
+  .refine((b) => b.occurredAt !== undefined || b.uptimeMs !== undefined, {
+    message: "either occurredAt or uptimeMs is required",
+  });
 
 export const deviceEventSchema = z.object({ body: deviceEventBody });
 
@@ -42,28 +55,6 @@ export const deviceEventBatchSchema = z.object({
   body: z.object({
     events: z.array(deviceEventBody).min(1, { message: "events must not be empty" }).max(50),
   }),
-export const deviceEventSchema = z.object({
-  body: z
-    .object({
-      type: z.string().trim().min(1, { message: "type is required" }),
-      payload: z.record(z.string(), z.unknown()).default({}),
-      /** Device-supplied id, for deduplicating a replayed offline queue. */
-      eventId: z.string().trim().min(1).max(128).optional(),
-      sequenceNumber: z.coerce.number().int().nonnegative().optional(),
-      /**
-       * Absent when the device had no clock. An ESP32 has no battery-backed
-       * RTC, so a cold boot with no network cannot date its own sales — and a
-       * coin cannot be rolled back while it waits for one. `uptimeMs` then
-       * says how long before this request the sale happened, and the server
-       * dates it from receipt. An approximate timestamp is usable; a
-       * fabricated 1970 one is worse than none.
-       */
-      occurredAt: z.iso.datetime().optional(),
-      uptimeMs: z.coerce.number().int().nonnegative().optional(),
-    })
-    .refine((b) => b.occurredAt !== undefined || b.uptimeMs !== undefined, {
-      message: "either occurredAt or uptimeMs is required",
-    }),
 });
 
 /**

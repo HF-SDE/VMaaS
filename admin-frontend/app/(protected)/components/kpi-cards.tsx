@@ -16,6 +16,7 @@ import {
   CardDescription,
   CardHeader,
 } from "@/components/ui/card"
+import { machineCounts } from "./machine-counts"
 import { RevenueSparkline } from "./revenue-chart"
 
 const money = new Intl.NumberFormat("en-GB", {
@@ -91,9 +92,7 @@ export async function KpiCards() {
   const lowStock = lowStockResult?.[1] ?? null
   const sales = salesResult?.[1] ?? null
 
-  const online = machines?.filter((m) => m.status === "online").length ?? 0
-  const offline = machines?.filter((m) => m.status === "offline").length ?? 0
-  const errored = machines?.filter((m) => m.status === "error").length ?? 0
+  const { online, offline, error: errored, neverSeen, needsService } = machineCounts(machines)
   const empty = lowStock?.filter((s) => s.quantity === 0).length ?? 0
 
   return (
@@ -121,14 +120,14 @@ export async function KpiCards() {
             value={machines ? online : NO_VALUE}
             hint={
               machines
-                ? `of ${machines.length} ${machines.length === 1 ? "machine" : "machines"}`
+                ? `of ${machines.length} ${machines.length === 1 ? "machine" : "machines"}${neverSeen > 0 ? ` · ${neverSeen} never seen` : ""}`
                 : "Couldn't load machines."
             }
             href="/machines"
           />
           <Kpi
             label="Needs service"
-            value={machines ? offline + errored : NO_VALUE}
+            value={machines ? needsService : NO_VALUE}
             hint={
               machines
                 ? `${offline} offline · ${errored} error`

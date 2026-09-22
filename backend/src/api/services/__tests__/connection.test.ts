@@ -153,6 +153,64 @@ describe("recordConnectionEventService", () => {
     });
   });
 
+  /**
+   * `never_seen` is the state a machine rests in until its certificate has ever
+   * reached the broker (see the backfill migration). It is never an INPUT here
+   * — only ever a prior state — so what these two pin down is that the service
+   * treats it as an ordinary status it may transition away from, and in
+   * particular that a machine's very first broker event is recorded as history
+   * rather than swallowed as a no-op.
+   */
+  it("writes online and a history event when a never-seen machine connects for the first time", async () => {
+    const { db, create, getRow } = fakeDb({
+      machine: { id: MACHINE, tenantId: TENANT, status: "never_seen", lastConnectionEventAt: null },
+    });
+
+    const [error, result] = await recordConnectionEventService(db, {
+      clientId: MACHINE,
+      status: "online",
+      occurredAt: T0,
+    });
+
+    expect(error).toBeNull();
+    expect(result?.applied).toBe(true);
+    expect(getRow()).toMatchObject({ status: "online", lastConnectionEventAt: T0 });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        machineId: MACHINE,
+        tenantId: TENANT,
+        type: CONNECTION_EVENT_TYPES.online,
+        payload: {},
+        occurredAt: T0,
+      },
+    });
+  });
+
+  it("writes offline and a history event when a never-seen machine's first event is a disconnect", async () => {
+    const { db, create, getRow } = fakeDb({
+      machine: { id: MACHINE, tenantId: TENANT, status: "never_seen", lastConnectionEventAt: null },
+    });
+
+    const [, result] = await recordConnectionEventService(db, {
+      clientId: MACHINE,
+      status: "offline",
+      occurredAt: T0,
+      reason: "tcp_closed",
+    });
+
+    expect(result?.applied).toBe(true);
+    expect(getRow()).toMatchObject({ status: "offline", lastConnectionEventAt: T0 });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        machineId: MACHINE,
+        tenantId: TENANT,
+        type: CONNECTION_EVENT_TYPES.offline,
+        payload: { reason: "tcp_closed" },
+        occurredAt: T0,
+      },
+    });
+  });
+
   it("writes offline with the disconnect reason when a currently-online machine disconnects", async () => {
     const { db, create, getRow } = fakeDb({
       machine: { id: MACHINE, tenantId: TENANT, status: "online", lastConnectionEventAt: null },

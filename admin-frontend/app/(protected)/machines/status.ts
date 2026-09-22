@@ -13,6 +13,7 @@ import type { machine_status } from "@prisma"
  * state differently.
  */
 export const STATUS_LABEL: Record<machine_status, string> = {
+  never_seen: "Never seen",
   online: "Online",
   offline: "Offline",
   error: "Error",
@@ -20,8 +21,9 @@ export const STATUS_LABEL: Record<machine_status, string> = {
 
 export const STATUS_VARIANT: Record<
   machine_status,
-  "default" | "secondary" | "destructive"
+  "default" | "secondary" | "destructive" | "outline"
 > = {
+  never_seen: "outline",
   online: "default",
   offline: "secondary",
   error: "destructive",

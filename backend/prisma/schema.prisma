@@ -272,6 +272,7 @@ model TrialGrant {
 }
 
 enum machine_status {
+  never_seen
   online
   offline
   error
@@ -406,7 +407,7 @@ model Machine {
   tenant                Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   name                  String
   description           String?
-  status                machine_status              @default(online)
+  status                machine_status              @default(never_seen)
   /// The broker connection event (`$events/client_connected`/`client_disconnected`)
   /// that most recently moved `status`, used as the ordering clock for
   /// out-of-order events — see connection.service.ts. Null until the first
