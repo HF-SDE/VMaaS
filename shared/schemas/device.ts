@@ -15,15 +15,48 @@ export const commandResultSchema = z.object({
 });
 
 export const deviceEventSchema = z.object({
-  body: z.object({
-    type: z.string().trim().min(1, { message: "type is required" }),
-    payload: z.record(z.string(), z.unknown()).default({}),
-    /** Device-supplied id, for deduplicating a replayed offline queue. */
-    eventId: z.string().trim().min(1).max(128).optional(),
-    sequenceNumber: z.coerce.number().int().nonnegative().optional(),
-    occurredAt: z.iso.datetime(),
-  }),
+  body: z
+    .object({
+      type: z.string().trim().min(1, { message: "type is required" }),
+      payload: z.record(z.string(), z.unknown()).default({}),
+      /** Device-supplied id, for deduplicating a replayed offline queue. */
+      eventId: z.string().trim().min(1).max(128).optional(),
+      sequenceNumber: z.coerce.number().int().nonnegative().optional(),
+      /**
+       * Absent when the device had no clock. An ESP32 has no battery-backed
+       * RTC, so a cold boot with no network cannot date its own sales — and a
+       * coin cannot be rolled back while it waits for one. `uptimeMs` then
+       * says how long before this request the sale happened, and the server
+       * dates it from receipt. An approximate timestamp is usable; a
+       * fabricated 1970 one is worse than none.
+       */
+      occurredAt: z.iso.datetime().optional(),
+      uptimeMs: z.coerce.number().int().nonnegative().optional(),
+    })
+    .refine((b) => b.occurredAt !== undefined || b.uptimeMs !== undefined, {
+      message: "either occurredAt or uptimeMs is required",
+    }),
 });
+
+/**
+ * The payload of a `cash_sale` device event. The device is the only writer, and
+ * it is offline-first: the line was formatted on flash possibly days before it
+ * arrives, so nothing here may be derived from the time of receipt.
+ *
+ * `receivedMinor` is what the customer actually put in. It is kept even though
+ * nothing sums it yet, because data not captured cannot be reconstructed later
+ * while a report can be built whenever someone wants one.
+ */
+export const cashSalePayloadSchema = z.object({
+  slot: z.coerce.number().int().min(1).max(32),
+  price_minor: z.coerce.number().int().nonnegative(),
+  received_minor: z.coerce.number().int().nonnegative(),
+  status: z.enum(["completed", "failed"]),
+  reason: z.string().trim().max(64).optional(),
+  currency: z.string().trim().length(3).default("DKK"),
+});
+
+export type CashSalePayload = z.infer<typeof cashSalePayloadSchema>;
 
 export const renewCertificateSchema = z.object({
   body: z.object({

@@ -18,6 +18,8 @@
 #include "activation.h"
 #include "onboarding.h"
 #include "broker_client.h"
+#include "device_api.h"
+#include "purchase_task.h"
 
 namespace
 {
@@ -88,6 +90,7 @@ namespace
         if (motor_error_shown) return;
 
         motor_error_shown = true;
+        purchase_task::set_motor_fault(true);
         ESP_LOGE(TAG, "Motorcontrol has no valid slot configuration, showing error screen");
         show_rows(ERROR_ROW0, ERROR_ROW1);
         if (backlight_ok) {
@@ -100,6 +103,9 @@ namespace
         if (!motor_error_shown) return;
 
         motor_error_shown = false;
+        // purchase_task resynchronises its own display state on the next
+        // tick() once this is cleared; see set_motor_fault()'s doc comment.
+        purchase_task::set_motor_fault(false);
         ESP_LOGI(TAG, "Motorcontrol back to normal, restoring display");
         if (backlight_ok) {
             log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
@@ -126,6 +132,12 @@ namespace
             {
                 std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
                 ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
+
+                if (purchase_task::active())
+                {
+                    purchase_task::on_slot_confirmed(slot);
+                    return;
+                }
             }
             else
             {
@@ -160,6 +172,11 @@ extern "C" void app_main()
 {
     // Mounts LittleFS, so it runs before anything else touches storage.
     const vmaas::DeviceConfig cfg = config_store::load();
+
+    if (device_api::begin(cfg.api_base_url) != ESP_OK) {
+        ESP_LOGW(TAG, "no api_base_url in config.json; reporting is disabled");
+    }
+
     keypad.set_debounce_ms(cfg.keypad_debounce_ms);
     entry.set_timeout_ms(cfg.slot_entry_timeout_ms);
     result_hold_ms = cfg.slot_entry_result_hold_ms;
@@ -223,6 +240,11 @@ extern "C" void app_main()
 
     broker_client::start();
 
+    const bool cash_ok = purchase_task::begin(lcd, display_ok, motor);
+    if (!cash_ok) {
+        ESP_LOGW(TAG, "cash disabled; slot entry logs only, as before");
+    }
+
     show_prompt();
 
     motor.on_ack([](vmaas::Cmd cmd) {
@@ -232,11 +254,16 @@ extern "C" void app_main()
     motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err) {
         ESP_LOGW(TAG, "NAK for cmd 0x%02X, error %u", (unsigned)cmd, (unsigned)err);
         if (err == vmaas::ErrorCode::CONFIG_ERROR) {
-            show_motor_error(); 
+            show_motor_error();
+        }
+
+        if (cmd == vmaas::Cmd::RUN) {
+            purchase_task::on_dispense_failed();
         }
     });
-    motor.on_done([](uint8_t slot){ 
+    motor.on_done([](uint8_t slot){
         ESP_LOGI(TAG, "slot %u dispensed", slot);
+        purchase_task::on_dispense_done();
     });
     motor.on_status([](vmaas::State state, uint8_t slot) {
         ESP_LOGI(TAG, "status: state=%u current_slot=%u", (unsigned)state, slot);
@@ -263,6 +290,8 @@ extern "C" void app_main()
         }
 
         render(entry.tick(now_ms()));
+
+        purchase_task::tick(now_ms());
 
         if (display_ok) {
             lcd.tick(now_ms());
