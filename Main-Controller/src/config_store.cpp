@@ -11,7 +11,7 @@ namespace
     void log_settings(const vmaas::DeviceConfig& c)
     {
         ESP_LOGI(TAG, "name '%s' machine_id '%s'", c.name, c.machine_id);
-        ESP_LOGI(TAG, "mqtt %s:%u client '%s'", c.mqtt_host, static_cast<unsigned>(c.mqtt_port), c.mqtt_client_id);
+        ESP_LOGI(TAG, "api '%s'", c.api_base_url);
         ESP_LOGI(TAG, "timings debounce %u entry %u hold %u ms", static_cast<unsigned>(c.keypad_debounce_ms), static_cast<unsigned>(c.slot_entry_timeout_ms), static_cast<unsigned>(c.slot_entry_result_hold_ms));
     }
 

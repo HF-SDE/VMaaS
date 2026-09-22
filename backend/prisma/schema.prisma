@@ -204,6 +204,16 @@ enum subscription_status {
   @@schema("public")
 }
 
+/// The plans the application sells. The names, not the prices: a price id is
+/// Stripe's and differs between the sandbox and production, so it is mapped
+/// back onto one of these in `billing.service.ts` before it is stored.
+enum subscription_plan {
+  monthly
+  yearly
+
+  @@schema("public")
+}
+
 model Subscription {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @unique @db.Uuid
@@ -218,6 +228,12 @@ model Subscription {
   status           subscription_status @default(pending)
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
+
+  /// Which plan the tenant is being billed for, read off the price on Stripe's
+  /// own subscription. Null means "not known": before checkout, or when Stripe
+  /// reports a price this application does not sell — never a default plan,
+  /// which would name a plan nobody chose.
+  plan subscription_plan?
 
   /// Set when the owner cancels: Stripe keeps the subscription `active` until
   /// `currentPeriodEnd`, so the status alone cannot say "canceled but still

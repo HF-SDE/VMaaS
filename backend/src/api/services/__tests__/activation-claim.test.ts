@@ -72,9 +72,20 @@ function fakeDb(
 }
 
 describe("generateOneTimeCode", () => {
-  it("produces a code of a fixed length from an unambiguous alphabet", () => {
+  it("produces eight digits", () => {
+    // Digits only, so each character is one key press on the machine's keypad
+    // rather than three or four in a character picker.
     const code = generateOneTimeCode();
-    expect(code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/);
+    expect(code).toMatch(/^[0-9]{8}$/);
+  });
+
+  it("uses every digit", () => {
+    // A weak check, and deliberately so: it catches an alphabet or a masking
+    // mistake that locks digits out entirely. It does NOT prove the sampling is
+    // unbiased - the modulo bias this replaced was only a few per cent, which
+    // no non-flaky test of this shape can see. See generateOneTimeCode.
+    const seen = new Set(Array.from({ length: 400 }, generateOneTimeCode).join(""));
+    expect(seen.size).toBe(10);
   });
 
   it("does not repeat", () => {
@@ -91,7 +102,7 @@ describe("claimMachineService", () => {
 
     expect(error).toBeNull();
     expect(result?.machineId).toBe(MACHINE);
-    expect(result?.oneTimeCode).toMatch(/^[A-Z2-9]{12}$/);
+    expect(result?.oneTimeCode).toMatch(/^[0-9]{8}$/);
     expect(result?.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
@@ -141,9 +152,9 @@ describe("claimMachineService", () => {
     expect(error?.reason).toBe("MACHINE_ALREADY_CLAIMED");
   });
 
-  // C2 (cross-tenant takeover through claim). createMachineService stamps the
-  // creating tenant's id onto a machine whose status stays `unregistered`, so
-  // "unregistered" must NOT mean "claimable by anyone".
+  // C2 (cross-tenant takeover through claim). A machine can carry a tenant's id
+  // while its status stays `unregistered`, so "unregistered" must NOT mean
+  // "claimable by anyone".
   it("refuses to claim an unregistered machine owned by another tenant (pre-check)", async () => {
     const OTHER = "55555555-5555-4555-8555-555555555555";
     const db = fakeDb({ id: MACHINE, registrationStatus: "unregistered", tenantId: OTHER });

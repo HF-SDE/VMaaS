@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 552 323" width="552" height="323" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="552" height="323" fill="#ffffff"/>
+  <text x="20" y="32" font-size="15" font-weight="600" fill="#0f172a">Operating screens</text>
+  <rect x="20" y="60" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="92" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">VMaaS: pick slot</text>
+  <text x="34" y="118" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">&gt; _             </text>
+  <text x="20" y="154" font-size="12" font-weight="600" fill="#0f172a">Idle</text>
+  <text x="20" y="170" font-size="11" fill="#475569">Waiting for a slot number.</text>
+  <rect x="296" y="60" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="92" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">VMaaS: pick slot</text>
+  <text x="310" y="118" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">&gt; 12_           </text>
+  <text x="296" y="154" font-size="12" font-weight="600" fill="#0f172a">Typing</text>
+  <text x="296" y="170" font-size="11" fill="#475569">Two digits; a third shifts the first out.</text>
+  <rect x="20" y="196" width="236" height="74" rx="6" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+  <text x="34" y="228" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">VMaaS: pick slot</text>
+  <text x="34" y="254" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#1f2937">Slot 12 chosen  </text>
+  <text x="20" y="290" font-size="12" font-weight="600" fill="#0f172a">Confirmed with #</text>
+  <text x="20" y="306" font-size="11" fill="#475569">Held 2 seconds, then back to idle.</text>
+  <rect x="296" y="196" width="236" height="74" rx="6" fill="#ff0000" stroke="#475569" stroke-width="1"/>
+  <text x="310" y="228" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">MOTOR CONFIG ERR</text>
+  <text x="310" y="254" xml:space="preserve" textLength="208" lengthAdjust="spacing" font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" fill="#ffffff">check slot confi</text>
+  <text x="296" y="290" font-size="12" font-weight="600" fill="#0f172a">Motorcontrol has no slot config</text>
+  <text x="296" y="306" font-size="11" fill="#475569">Row 1 scrolls the full message.</text>
+</svg>

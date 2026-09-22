@@ -7,18 +7,13 @@ import { findFloatingSlots, hasOverlappingSlots } from "../lib/slot-layout";
 const SITE_ID_MESSAGE = { message: "site is required" };
 
 /**
- * A machine created through this endpoint is placed at a site immediately —
- * `siteId` is required, not optional. "Not placed yet" is a real state, but it
- * belongs to a machine registered by serial number at the factory, which comes
- * into being through a different path and is bound to a tenant and a site
- * together by `POST /api/machines/claim`.
+ * `POST /api/machines`, superadmin only. The machine is created with neither a
+ * tenant nor a site: it is set up (slot layout) first, and later bound to a
+ * tenant and a site together by `POST /api/machines/claim`.
  *
  * `serialNumber` is not part of the body: a machine created here has no
  * physical hardware behind it yet, so the service generates one rather than
  * trusting the caller to invent a unique value.
- *
- * That the site belongs to the caller's tenant is not something a schema can
- * tell; the service checks it before the write.
  *
  * `status` and `registrationStatus` are deliberately absent from both write
  * schemas. The first is reported by firmware; the second is moved only by
@@ -27,8 +22,17 @@ const SITE_ID_MESSAGE = { message: "site is required" };
 export const createMachineSchema = z.object({
   body: z.object({
     name: z.string().trim().min(1, { message: "name is required" }),
-    siteId: z.uuid(SITE_ID_MESSAGE),
   }),
+});
+
+/**
+ * The edit form's validator. Unlike `updateMachineSchema.shape.body` both fields
+ * are required: the form always sends both, so a name and a site is what the
+ * user should actually be held to.
+ */
+export const machineFormSchema = z.object({
+  name: z.string().trim().min(1, { message: "name is required" }),
+  siteId: z.uuid(SITE_ID_MESSAGE),
 });
 
 /** Shared by every `/:id` route, so a malformed id is a 400 rather than a

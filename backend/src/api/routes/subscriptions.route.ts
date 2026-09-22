@@ -6,6 +6,7 @@ import express, { Router } from "express";
 
 import {
   cancelSubscriptionController,
+  createBillingPortalSessionController,
   createCheckoutSessionController,
   getSubscriptionController,
   listInvoicesController,
@@ -53,3 +54,9 @@ subscriptionsRouter.post(
 );
 
 subscriptionsRouter.post("/cancel", requireTenant, cancelSubscriptionController);
+
+// No `requireSubscription` either: a tenant whose card was declined is exactly
+// the one that needs the portal, and its subscription is `past_due` by then.
+// Locking the fix behind an active subscription would lock out the only people
+// who need it.
+subscriptionsRouter.post("/portal", requireTenant, createBillingPortalSessionController);

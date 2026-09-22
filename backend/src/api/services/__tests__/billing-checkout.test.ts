@@ -170,6 +170,18 @@ describe("createCheckoutSession — the trial", () => {
   });
 });
 
+describe("createCheckoutSession — where checkout returns to", () => {
+  // `FRONTEND_URL` holds every allowed browser origin, so it is a list. A link
+  // needs one of them: interpolating the list joins it with commas and hands
+  // Stripe a URL no browser can follow.
+  it("returns to a single origin, not the whole allow-list", async () => {
+    await createCheckoutSession(INPUT);
+
+    expect(sentToStripe().success_url).toBe("http://localhost:3000/billing?checkout=success");
+    expect(sentToStripe().cancel_url).toBe("http://localhost:3000/billing?checkout=canceled");
+  });
+});
+
 describe("createCheckoutSession — the card", () => {
   // The trial is only free if they cancel; the card has to be on file before it
   // starts. `if_required` would let a trial begin with no payment method at

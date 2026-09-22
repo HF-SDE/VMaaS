@@ -9,31 +9,17 @@ import { handleCommandResult } from "./handlers";
 import { parseTopic } from "./topics";
 
 /**
- * The platform's own MQTT connection. It authenticates against EMQX's built-in
- * database rather than the backend's own webhook, so a backend restart cannot
- * deadlock on itself (spec §4.2); the client certificate satisfies the mTLS
- * listener.
- *
- * Failures are logged and retried, never thrown: the HTTP API must keep serving
- * when the broker is down.
+ * The platform's own MQTT connection. Failures are logged and retried, never
+ * thrown: the HTTP API has to keep serving while the broker is down.
  */
 
 const SUBSCRIPTIONS = ["v1/+/+/+/command-results/#"];
 
 let client: MqttClient | null = null;
 
-/**
- * Extracted so the never-retained invariant is unit-testable against a fake
- * MqttClient, without needing a live broker. Nothing in this codebase calls
- * it yet: `handleConfigurationRequested` was the only thing that ever
- * published a command, and it is gone now that configuration delivery is an
- * HTTP concern. Kept because `commands` is a real, still-authorized channel —
- * this is how any future feature that issues a command will publish to it,
- * with the retain:false guarantee already proven.
- */
+/** Extracted so the retain flag can be tested against a fake MqttClient. */
 export function createPublish(mqttClient: MqttClient): (topic: string, payload: Record<string, unknown>) => Promise<void> {
   return async (topic, payload) => {
-    // Commands are never retained: a restarting machine must not replay one (§5).
     await mqttClient.publishAsync(topic, JSON.stringify(payload), { qos: 1, retain: false });
   };
 }
@@ -77,9 +63,6 @@ export async function startMqttClient(): Promise<void> {
     cert,
     key,
     ca,
-    // The broker's certificate is issued by the dev CA for the name `emqx`,
-    // which is the compose service name the backend dials. Never disabled:
-    // this is what stops the backend from trusting an impostor broker.
     rejectUnauthorized: true,
     reconnectPeriod: 5000,
     clean: true,

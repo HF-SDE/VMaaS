@@ -61,8 +61,8 @@ const SITE_SELECT = { select: { id: true, name: true, city: true } } as const;
  * the invariant ("a machine with a tenant always has a site") doesn't hold for
  * this row.
  *
- * It should always hold — `claimMachineService` and `createMachineService`
- * both set `tenantId` and `siteId` in the same write — so a `null` here means
+ * It should always hold — `claimMachineService` sets `tenantId` and `siteId`
+ * in the same write, and `createMachineService` sets neither — so a `null` here means
  * something else broke it, not that the caller did anything wrong. Rather than
  * asserting that away with a cast, a violation is treated as absence: dropped
  * from a list, or read as not-found for a single machine. Either is safer than
@@ -357,32 +357,29 @@ function isSerialNumberCollision(error: Prisma.PrismaClientKnownRequestError): b
   return targets.includes("serialNumber");
 }
 
-export async function createMachineService(
-  tenantId: string,
-  data: { name: string; siteId: string },
-): Promise<Result<MachineSiteNotFoundError | UnknownMachineError, MachineListItem>> {
+/**
+ * Superadmin only. The machine is created with neither a tenant nor a site, so
+ * it shows up in the "without tenant" list for its slot layout to be set up,
+ * and is later bound to a tenant and a site together by `claimMachineService`.
+ */
+export async function createMachineService(data: { name: string }): Promise<Result<UnknownMachineError, Machine>> {
   try {
-    if (!(await tenantOwnsSite(tenantId, data.siteId))) return err(SITE_NOT_FOUND);
-
     // A generated serial colliding with an existing one is vanishingly
     // unlikely at 2^32 combinations, but retried with a fresh one rather than
     // surfaced as a 500 the caller can do nothing about.
     for (let attempt = 0; attempt < MAX_SERIAL_ATTEMPTS; attempt++) {
       try {
         const machine = await prisma.machine.create({
-          data: { ...data, tenantId, serialNumber: generateSerialNumber() },
-          include: { site: SITE_SELECT },
+          data: { name: data.name, serialNumber: generateSerialNumber() },
         });
 
-        // The site was just verified to belong to this tenant and is named in
-        // this very write, so a missing site here means the invariant itself
-        // broke, not that this call did anything wrong.
-        const withSite = narrowToSite(machine);
-        if (!withSite) return unknownError("creating", new Error("the created machine has no site"));
-
-        return ok(withSite);
+        return ok(machine);
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && isSerialNumberCollision(error)) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002" &&
+          isSerialNumberCollision(error)
+        ) {
           continue;
         }
         throw error;

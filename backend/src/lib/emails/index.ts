@@ -9,7 +9,7 @@ export type { SendEmailError };
  *  the invite is read server-side and accepting it re-checks the signed-in
  *  user's email, so the id alone grants nothing. */
 export function invitationUrl(invitationId: string): string {
-  return `${config.FRONTEND_URL}/invite/${invitationId}`;
+  return `${config.APP_URL}/invite/${invitationId}`;
 }
 
 /** Answers a `Result` like `sendEmail` — `inviteMemberService` sends from inside

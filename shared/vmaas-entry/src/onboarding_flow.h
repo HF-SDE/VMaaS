@@ -21,7 +21,35 @@ namespace vmaas
 
     constexpr uint32_t ONBOARDING_PIN_MS = 5000;   ///< How long the BLE row shows the PIN.
     constexpr uint32_t ONBOARDING_HINT_MS = 3000;  ///< How long it shows the manual-setup hint.
-    constexpr uint32_t ONBOARDING_CONNECTED_MS = 2000; ///< Green before the sales loop.
+    constexpr uint32_t ONBOARDING_CONNECTED_MS = 2000; ///< Green before the code screen.
+    constexpr uint32_t ONBOARDING_ACTIVATED_MS = 2000; ///< Green before the sales loop.
+
+    /**
+     * @brief Digits in a setup code. Always exactly this many; never fewer.
+     *
+     * The code is digits only, so key 7 types a 7 and eight characters are
+     * eight key presses. Must stay equal to CODE_LENGTH in
+     * backend/src/api/services/activation.service.ts.
+     */
+    constexpr size_t ONBOARDING_CODE_LEN = 8;
+
+    /// What onboarding must still do once Wi-Fi is up.
+    enum class ActivationNeed : uint8_t
+    {
+        NotNeeded,    ///< A certificate is already stored: straight to the sales loop.
+        Needed,       ///< Ask for the setup code.
+        NoMachineId,  ///< config.json carries no machine id; activation cannot be attempted.
+        NoApiAddress, ///< config.json carries no API address; same.
+    };
+
+    /// What the driver's activation attempt did.
+    enum class ActivationOutcome : uint8_t
+    {
+        Ok,
+        CodeRejected, ///< The platform rejected the code. Type a different one.
+        CodeExpired,  ///< Expired or attempts exhausted. Only a fresh claim helps.
+        Unreachable,  ///< Network or HTTPS failure. The code itself is probably fine.
+    };
 
     enum class OnboardingScreen : uint8_t
     {
@@ -32,6 +60,12 @@ namespace vmaas
         Connecting,
         WrongPassword,
         Connected,
+        CodeEntry,      ///< The twelve-character setup code.
+        Activating,     ///< Waiting on the driver's activation attempt.
+        Activated,      ///< Green hold, then the sales loop.
+        CodeRejected,   ///< 5 returns to an empty code field.
+        ApiUnreachable, ///< 5 sends the same code again.
+        CannotActivate, ///< Dead end. Rows say why; no key leads anywhere.
     };
 
     /// Everything the driver needs for one pass of the loop.
@@ -44,6 +78,8 @@ namespace vmaas
         bool connect_requested; ///< True from '#' on the password screen until on_connect_result() answers.
         const char* ssid;       ///< Valid while connect_requested.
         const char* password;  ///< Valid while connect_requested.
+        bool activate_requested; ///< True from a full code until on_activation_result() answers.
+        const char* code;       ///< The typed setup code. Always readable; "" when nothing is typed.
         bool done;              ///< Onboarding is finished; start the sales loop.
     };
 
@@ -92,6 +128,39 @@ namespace vmaas
         void set_connected_ssid(const char* ssid);
 
         /**
+         * @brief Replace the PIN shown on the BLE screen.
+         *
+         * A machine with stored credentials is given a bounded chance to use
+         * them before provisioning is opened at all, so on that path no PIN
+         * exists when the flow is constructed. Pass "" at construction and
+         * call this once provisioning has actually started.
+         * @param pin Eight digits. Shorter is padded by the "PIN 1234 5678" format.
+         */
+        void set_pin(const char* pin);
+
+        /**
+         * @brief Say what has to happen once Wi-Fi is up.
+         *
+         * The flow cannot read NVS or config.json, so the driver decides
+         * whether a certificate already exists and whether the config even
+         * allows an activation. Call before the connection succeeds.
+         *
+         * Defaults to NotNeeded, which is what a machine that has already
+         * been activated wants on every subsequent boot.
+         * @param need What is still missing.
+         */
+        void set_activation(ActivationNeed need);
+
+        /**
+         * @brief Report what the driver's activation attempt did.
+         *
+         * A rejection clears the code field; an unreachable API does not,
+         * because the twelve characters were not the problem.
+         * @param outcome Result from the platform, or the transport failure.
+         */
+        void on_activation_result(ActivationOutcome outcome);
+
+        /**
          * @brief Report what the driver's connection attempt did.
          * @param ok True once the AP accepted the credentials and an IP was obtained.
          *        False sends the flow to the WrongPassword screen with the
@@ -126,6 +195,9 @@ namespace vmaas
         FlowState snapshot() const;
         void go(OnboardingScreen next, uint32_t now_ms);
         const char* row_for_list_selection() const;
+        void enter_activation_phase(uint32_t now_ms);
+        void clear_code();
+        void cannot_activate(const char* row0, const char* row1, uint32_t now_ms);
 
         OnboardingScreen screen_ = OnboardingScreen::BleWaiting;
         char name_[17] = {};
@@ -138,6 +210,19 @@ namespace vmaas
         TextEntry ssid_entry_{ONBOARDING_SSID_MAX - 1, false, false};   ///< No mask, no empty SSID.
         TextEntry pass_entry_{ONBOARDING_PASS_MAX - 1, true, true};     ///< Masked, empty allowed (open networks).
         char chosen_ssid_[ONBOARDING_SSID_MAX] = {};
+
+        /// The typed code. No TextEntry: with a digit alphabet every key is
+        /// its own character, so a picker would be three presses of ceremony
+        /// around each one.
+        char   code_[ONBOARDING_CODE_LEN + 1] = {};
+        size_t code_len_ = 0;
+
+        ActivationNeed need_ = ActivationNeed::NotNeeded;
+        bool activate_pending_ = false;
+
+        /// Rows for CannotActivate. String literals only - never copied.
+        const char* cannot_row0_ = "";
+        const char* cannot_row1_ = "";
 
         bool connect_pending_ = false;
         bool done_ = false;

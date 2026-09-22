@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 352" width="560" height="352" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="560" height="352" fill="#ffffff"/>
+  <text x="14" y="28" font-size="15" font-weight="600" fill="#0f172a">Network list: pick a Wi-Fi network</text>
+  <rect x="14" y="46" width="274" height="290" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="24" y="56" width="78" height="60" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="63" y="84" text-anchor="middle" font-size="21" font-weight="600" fill="#1e3a8a">1</text>
+  <text x="63" y="104" text-anchor="middle" font-size="9.5" fill="#1e3a8a">up</text>
+  <rect x="112" y="56" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="151" y="94" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">2</text>
+  <rect x="200" y="56" width="78" height="60" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="239" y="84" text-anchor="middle" font-size="21" font-weight="600" fill="#1e3a8a">3</text>
+  <text x="239" y="104" text-anchor="middle" font-size="9.5" fill="#1e3a8a">down</text>
+  <rect x="24" y="126" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="63" y="164" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">4</text>
+  <rect x="112" y="126" width="78" height="60" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="151" y="154" text-anchor="middle" font-size="21" font-weight="600" fill="#14532d">5</text>
+  <text x="151" y="174" text-anchor="middle" font-size="9.5" fill="#14532d">select</text>
+  <rect x="200" y="126" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="239" y="164" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">6</text>
+  <rect x="24" y="196" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="63" y="234" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">7</text>
+  <rect x="112" y="196" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="151" y="234" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">8</text>
+  <rect x="200" y="196" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="239" y="234" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">9</text>
+  <rect x="24" y="266" width="78" height="60" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="63" y="294" text-anchor="middle" font-size="21" font-weight="600" fill="#7f1d1d">*</text>
+  <text x="63" y="314" text-anchor="middle" font-size="9.5" fill="#7f1d1d">back</text>
+  <rect x="112" y="266" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="151" y="304" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">0</text>
+  <rect x="200" y="266" width="78" height="60" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="239" y="304" text-anchor="middle" font-size="21" font-weight="600" fill="#cbd5e1">#</text>
+  <rect x="308" y="60" width="15" height="15" rx="4" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="331" y="72" font-size="11.5" fill="#334155">1 and 3 move the selection up and down</text>
+  <rect x="308" y="90" width="15" height="15" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="331" y="102" font-size="11.5" fill="#334155">5 chooses the highlighted network</text>
+  <rect x="308" y="120" width="15" height="15" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="331" y="132" font-size="11.5" fill="#334155">* returns to the setup screen</text>
+  <rect x="308" y="150" width="15" height="15" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="331" y="162" font-size="11.5" fill="#334155">No function on this screen</text>
+</svg>

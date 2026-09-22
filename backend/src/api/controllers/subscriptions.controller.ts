@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 
 import {
   cancelSubscription,
+  createBillingPortalSession,
   createCheckoutSession,
   handleStripeWebhook,
   listInvoices,
@@ -34,6 +35,7 @@ export async function getSubscriptionController(req: Request, res: Response) {
     .status(200)
     .json({
       status: subscription.status,
+      plan: subscription.plan,
       trialEndsAt: subscription.trialEndsAt,
       currentPeriodEnd: subscription.currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
@@ -120,6 +122,43 @@ export async function cancelSubscriptionController(req: Request, res: Response) 
   }
 
   return res.status(200).json({ cancelAtPeriodEnd: true, currentPeriodEnd: result.currentPeriodEnd }).end();
+}
+
+/**
+ * Opens the Stripe Customer Portal for the active tenant and returns the URL to
+ * send the browser to.
+ *
+ * Same guards as the other billing actions: the tenant comes from
+ * `requireTenant`, and only an owner may act on billing — the portal is where
+ * the card on file is changed, which is not something a member should reach.
+ *
+ * Nothing changes here. Whatever the tenant does in the portal comes back as a
+ * webhook, exactly as checkout does.
+ */
+export async function createBillingPortalSessionController(req: Request, res: Response) {
+  const tenantId = req.tenantId!;
+
+  if (!(await isTenantOwner(req.session!.user.id, tenantId))) {
+    return res.status(403).json({ error: "Only an owner can change billing for this organization." }).end();
+  }
+
+  const [error, session] = await createBillingPortalSession(tenantId);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "NO_STRIPE_CUSTOMER":
+        return res.status(409).json({ error: "This organization has no billing details to manage yet." }).end();
+      case "STRIPE_ERROR":
+        return res.status(502).json({ error: "Could not reach Stripe. Please try again." }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while opening the billing portal" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(session).end();
 }
 
 /**

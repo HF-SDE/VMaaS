@@ -1,13 +1,12 @@
 import { config } from "./config";
 
 /**
- * An established MQTT session is never re-authenticated, so revoking a
- * certificate in the database does not disconnect a machine that is already
- * connected. This is what makes a disable take effect immediately (spec §9).
+ * EMQX never re-authenticates an established session, so revoking a
+ * certificate does not disconnect a machine that is already connected. This
+ * does, which is what makes a disable take effect immediately.
  *
- * The client id is the machine id: EMQX derives it from the certificate's
- * common name, and the authn webhook refuses any connection where the two
- * disagree, so this can only ever reach the intended machine.
+ * The client id is the machine id: EMQX takes it from the certificate CN, and
+ * the authn webhook rejects any connection where the two disagree.
  */
 export async function kickMqttClient(
   machineId: string,
@@ -23,11 +22,6 @@ export async function kickMqttClient(
 
     if (response.ok) return true;
 
-    // A 404 is ambiguous by status alone: EMQX answers it both for "this
-    // client id is not connected" (the state we wanted — success) AND for a
-    // URL that does not exist on this API surface (a bug here — failure).
-    // Only the body tells them apart, and it must be read defensively: a
-    // missing endpoint answers HTML, not JSON, and none of that may throw.
     if (response.status === 404) {
       const body = await response.text().catch(() => "");
       let code: unknown;
@@ -48,8 +42,6 @@ export async function kickMqttClient(
 
     return false;
   } catch {
-    // The disable itself already succeeded in the database; a broker that
-    // cannot be reached must not turn that into a failed request.
     return false;
   }
 }

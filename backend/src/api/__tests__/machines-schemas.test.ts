@@ -1,38 +1,30 @@
 import { createMachineSchema, disableMachineSchema } from "@vmaas/shared/schemas";
 import { describe, expect, it } from "vitest";
 
+const TENANT = "11111111-1111-4111-8111-111111111111";
 const SITE = "22222222-2222-4222-8222-222222222222";
 const MACHINE = "33333333-3333-4333-8333-333333333333";
 
 describe("createMachineSchema", () => {
-  it("accepts a machine created at a site", () => {
-    const result = createMachineSchema.safeParse({
-      body: { name: "VM-001", siteId: SITE },
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.data?.body.siteId).toBe(SITE);
-  });
-
-  it("requires a site", () => {
+  it("accepts a machine with just a name", () => {
     const result = createMachineSchema.safeParse({ body: { name: "VM-001" } });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.body).toEqual({ name: "VM-001" });
+  });
+
+  it("requires a name", () => {
+    const result = createMachineSchema.safeParse({ body: { name: "   " } });
     expect(result.success).toBe(false);
   });
 
-  it("does not accept a serial number in the body — the service generates one", () => {
+  it("strips a site, tenant and serial number from the body — none are the caller's to set", () => {
     const result = createMachineSchema.safeParse({
-      body: { name: "VM-001", siteId: SITE, serialNumber: "SN-0001" },
+      body: { name: "VM-001", siteId: SITE, tenantId: TENANT, serialNumber: "SN-0001" },
     });
 
     expect(result.success).toBe(true);
-    expect(result.data?.body).not.toHaveProperty("serialNumber");
-  });
-
-  it("rejects a siteId that is not a uuid", () => {
-    const result = createMachineSchema.safeParse({
-      body: { name: "VM-001", siteId: "copenhagen" },
-    });
-    expect(result.success).toBe(false);
+    expect(result.data?.body).toEqual({ name: "VM-001" });
   });
 });
 

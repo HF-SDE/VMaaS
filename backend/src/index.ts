@@ -21,6 +21,8 @@ import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import http from "http";
 
+import { meRouter } from "./api/routes/me.route";
+
 const app = express();
 
 const limiter = rateLimit({
@@ -62,6 +64,7 @@ api.use("/subscriptions", subscriptionsRouter);
 api.use("/sales", salesRouter);
 api.use("/device", deviceRouter);
 api.use("/internal", internalRouter);
+api.use("/me", meRouter);
 
 app.use("/api", api);
 

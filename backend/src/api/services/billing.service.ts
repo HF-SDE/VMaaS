@@ -30,6 +30,7 @@ export type StripeApiError = { reason: "STRIPE_ERROR"; message: string };
 export type UnknownBillingError = { reason: "UNKNOWN_ERROR"; message: string };
 export type AlreadySubscribedError = { reason: "ALREADY_SUBSCRIBED"; message: string };
 export type NoStripeSubscriptionError = { reason: "NO_STRIPE_SUBSCRIPTION"; message: string };
+export type NoStripeCustomerError = { reason: "NO_STRIPE_CUSTOMER"; message: string };
 export type UnknownTenantError = { reason: "UNKNOWN_TENANT"; message: string };
 
 /**
@@ -103,6 +104,24 @@ function currentPeriodEnd(subscription: Stripe.Subscription): Date | undefined {
 }
 
 /**
+ * Which plan a Stripe subscription is billed against.
+ *
+ * The price id is Stripe's and differs between the sandbox and production, so
+ * it is matched against the ids in the environment rather than hard-coded.
+ * `null` for anything else — an old price, or one created by hand in the
+ * dashboard — because naming it as either plan would be a guess, and this is
+ * the one place that translation happens.
+ */
+function planOf(subscription: Stripe.Subscription): SubscriptionPlan | null {
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) return null;
+
+  const match = Object.entries(STRIPE_PRICE_IDS).find(([, id]) => id === priceId);
+
+  return (match?.[0] as SubscriptionPlan) ?? null;
+}
+
+/**
  * Which tenant a Stripe subscription belongs to.
  *
  * Resolved through the identifiers already stored on the row — the Stripe
@@ -159,6 +178,7 @@ export async function applyStripeSubscription(
     currentPeriodEnd: currentPeriodEnd(subscription),
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
     trialEndsAt: toDate(subscription.trial_end) ?? null,
+    plan: planOf(subscription),
   });
 
   if (error) return err(error);
@@ -256,8 +276,8 @@ export async function createCheckoutSession(input: {
       // it starts. Stated rather than left to Stripe's default:
       // `if_required` would let a trial begin with no payment method at all.
       payment_method_collection: "always",
-      success_url: `${config.FRONTEND_URL}/billing?checkout=success`,
-      cancel_url: `${config.FRONTEND_URL}/billing?checkout=canceled`,
+      success_url: `${config.APP_URL}/billing?checkout=success`,
+      cancel_url: `${config.APP_URL}/billing?checkout=canceled`,
       integration_identifier: INTEGRATION_IDENTIFIER,
     });
 
@@ -337,6 +357,53 @@ export async function cancelSubscription(
   if (applyError) return err(applyError);
 
   return ok({ currentPeriodEnd: currentPeriodEnd(canceled) ?? null });
+}
+
+/**
+ * A Stripe Customer Portal session — where a tenant changes the card its
+ * subscription is billed to.
+ *
+ * Nothing about a payment method is handled here, and that is the point: the
+ * card is entered on Stripe's own page, so no card detail ever reaches this
+ * application and there is nothing of the sort to store. What comes back is a
+ * one-time URL, already bound to this customer.
+ *
+ * Which of the portal's features are offered — update the card, see receipts,
+ * change plan, cancel — is configured in the Stripe dashboard, not here. This
+ * application keeps its own cancel and invoice endpoints, so the portal is
+ * expected to be configured for payment methods alone; widening it in the
+ * dashboard is what would let a tenant cancel down a path the webhook, not
+ * `cancelSubscription`, brings back.
+ *
+ * Like `listInvoices`, the tenant is enforced by *which customer is asked
+ * about* — the id comes from the row `requireTenant` resolved, never from the
+ * caller.
+ */
+export async function createBillingPortalSession(
+  tenantId: string,
+): Promise<Result<NoStripeCustomerError | StripeApiError | UnknownBillingError, { url: string }>> {
+  const [loadError, subscription] = await getTenantSubscription(tenantId);
+  if (loadError) return err(loadError);
+
+  // Null until the first webhook lands after checkout. There is no billing to
+  // manage yet, and Stripe would refuse a customer it has never heard of.
+  if (!subscription.stripeCustomerId) {
+    return err({
+      reason: "NO_STRIPE_CUSTOMER",
+      message: "This organization has no billing details to manage yet.",
+    });
+  }
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: subscription.stripeCustomerId,
+      return_url: `${config.APP_URL}/account`,
+    });
+
+    return ok({ url: session.url });
+  } catch (error) {
+    return stripeError("opening the billing portal", error);
+  }
 }
 
 const DEFAULT_INVOICE_PAGE_SIZE = 10;

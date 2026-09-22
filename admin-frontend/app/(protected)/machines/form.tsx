@@ -13,7 +13,7 @@ import { Loader2 } from "lucide-react"
 
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { createMachineSchema } from "@vmaas/shared/schemas"
+import { machineFormSchema } from "@vmaas/shared/schemas"
 import { fetchData } from "@/lib/data/data-fetch"
 import {
   MachineKpis,
@@ -36,7 +36,7 @@ export type MachineDetail = Machine & MachineSite & MachineUsage & MachineKpis
 export type MachineListItem = Machine & MachineSite
 
 /**
- * Mirrors `z.input<typeof createMachineSchema.shape.body>`. TanStack Form matches
+ * Mirrors `z.input<typeof machineFormSchema>`. TanStack Form matches
  * the validator's input type against this one invariantly, so both fields are
  * required here exactly as they are in the schema.
  *
@@ -65,9 +65,9 @@ type MachineFormProps = {
  * the caller passes that in, so one set of fields serves both the new-machine
  * dialog and the edit dialog on a machine's page.
  *
- * `createMachineSchema.shape.body` is reused as the validator for both: the edit
- * endpoint accepts partial input, but this form always sends both fields, so
- * requiring a name and a site here is what the user should actually be held to.
+ * `machineFormSchema` is the validator: the edit endpoint accepts partial input,
+ * but this form always sends both fields, so requiring a name and a site here is
+ * what the user should actually be held to.
  *
  * `status` is not a field: the firmware reports it, an admin does not set it.
  */
@@ -81,7 +81,7 @@ export function MachineForm({
   const form = useForm({
     defaultValues,
     validators: {
-      onSubmit: createMachineSchema.shape.body,
+      onSubmit: machineFormSchema,
     },
 
     onSubmit: async ({ value }) => {
@@ -169,64 +169,6 @@ export function MachineForm({
         </div>
       </FieldGroup>
     </form>
-  )
-}
-
-export function CreateMachineForm({
-  triggerCloseDialog,
-}: {
-  triggerCloseDialog: () => void
-}) {
-  const router = useRouter()
-
-  return (
-    <MachineForm
-      defaultValues={{ name: "", siteId: "" }}
-      submitLabel="Create machine"
-      onCancel={triggerCloseDialog}
-      onSubmit={async (values) => {
-        const [error, machine] = await fetchData<MachineListItem>(
-          "/api/machines",
-          {
-            method: "POST",
-            body: { name: values.name, siteId: values.siteId },
-          }
-        )
-
-        // The action's own permission gate redirects to /forbidden, so a
-        // `forbidden` here means the backend itself denied the write — no
-        // redirect happens there, which would otherwise leave the button silent.
-        if (error) {
-          const reason = error.reason
-          switch (reason) {
-            case "FORBIDDEN":
-              router.push(
-                "/forbidden?reason=" +
-                  encodeURIComponent(
-                    "You do not have permission to create machines."
-                  )
-              )
-              break
-            case "UNAUTHORIZED":
-              router.push("/login")
-              break
-            // No NOT_FOUND or CONFLICT arm: POST /api/machines answers neither,
-            // so CreateMachineError does not carry them.
-            case "BAD_REQUEST":
-            case "BACKEND_ERROR":
-            case "NETWORK_ERROR":
-              toast.error(machineWriteErrorMessage(error.status))
-              break
-            default:
-              throw new Error(`Unhandled error - reason: ${reason}`)
-          }
-        } else {
-          triggerCloseDialog()
-          router.push("/machines/" + machine.id)
-        }
-        return null
-      }}
-    />
   )
 }
 

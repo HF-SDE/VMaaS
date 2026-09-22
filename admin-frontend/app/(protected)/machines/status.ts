@@ -3,9 +3,14 @@ import type { machine_status } from "@prisma"
 /**
  * How a machine's status reads in the UI.
  *
- * `machine_status` is reported by the firmware, so it is only ever shown — there
- * is no form that sets it. Kept out of both the table and the detail page so the
- * list and the page cannot drift into wording the same state differently.
+ * The machine never publishes `machine_status`. It comes from the broker:
+ * EMQX's `client_connected`/`client_disconnected` events reach `POST
+ * /api/internal/mqtt/connection`, and `connection.service.ts` moves the
+ * column. The firmware only holds the connection open
+ * (`Main-Controller/src/broker_client.cpp`). Nothing sets it from a form.
+ *
+ * Shared by the table and the detail page so the two cannot word the same
+ * state differently.
  */
 export const STATUS_LABEL: Record<machine_status, string> = {
   online: "Online",

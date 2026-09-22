@@ -15,7 +15,9 @@
 #include "config_store.h"
 #include "wifi_sta.h"
 #include "slot_entry.h"
+#include "activation.h"
 #include "onboarding.h"
+#include "broker_client.h"
 
 namespace
 {
@@ -205,7 +207,8 @@ extern "C" void app_main()
         }
     }
 
-    if (wifi_err == ESP_OK && !wifi_sta::has_credentials())
+    const bool needs_setup = !wifi_sta::has_credentials() || !activation::has_certificate();
+    if (wifi_err == ESP_OK && needs_setup)
     {
         if (!display_ok)
         {
@@ -217,6 +220,8 @@ extern "C" void app_main()
     {
         ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
     }
+
+    broker_client::start();
 
     show_prompt();
 

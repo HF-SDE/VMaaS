@@ -23,7 +23,7 @@ namespace vmaas
      * - A string longer than its buffer gives OutOfRange and keeps the
      *   default. Values are never silently truncated: a shortened hostname or
      *   machine id is worse than none, because it looks plausible in a log.
-     * - mqtt_port must be 1-65535; timings must be 1-600000 ms. Zero is
+     * - timings must be 1-600000 ms. Zero is
      *   rejected: a zero debounce or timeout makes the keypad unusable and a
      *   caller has no way to notice.
      * - Invalid JSON, a nullptr, a non-object root, or nesting deeper than

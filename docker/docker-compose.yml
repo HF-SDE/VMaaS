@@ -30,10 +30,12 @@ services:
     env_file:
       - ../config/environment-variables/.env.backend.dev
     environment:
-      # Browser-facing origins. Overrides the env file on purpose: this is
-      # network topology owned by compose, not a per-developer secret.
-      # nginx (the normal entry point) plus a bare `next dev` on the host.
-      FRONTEND_URL: http://localhost,http://localhost:3000
+      # Overrides the env_file value — `environment:` wins in Compose. Both
+      # origins are allowed for CORS; the FIRST is canonical, i.e. what every
+      # backend-built link points at (Stripe redirects, invitation emails).
+      # `next dev` on the host is first because that is how the frontend is run
+      # today; put http://localhost first if you serve it through nginx instead.
+      FRONTEND_URL: http://localhost:3000,http://localhost
       BETTER_AUTH_URL: http://localhost
       MQTT_URL: mqtts://emqx:8884
       MQTT_PUBLIC_HOST: localhost
@@ -42,13 +44,9 @@ services:
       CA_KEY_PATH: /pki/ca.key
     volumes:
       - ../backend/src:/usr/src/app/src
-      # The entrypoint runs migrate deploy + db seed on every start; mounting
-      # prisma/ means new migrations and seed changes apply without a rebuild.
       - ../backend/prisma:/usr/src/app/prisma
       - ../shared:/usr/src/shared
       - shared_node_modules:/usr/src/shared/node_modules
-      # ca.key is written mode 0600 by the container's own user, and the
-      # backend runs as that same user, so a read-only mount is enough.
       - pki:/pki:ro
     networks:
       - internal
@@ -110,14 +108,14 @@ services:
     entrypoint: ["npx", "tsx", "tools/pki-init.ts"]
     environment:
       PKI_DIR: /pki
-      # The emqx/emqx image runs its process as this uid (verified with
-      # `docker compose exec emqx id`), not root like every other consumer of
-      # /pki here — pki-init chowns emqx.key to it so the broker can read its
-      # own private key. Keep this equal to whatever uid the `emqx` image
-      # actually runs as if that image is ever changed.
       EMQX_UID: "1000"
+      PKI_EXTRA_HOSTS: ${PKI_EXTRA_HOSTS:-}
     volumes:
       - pki:/pki
+      - ../backend/tools:/usr/src/app/tools
+      - ../backend/src:/usr/src/app/src
+      - ../shared:/usr/src/shared
+      - shared_node_modules:/usr/src/shared/node_modules
     networks:
       - internal
 
@@ -132,25 +130,7 @@ services:
         condition: service_completed_successfully
     environment:
       EMQX_NODE__COOKIE: vmaas-dev-cookie
-      # The dashboard admin password EMQX sets on a fresh emqx_data volume.
-      # Port 18083 is published to the host and emqx is on the `public` network,
-      # so this IS a live, reachable credential — it must never be a value
-      # committed to the repo. It comes from EMQX_DASHBOARD__DEFAULT_PASSWORD in
-      # config/environment-variables/.env.backend.dev (regenerated from the
-      # .example), supplied to compose via --env-file (see the root package.json
-      # dev scripts). The `:?` guard makes compose refuse to start rather than
-      # silently fall back to a default if the variable is unset.
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD__DEFAULT_PASSWORD:?set EMQX_DASHBOARD__DEFAULT_PASSWORD in config/environment-variables/.env.backend.dev}
-      # config/emqx/api_key_bootstrap.txt (api_key:secret, one line, NO "#"
-      # comments — tested empirically: a comment line makes EMQX fail to
-      # parse the whole file with `failed_to_load_bootstrap_file` on a fresh
-      # emqx_data volume, so the key never gets created) must be kept equal
-      # to EMQX_API_KEY / EMQX_API_SECRET in .env.backend.dev by hand; nothing
-      # enforces that beyond this comment. Same for
-      # config/emqx/auth-built-in-db-bootstrap.csv against MQTT credentials
-      # the backend uses as an MQTT client — that file DOES require a
-      # "user_id,password,is_superuser" header row (tested: no header, no
-      # user gets created; with it, it does).
       EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/api_key_bootstrap.txt
     volumes:
       - pki:/pki:ro
@@ -185,8 +165,6 @@ services:
       NEXT_PUBLIC_BACKEND_URL: http://localhost
       BACKEND_INTERNAL_URL: http://backend:5000
       NEXT_TELEMETRY_DISABLED: 1
-      # Keep the heap under the container limit so Node collects garbage
-      # instead of getting OOM-killed.
       NODE_OPTIONS: --max-old-space-size=1536
     deploy:
       resources:
@@ -194,17 +172,10 @@ services:
           cpus: "2"
           memory: 2g
     volumes:
-      # Read-only staging mounts. The entrypoint copies these over the container's
-      # own source on every start, so the container can never run stale image
-      # code, and `docker compose watch` (npm run dev) keeps them in sync while
-      # you work. Next itself never runs from the shared folder: Turbopack gets no
-      # change events over 9p/VirtioFS, and running off it is slow on a Mac.
       - ../admin-frontend:/usr/src/app-src:ro
       - ../shared:/usr/src/shared-src:ro
-      # Turbopack cache: survives container recreation so restarts stay fast.
       - admin-frontend_next:/usr/src/app/.next
       - shared_node_modules:/usr/src/shared/node_modules
-      # Prisma browser types and response types, see admin-frontend/tsconfig.json paths.
       - ../backend/src:/usr/src/backend/src:ro
     develop:
       watch:
@@ -219,15 +190,12 @@ services:
           target: /usr/src/shared
           ignore:
             - node_modules/
-        # A dependency change needs a new image; node_modules lives in the image.
         - action: rebuild
           path: ../admin-frontend/package.json
         - action: rebuild
           path: ../admin-frontend/package-lock.json
     networks:
       - internal
-      # public gives outbound internet: next/font downloads Google Fonts in dev
-      # and `compose run admin-frontend npm install` needs the registry.
       - public
 
   reverse-proxy:

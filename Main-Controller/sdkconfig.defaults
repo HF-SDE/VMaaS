@@ -20,3 +20,38 @@ CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
 CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=n
 CONFIG_BTDM_CTRL_MODE_BTDM=n
+
+# Activation (subsystem A).
+#
+# CSR writing is behind a Kconfig option. The device generates its own EC P-256
+# key and asks the platform to sign it, so without this mbedtls_x509write_csr_*
+# simply is not compiled in.
+#
+# CREATE_C must come with it. MBEDTLS_X509_CSR_WRITE_C is `default y` but
+# `depends on MBEDTLS_X509_CREATE_C`, which IDF leaves off - and a Kconfig
+# option whose dependency is unmet is dropped SILENTLY. Setting only the line
+# below leaves the generated sdkconfig.main-controller with no CSR_WRITE_C
+# entry at all and no warning anywhere. Verified by grepping the generated
+# file, not by a green build.
+CONFIG_MBEDTLS_X509_CREATE_C=y
+CONFIG_MBEDTLS_X509_CSR_WRITE_C=y
+
+# Mozilla's root store, shipped with ESP-IDF, used to verify the API host over
+# HTTPS. No pinning and no bundle of our own to keep up to date. If the API
+# ever moves behind a private CA, this has to be replaced by that CA.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# app_main runs the onboarding loop, and onboarding runs the activation HTTPS
+# call on this very task. The default 3584 bytes is not close: measured on
+# hardware 2026-09-21, the TLS handshake overflowed it immediately after SNTP
+# set the clock -
+#
+#   I (54277) Activation: clock set to 1789991611
+#   ***ERROR*** A stack overflow in task main has been detected.
+#
+# which rebooted the machine before a single byte reached the platform, and
+# looked from the display like activation silently returning to the code
+# screen. Subsystem C fetches configuration over the same transport from the
+# same task, so this is the app's real requirement, not a patch for one call.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288

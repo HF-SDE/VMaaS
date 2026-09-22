@@ -204,7 +204,7 @@ describe("recordCommandResultService", () => {
   it("stamps the written event with the machine's own tenant and id, never the body's", async () => {
     const db = fakeDb();
 
-    // The body carries no tenant/machine id at all (spec §8) — this proves the
+    // The body carries no tenant/machine id at all — this proves the
     // event is stamped from the verified `machine` context, not from input.
     await recordCommandResultService(db, machine, { commandId: "cmd-9281", status: "completed" });
 

@@ -75,6 +75,7 @@ export async function enrichSession({ user, session }: EnrichInput) {
           trialEndsAt: subscriptionResult[1].trialEndsAt,
           currentPeriodEnd: subscriptionResult[1].currentPeriodEnd,
           cancelAtPeriodEnd: subscriptionResult[1].cancelAtPeriodEnd,
+          plan: subscriptionResult[1].plan,
         }
       : null;
 
