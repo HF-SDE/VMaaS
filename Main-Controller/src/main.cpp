@@ -18,6 +18,9 @@
 #include "activation.h"
 #include "onboarding.h"
 #include "broker_client.h"
+#include "service_code.h"
+#include "door_lock.h"
+#include "event_reporter.h"
 
 namespace
 {
@@ -37,6 +40,8 @@ namespace
     vmaas::EspKeypadPort keypad_port;
     vmaas::Keypad keypad(keypad_port);
     vmaas::SlotEntry entry(vmaas::SLOT_ENTRY_MAX_DIGITS);
+    vmaas::ServiceCode service;
+    uint32_t door_unlock_ms = 500; // from config.json, set in app_main()
 
     bool display_ok = false;
     bool backlight_ok = false;
@@ -81,6 +86,52 @@ namespace
         last_row1[0] = '\0';
         show_rows(PROMPT_ROW0, "");
         show_row1("> _");
+    }
+
+    // The typed digits are never shown or logged: ServiceState only ever
+    // exposes them masked, and nothing here reads further.
+    //
+    // pulse_err is only meaningful for Accepted: it is door_lock::pulse()'s
+    // result for this code, ESP_OK by default for every other status. A
+    // code can be entirely correct while the relay still never moves -
+    // e.g. door_lock::begin() failed at boot and left the release timer
+    // unset - and showing "Door released" in that case sends a technician
+    // chasing the wrong problem, because the one line that explains it was
+    // logged weeks earlier at boot and is long gone from view.
+    void render_service(const vmaas::ServiceState& st, esp_err_t pulse_err = ESP_OK)
+    {
+        if (motor_error_shown) return;
+
+        char line[17];
+        switch (st.status)
+        {
+        case vmaas::ServiceStatus::Collecting:
+            std::snprintf(line, sizeof(line), "Code: %s_", st.masked);
+            show_row1(line);
+            break;
+        case vmaas::ServiceStatus::Accepted:
+            if (pulse_err == ESP_OK) {
+                ESP_LOGI(TAG, "service code accepted, releasing the door");
+                show_row1("Door released");
+            } else {
+                ESP_LOGE(TAG, "service code accepted but door pulse failed: %s, door NOT released", esp_err_to_name(pulse_err));
+                show_row1("Door error");
+            }
+            result_hold_until_ms = now_ms() + result_hold_ms;
+            break;
+        case vmaas::ServiceStatus::Rejected:
+            ESP_LOGW(TAG, "service code rejected");
+            show_row1("Wrong code");
+            result_hold_until_ms = now_ms() + result_hold_ms;
+            break;
+        case vmaas::ServiceStatus::TimedOut:
+            ESP_LOGI(TAG, "service code entry timed out");
+            result_hold_until_ms = 0;
+            show_row1("> _");
+            break;
+        case vmaas::ServiceStatus::Idle:
+            break;
+        }
     }
 
     void show_motor_error()
@@ -158,11 +209,32 @@ namespace
 
 extern "C" void app_main()
 {
+    // FIRST, before anything else in this function. Until this runs, GPIO13 is
+    // an undriven input with both internal pulls disabled, so whether the door
+    // is held locked depends on the relay board's own pull-up rather than on
+    // this firmware. Everything below it - config_store::load(), the event
+    // journal's scan of up to 128 KB, wifi_sta::init() - stretched that window
+    // from milliseconds to a second or more. door_lock::begin() depends on
+    // nothing of ours: GPIO and esp_timer are both up before app_main is
+    // called, so there is no ordering reason to place it any later.
+    // Its failure stays non-fatal: the relay is fail-secure, so a pin that
+    // could not be configured leaves the door shut.
+    const esp_err_t door_err = door_lock::begin();
+    if (door_err != ESP_OK) {
+        ESP_LOGE(TAG, "door lock init failed: %s, the door stays locked", esp_err_to_name(door_err));
+    }
+
     // Mounts LittleFS, so it runs before anything else touches storage.
     const vmaas::DeviceConfig cfg = config_store::load();
     keypad.set_debounce_ms(cfg.keypad_debounce_ms);
     entry.set_timeout_ms(cfg.slot_entry_timeout_ms);
     result_hold_ms = cfg.slot_entry_result_hold_ms;
+    service.set_code(cfg.door_code);
+    door_unlock_ms = cfg.door_unlock_ms;
+
+    if (event_reporter::begin() != ESP_OK) {
+        ESP_LOGW(TAG, "events will not be recorded on this boot");
+    }
 
     const esp_err_t wifi_err = wifi_sta::init();
     if (wifi_err != ESP_OK) {
@@ -222,6 +294,7 @@ extern "C" void app_main()
     }
 
     broker_client::start();
+    event_reporter::start(cfg.api_base_url);
 
     show_prompt();
 
@@ -257,12 +330,54 @@ extern "C" void app_main()
         while (keypad_task_next(ev))
         {
             if (ev.type == vmaas::KeyEventType::Pressed) {
-                ESP_LOGI(TAG, "key '%c'", ev.key);
+                ESP_LOGI(TAG, "key '%c'", service.collecting() ? '*' : ev.key);
             }
-            render(entry.handle(ev));
+
+            // '*' is shared between the two flows: SlotEntry treats it as
+            // backspace (or cancel on an empty buffer), ServiceCode treats it
+            // as "start a door code". A customer mid-purchase must keep their
+            // backspace, so the recogniser is only offered an event when the
+            // purchase entry is idle - unless it is already collecting, in
+            // which case entry is guaranteed empty (it never got a chance to
+            // fill while the recogniser was consuming keys) and the
+            // recogniser must keep receiving keys until it finishes.
+            const bool entry_busy = (entry.state().buffer[0] != '\0');
+            if (!service.collecting() && entry_busy)
+            {
+                render(entry.handle(ev));
+                continue;
+            }
+
+            const vmaas::ServiceState sv = service.handle(ev);
+            if (sv.consumed)
+            {
+                const esp_err_t pulse_err = (sv.status == vmaas::ServiceStatus::Accepted)
+                    ? door_lock::pulse(door_unlock_ms)
+                    : ESP_OK;
+
+                if (sv.status == vmaas::ServiceStatus::Accepted) {
+                    const char* event_type =
+                        (pulse_err == ESP_OK) ? "door-released" : "door-release-failed";
+                    if (!event_reporter::record(event_type, "{\"source\":\"keypad\"}"))
+                    {
+                        ESP_LOGE(TAG, "'%s' was NOT recorded; the platform will not hear about it", event_type);
+                    }
+                }
+
+                render_service(sv, pulse_err);
+                continue;
+            }
+
+            const vmaas::EntryState es = entry.handle(ev);
+            if (!service.collecting()) render(es);
         }
 
-        render(entry.tick(now_ms()));
+        render_service(service.tick(now_ms()));
+        const vmaas::EntryState entry_tick_state = entry.tick(now_ms());
+        if (!service.collecting()) {
+        render(entry_tick_state);
+        } 
+            
 
         if (display_ok) {
             lcd.tick(now_ms());

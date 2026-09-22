@@ -3,6 +3,7 @@
  * @file config.h
  * @brief Compile-time settings for the Main-Controller firmware.
  */
+#include <cstddef>
 #include <cstdint>
 
 /// Main-Controller configuration.
@@ -55,4 +56,51 @@ namespace Config
 
     /// Gap before retrying the clock when SNTP did not answer, in milliseconds.
     constexpr uint32_t broker_clock_retry_ms = 30000;
+
+    /// Relay modules of this kind energise the coil when their input is pulled
+    /// LOW. With fail-secure wiring the de-energised state is "locked", so a
+    /// floating pin during boot, a reset and a brown-out all leave the door shut.
+    constexpr bool door_relay_active_low = true;
+
+    /// Bounds on the configured unlock pulse, in milliseconds. The solenoid is
+    /// pulse-to-release and is not rated to be held energised.
+    constexpr uint32_t door_unlock_min_ms = 100;
+    constexpr uint32_t door_unlock_max_ms = 2000;
+
+    /// Stack for the event sender task in bytes. Larger than the broker task
+    /// because the TLS handshake runs on this task, not on esp-mqtt's, and
+    /// mbedTLS wants several KB of its own while that handshake is live.
+    /// event_reporter.cpp keeps its own batch buffers off this stack (they
+    /// are module-scope statics, not locals) for the same reason: at 8192
+    /// bytes, a live handshake plus a stack-resident batch left too little
+    /// margin. Raised to 12288 as a working number; event_reporter.cpp logs
+    /// its own high-water mark on every empty drain, so this can be tuned
+    /// down again once that number is known from the bench, not guessed at.
+    constexpr int reporter_task_stack = 12288;
+
+    /// Priority of the event sender. Below the keypad: it must never delay a key press.
+    constexpr int reporter_task_priority = 4;
+
+    /// Events per request. The endpoint takes 50; 20 keeps a typical batch of
+    /// small payloads (e.g. "door-released") to a few KB. The shared send
+    /// buffer in event_reporter.cpp is sized for the worst case instead - a
+    /// full batch of maximum-size records - which comes to roughly 8.4 KB,
+    /// not "near 4 KB": see BODY_CAP there.
+    constexpr int reporter_batch_size = 20;
+
+    /// Gap before retrying api_client::begin() when it did not come up, in
+    /// milliseconds. Its failures are not necessarily permanent - an NVS read
+    /// can fail transiently, and a certificate written by a concurrent
+    /// activation appears after the first attempt - so the sender task waits
+    /// and tries again rather than giving up for the rest of uptime. Same
+    /// value and same reasoning as broker_clock_retry_ms; kept separate so
+    /// either can be tuned without moving the other.
+    constexpr uint32_t reporter_api_retry_ms = 30000;
+
+    /// Retry backoff bounds for a failed drain, in milliseconds.
+    constexpr uint32_t reporter_backoff_min_ms = 5000;
+    constexpr uint32_t reporter_backoff_max_ms = 300000;
+
+    /// Size at which the journal is compacted, in bytes.
+    constexpr size_t reporter_journal_cap = 128 * 1024;
 }

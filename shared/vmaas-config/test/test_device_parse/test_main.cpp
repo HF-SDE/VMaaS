@@ -93,6 +93,69 @@ void test_a_v1_file_still_parses_and_leaves_the_api_url_empty()
     TEST_ASSERT_EQUAL_STRING("", r.config.api_base_url);
 }
 
+void test_door_code_and_unlock_time_are_read()
+{
+    const char* json = R"({"version":3,"door":{"code":"4711"},"timings":{"door_unlock_ms":750}})";
+    const DeviceParseResult r = parse_device_config(json);
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("4711", r.config.door_code);
+    TEST_ASSERT_EQUAL_UINT32(750, r.config.door_unlock_ms);
+}
+
+// The default must leave the door unreachable from the keypad.
+void test_an_absent_door_section_disables_the_code()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":3})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
+    TEST_ASSERT_EQUAL_UINT32(500, r.config.door_unlock_ms);
+}
+
+// A coil told to hold for a minute is a burnt coil.
+void test_an_out_of_range_unlock_time_is_refused_and_defaulted()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":3,"timings":{"door_unlock_ms":60000}})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_UINT32(500, r.config.door_unlock_ms);
+}
+
+void test_an_over_long_door_code_is_refused_and_defaulted()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":3,"door":{"code":"123456789"}})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
+}
+
+// ServiceCode only ever buffers '0'-'9': a non-digit code could never be
+// typed, which would permanently disable keypad release while still latching
+// the recogniser on '*' for the full timeout on every attempt.
+void test_a_non_digit_door_code_is_refused_and_defaulted()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":3,"door":{"code":"abcd"}})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_UINT(1, r.issue_count);
+    TEST_ASSERT_EQUAL(ConfigIssueKind::OutOfRange, r.issues[0].kind);
+    TEST_ASSERT_EQUAL_STRING("door.code", r.issues[0].field);
+    TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
+}
+
+// A code that is mostly digits but has one stray non-digit character must
+// still be refused outright, not silently accepted for its digit prefix.
+void test_a_door_code_with_one_non_digit_character_is_refused()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":3,"door":{"code":"471x"}})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
+}
+
+// A v2 file on a machine in the field still parses; both fields default.
+void test_a_version_two_file_still_parses()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":2,"timings":{"keypad_debounce_ms":20}})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -102,5 +165,12 @@ int main(int, char**)
     RUN_TEST(test_unknown_keys_are_ignored);
     RUN_TEST(test_newer_version_is_tolerated);
     RUN_TEST(test_a_v1_file_still_parses_and_leaves_the_api_url_empty);
+    RUN_TEST(test_door_code_and_unlock_time_are_read);
+    RUN_TEST(test_an_absent_door_section_disables_the_code);
+    RUN_TEST(test_an_out_of_range_unlock_time_is_refused_and_defaulted);
+    RUN_TEST(test_an_over_long_door_code_is_refused_and_defaulted);
+    RUN_TEST(test_a_non_digit_door_code_is_refused_and_defaulted);
+    RUN_TEST(test_a_door_code_with_one_non_digit_character_is_refused);
+    RUN_TEST(test_a_version_two_file_still_parses);
     return UNITY_END();
 }

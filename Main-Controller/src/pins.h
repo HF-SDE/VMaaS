@@ -17,4 +17,8 @@ namespace Pins
     constexpr int KEYPAD_ROWS[4] = {26, 19, 14, 27};
     /// Keypad matrix columns, inputs with internal pull-ups. Header pins 7, 2, 5.
     constexpr int KEYPAD_COLS[3] = {23, 25, 18};
+
+    /// Front door lock relay. Free, and not a strapping pin, so it cannot
+    /// disturb boot. See door_lock.h for the polarity.
+    constexpr int DOOR_RELAY = 13;
 }

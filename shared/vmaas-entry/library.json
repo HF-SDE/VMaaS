@@ -5,5 +5,5 @@
   "keywords": ["entry", "keypad", "ui", "vmaas"],
   "frameworks": "*",
   "platforms": "*",
-  "headers": ["slot_entry.h", "entry_state.h", "text_entry.h", "onboarding_flow.h"]
+  "headers": ["slot_entry.h", "entry_state.h", "text_entry.h", "onboarding_flow.h", "service_code.h"]
 }

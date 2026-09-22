@@ -1,7 +1,8 @@
 import { requireMachine } from "@/api/middleware/require-machine";
 import { validate } from "@/api/middleware/validate";
+import { validateDetailed } from "@/api/middleware/validate-detailed";
 
-import { activateMachineSchema, commandResultSchema, deviceEventSchema, renewCertificateSchema } from "@vmaas/shared/schemas";
+import { activateMachineSchema, commandResultSchema, deviceEventBatchSchema, deviceEventSchema, renewCertificateSchema } from "@vmaas/shared/schemas";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 
@@ -9,6 +10,7 @@ import { activateMachineController } from "../controllers/activation.controller"
 import {
   getDeviceConfigurationController,
   postCommandResultController,
+  postDeviceEventBatchController,
   postDeviceEventController,
   renewCertificateController,
 } from "../controllers/device.controller";
@@ -40,4 +42,8 @@ deviceRouter.use(requireMachine);
 deviceRouter.get("/configuration", getDeviceConfigurationController);
 deviceRouter.post("/command-results", validate(commandResultSchema), postCommandResultController);
 deviceRouter.post("/events", validate(deviceEventSchema), postDeviceEventController);
+// The batch a machine sends when draining its offline journal. validateDetailed
+// rather than validate: a rejected batch must name which record was bad, or the
+// device has to throw away nineteen good events to be rid of one.
+deviceRouter.post("/events/batch", validateDetailed(deviceEventBatchSchema), postDeviceEventBatchController);
 deviceRouter.post("/certificate/renew", validate(renewCertificateSchema), renewCertificateController);

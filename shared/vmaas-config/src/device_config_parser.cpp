@@ -104,6 +104,8 @@ namespace vmaas
         c.keypad_debounce_ms = 20;
         c.slot_entry_timeout_ms = 10000;
         c.slot_entry_result_hold_ms = 2000;
+        c.door_code[0] = '\0';
+        c.door_unlock_ms = 500;
         return c;
     }
 
@@ -157,11 +159,44 @@ namespace vmaas
                         "backend.api_base_url");
         }
 
+        if (const cJSON* door = section(r, root, "door"))
+        {
+            read_string(r, door, "code", r.config.door_code, MAX_DOOR_CODE, "door.code");
+
+            // ServiceCode only ever buffers '0'-'9' (see service_code.cpp), so a
+            // non-digit code could never be typed: the door would be
+            // permanently unopenable from the keypad while still latching the
+            // recogniser on '*' for SERVICE_CODE_TIMEOUT_MS, swallowing a
+            // paying customer's keypad input. Reject it here, the same way
+            // read_string above rejects a code that does not fit, and fall
+            // back to "" - which disables keypad release outright instead of
+            // dangling in an unopenable state.
+            bool door_code_is_all_digits = true;
+            for (const char* p = r.config.door_code; *p != '\0'; ++p)
+            {
+                if (*p < '0' || *p > '9')
+                {
+                    door_code_is_all_digits = false;
+                    break;
+                }
+            }
+            if (!door_code_is_all_digits)
+            {
+                add_issue(r, ConfigIssueKind::OutOfRange, "door.code");
+                r.config.door_code[0] = '\0';
+            }
+        }
+
         if (const cJSON* timings = section(r, root, "timings"))
         {
             read_timing(r, timings, "keypad_debounce_ms", "timings.keypad_debounce_ms", r.config.keypad_debounce_ms);
             read_timing(r, timings, "slot_entry_timeout_ms", "timings.slot_entry_timeout_ms", r.config.slot_entry_timeout_ms);
             read_timing(r, timings, "slot_entry_result_hold_ms", "timings.slot_entry_result_hold_ms", r.config.slot_entry_result_hold_ms);
+            {
+                long long v = r.config.door_unlock_ms;
+                read_int(r, timings, "door_unlock_ms", 100, 2000, "timings.door_unlock_ms", v);
+                r.config.door_unlock_ms = static_cast<uint32_t>(v);
+            }
         }
         cJSON_Delete(root);
 

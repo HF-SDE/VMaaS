@@ -21,7 +21,10 @@ export type DeviceDb = {
     findFirst(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
   };
-  machineEvent: { create(args: unknown): Promise<unknown> };
+  machineEvent: {
+    create(args: unknown): Promise<unknown>;
+    createMany(args: unknown): Promise<{ count: number }>;
+  };
   machineCertificate: {
     create(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
@@ -148,7 +151,7 @@ export async function recordDeviceEventService(
         tenantId: machine.tenantId,
         type: input.type,
         payload: input.payload,
-        eventId: input.eventId,
+        eventId: input.eventId ? `${machine.id}:${input.eventId}` : undefined,
         sequenceNumber: input.sequenceNumber,
         occurredAt: new Date(input.occurredAt),
       },
@@ -163,6 +166,48 @@ export async function recordDeviceEventService(
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while storing the event.",
+    });
+  }
+}
+
+/**
+ * Stores a batch a machine sent while draining its offline journal.
+ *
+ * One `createMany`, so the batch is atomic: it is stored wholly or not at all,
+ * and the device's cursor never has to reason about a partial write.
+ * `skipDuplicates` is what makes a replay free - a device that never saw our
+ * response re-sends the same `eventId`s and gets a 201 with a lower `stored`.
+ */
+export async function recordDeviceEventsService(
+  db: DeviceDb,
+  machine: MachineContext,
+  events: {
+    type: string;
+    payload: Record<string, unknown>;
+    eventId?: string;
+    sequenceNumber?: number;
+    occurredAt: string;
+  }[],
+): Promise<Result<UnknownDeviceError, { received: number; stored: number }>> {
+  try {
+    const { count } = await db.machineEvent.createMany({
+      data: events.map((event) => ({
+        machineId: machine.id,
+        tenantId: machine.tenantId,
+        type: event.type,
+        payload: event.payload,
+        eventId: event.eventId ? `${machine.id}:${event.eventId}` : undefined,
+        sequenceNumber: event.sequenceNumber,
+        occurredAt: new Date(event.occurredAt),
+      })),
+      skipDuplicates: true,
+    });
+
+    return ok({ received: events.length, stored: count });
+  } catch (error) {
+    return err({
+      reason: "UNKNOWN_ERROR",
+      message: error instanceof Error ? error.message : "Unknown error while storing the events.",
     });
   }
 }

@@ -8,6 +8,7 @@ import {
   isCommandOpen,
   recordCommandResultService,
   recordDeviceEventService,
+  recordDeviceEventsService,
   renewCertificateService,
 } from "@/api/services/device.service";
 import { type CertificateAuthority, createCertificateAuthority } from "@/lib/pki";
@@ -329,6 +330,178 @@ describe("recordDeviceEventService", () => {
 
     expect(error?.reason).toBe("UNKNOWN_ERROR");
     expect(result).toBeNull();
+  });
+
+  // A machine's id is not secret, and eventId is "<machine_id>-<seq>". If the
+  // device-supplied value were stored verbatim, a compromised machine could
+  // POST an eventId equal to a victim machine's, and skipDuplicates on the
+  // batch path would then silently discard the victim's real events forever.
+  it("cannot suppress another machine's events: the same device-supplied eventId is namespaced per machine", async () => {
+    const otherMachine = {
+      id: "44444444-4444-4444-8444-444444444444",
+      tenantId: OTHER_TENANT,
+      siteId: SITE,
+      certificateId: "cert-2",
+    };
+    const dbA = fakeDb();
+    const dbB = fakeDb();
+
+    await recordDeviceEventService(dbA, machine, {
+      type: "door-released",
+      payload: {},
+      eventId: "shared-victim-id",
+      occurredAt: new Date().toISOString(),
+    });
+    await recordDeviceEventService(dbB, otherMachine, {
+      type: "door-released",
+      payload: {},
+      eventId: "shared-victim-id",
+      occurredAt: new Date().toISOString(),
+    });
+
+    const storedA = (dbA.machineEvent.create.mock.calls[0][0] as { data: { eventId: string } }).data.eventId;
+    const storedB = (dbB.machineEvent.create.mock.calls[0][0] as { data: { eventId: string } }).data.eventId;
+
+    expect(storedA).not.toBe(storedB);
+    expect(storedA).toBe(`${MACHINE}:shared-victim-id`);
+    expect(storedB).toBe(`${otherMachine.id}:shared-victim-id`);
+  });
+
+  it("leaves eventId undefined when the device sends none, rather than namespacing an empty string", async () => {
+    const db = fakeDb();
+
+    await recordDeviceEventService(db, machine, {
+      type: "door-opened",
+      payload: {},
+      occurredAt: new Date().toISOString(),
+    });
+
+    const args = db.machineEvent.create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(args.data.eventId).toBeUndefined();
+  });
+});
+
+describe("recordDeviceEventsService", () => {
+  const events = [
+    { type: "door-released", payload: { source: "keypad" }, eventId: `${MACHINE}-1`, sequenceNumber: 1, occurredAt: "2026-09-21T10:00:00.000Z" },
+    { type: "door-released", payload: { source: "keypad" }, eventId: `${MACHINE}-2`, sequenceNumber: 2, occurredAt: "2026-09-21T10:05:00.000Z" },
+  ];
+
+  it("stores every event against the machine from the certificate", async () => {
+    const createMany = vi.fn(async (_args: unknown) => ({ count: 2 }));
+    const db = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany } } as unknown as DeviceDb;
+
+    const [error, result] = await recordDeviceEventsService(db, machine, events);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ received: 2, stored: 2 });
+    const args = createMany.mock.calls[0][0] as { data: { machineId: string; tenantId: string }[] };
+    expect(args.data.every((row) => row.machineId === MACHINE && row.tenantId === TENANT)).toBe(true);
+  });
+
+  // The device retries a batch whose response it never saw. That must be free.
+  it("reports the duplicates it skipped rather than failing", async () => {
+    const createMany = vi.fn(async (_args: unknown) => ({ count: 0 }));
+    const db = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany } } as unknown as DeviceDb;
+
+    const [error, result] = await recordDeviceEventsService(db, machine, events);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ received: 2, stored: 0 });
+  });
+
+  it("returns UNKNOWN_ERROR when the write fails", async () => {
+    const createMany = vi.fn(async (_args: unknown) => {
+      throw new Error("connection lost");
+    });
+    const db = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany } } as unknown as DeviceDb;
+
+    const [error] = await recordDeviceEventsService(db, machine, events);
+
+    expect(error?.reason).toBe("UNKNOWN_ERROR");
+  });
+
+  // Same attack as the single-event path's equivalent test: without
+  // namespacing, a compromised machine could send a batch whose eventIds
+  // equal a victim's, and skipDuplicates would discard the victim's real
+  // events forever while this machine's own rows are stored under its own
+  // machineId. The fix must apply here too, or the batch path stays exploitable
+  // even after the single-event path is fixed.
+  it("cannot suppress another machine's events: the same device-supplied eventIds are namespaced per machine", async () => {
+    const otherMachine = {
+      id: "44444444-4444-4444-8444-444444444444",
+      tenantId: OTHER_TENANT,
+      siteId: SITE,
+      certificateId: "cert-2",
+    };
+    const shared = [
+      { type: "door-released", payload: {}, eventId: "shared-victim-id", occurredAt: "2026-09-21T10:00:00.000Z" },
+    ];
+
+    const createManyA = vi.fn(async (_args: unknown) => ({ count: 1 }));
+    const dbA = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany: createManyA } } as unknown as DeviceDb;
+    const createManyB = vi.fn(async (_args: unknown) => ({ count: 1 }));
+    const dbB = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany: createManyB } } as unknown as DeviceDb;
+
+    await recordDeviceEventsService(dbA, machine, shared);
+    await recordDeviceEventsService(dbB, otherMachine, shared);
+
+    const storedA = (createManyA.mock.calls[0][0] as { data: { eventId: string }[] }).data[0].eventId;
+    const storedB = (createManyB.mock.calls[0][0] as { data: { eventId: string }[] }).data[0].eventId;
+
+    expect(storedA).not.toBe(storedB);
+    expect(storedA).toBe(`${MACHINE}:shared-victim-id`);
+    expect(storedB).toBe(`${otherMachine.id}:shared-victim-id`);
+  });
+
+  // The device falls back from a rejected/unacknowledged batch to single
+  // posts of the same records. That fallback is only safe if both paths
+  // namespace the same (machine, device eventId) pair to the identical
+  // stored value, or the retried event would be stored twice.
+  it("derives the same stored eventId on the single and batch paths, so the batch-to-single fallback still dedupes", async () => {
+    const dbSingle = fakeDb();
+    const createMany = vi.fn(async (_args: unknown) => ({ count: 1 }));
+    const dbBatch = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany } } as unknown as DeviceDb;
+
+    await recordDeviceEventService(dbSingle, machine, {
+      type: "door-released",
+      payload: {},
+      eventId: "evt-77",
+      occurredAt: "2026-09-21T10:00:00.000Z",
+    });
+    await recordDeviceEventsService(dbBatch, machine, [
+      { type: "door-released", payload: {}, eventId: "evt-77", occurredAt: "2026-09-21T10:00:00.000Z" },
+    ]);
+
+    const singleEventId = (dbSingle.machineEvent.create.mock.calls[0][0] as { data: { eventId: string } }).data
+      .eventId;
+    const batchEventId = (createMany.mock.calls[0][0] as { data: { eventId: string }[] }).data[0].eventId;
+
+    expect(singleEventId).toBe(batchEventId);
+  });
+
+  // The single-event path already proves identifiers come from the verified
+  // machine context, never the body (see "stamps the written event with the
+  // machine's own tenant and id" above, exercised via recordCommandResultService).
+  // The batch path had no equivalent: this proves a hostile machineId/tenantId
+  // riding along on an event object is ignored, and every stored row is
+  // stamped from `machine`, not from the input.
+  it("stamps every event with the machine's own tenant and id, never the body's, even when the body carries hostile fields", async () => {
+    const createMany = vi.fn(async (_args: unknown) => ({ count: 2 }));
+    const db = { ...fakeDb(), machineEvent: { create: vi.fn(), createMany } } as unknown as DeviceDb;
+    const hostileEvents = events.map((event) => ({
+      ...event,
+      machineId: "11111111-2222-3333-4444-555555555555",
+      tenantId: OTHER_TENANT,
+    })) as unknown as typeof events;
+
+    const [error, result] = await recordDeviceEventsService(db, machine, hostileEvents);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ received: 2, stored: 2 });
+    const args = createMany.mock.calls[0][0] as { data: { machineId: string; tenantId: string }[] };
+    expect(args.data.every((row) => row.machineId === MACHINE && row.tenantId === TENANT)).toBe(true);
+    expect(args.data.some((row) => row.tenantId === OTHER_TENANT)).toBe(false);
   });
 });
 

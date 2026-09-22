@@ -1,4 +1,4 @@
-import { commandResultSchema, deviceEventSchema, renewCertificateSchema } from "@vmaas/shared/schemas";
+import { commandResultSchema, deviceEventBatchSchema, deviceEventSchema, renewCertificateSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
 import { getCertificateAuthority } from "@/lib/ca";
@@ -8,6 +8,7 @@ import {
   getDeviceConfigurationService,
   recordCommandResultService,
   recordDeviceEventService,
+  recordDeviceEventsService,
   renewCertificateService,
 } from "../services/device.service";
 
@@ -65,6 +66,24 @@ export async function postDeviceEventController(req: Request, res: Response) {
     switch (reason) {
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while storing the event" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(201).json(result).end();
+}
+
+export async function postDeviceEventBatchController(req: Request, res: Response) {
+  const { body } = deviceEventBatchSchema.parse(req);
+
+  const [error, result] = await recordDeviceEventsService(prisma, req.machine!, body.events);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while storing the events" }).end();
       default:
         throw new Error(`Unhandled error reason ${reason satisfies never}`);
     }

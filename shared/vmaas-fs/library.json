@@ -5,5 +5,6 @@
   "keywords": ["littlefs", "filesystem", "vmaas"],
   "frameworks": "espidf",
   "platforms": "espressif32",
-  "headers": ["storage.h"]
+  "headers": ["storage.h", "file_io.h"],
+  "dependencies": { "vmaas-events": "*" }
 }

@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-events",
+  "version": "0.1.0",
+  "description": "Hardware-free durable event journal for VMaaS machines",
+  "keywords": ["events", "journal", "queue", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["record.h", "journal.h", "file_port.h", "timing.h"]
+}
