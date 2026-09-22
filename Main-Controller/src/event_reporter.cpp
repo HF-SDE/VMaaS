@@ -62,7 +62,7 @@ namespace
     /// stored maxima, an eventId, the sequenceNumber's digits, and an
     /// occurredAt timestamp.
     constexpr size_t EVENT_JSON_OVERHEAD = 70;
-    constexpr size_t MAX_EVENT_JSON = EVENT_JSON_OVERHEAD + (vmaas::events::MAX_TYPE - 1) + SPLICED_PAYLOAD_CAP + (EVENT_ID_CAP - 1) + 10 // sequenceNumber digits, uint32 max + (ISO8601_CAP - 1);
+    constexpr size_t MAX_EVENT_JSON = EVENT_JSON_OVERHEAD + (vmaas::events::MAX_TYPE - 1) + SPLICED_PAYLOAD_CAP + (EVENT_ID_CAP - 1) + 10 + (ISO8601_CAP - 1);
 
     /// The batch body: "{"events":[" (11) + up to reporter_batch_size entries + "]}" (2).
     ///

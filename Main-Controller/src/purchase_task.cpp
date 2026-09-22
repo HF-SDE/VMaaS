@@ -434,7 +434,6 @@ namespace purchase_task
 
         const vmaas::PurchaseOutput tick_out = machine->tick(now_ms);
         apply(tick_out, nullptr);
-.
         if (settled_until_ms != 0 && now_ms >= settled_until_ms)
         {
             settled_until_ms = 0;

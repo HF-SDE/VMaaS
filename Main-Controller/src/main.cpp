@@ -359,12 +359,6 @@ extern "C" void app_main()
             if (ev.type == vmaas::KeyEventType::Pressed) {
                 ESP_LOGI(TAG, "key '%c'", service.collecting() ? '*' : ev.key);
             }
-            render(entry.handle(ev));
-        }
-
-        render(entry.tick(now_ms()));
-
-        purchase_task::tick(now_ms());
 
             // '*' is shared between the two flows: SlotEntry treats it as
             // backspace (or cancel on an empty buffer), ServiceCode treats it
@@ -410,6 +404,10 @@ extern "C" void app_main()
         if (!service.collecting()) {
         render(entry_tick_state);
         } 
+
+        // A running purchase owns the LCD (see purchase_task::active), so it
+        // gets the last word on the display each pass.
+        purchase_task::tick(now_ms());
             
 
         if (display_ok) {
