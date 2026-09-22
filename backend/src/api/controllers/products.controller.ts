@@ -2,6 +2,7 @@ import {
   createProductSchema,
   getProductsPageSchema,
   productIdParamsSchema,
+  simpleProductSearchSchema,
   updateProductSchema,
 } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
@@ -13,6 +14,7 @@ import {
   getProductsPageService,
   getProductsService,
   setProductArchivedService,
+  simpleProductSearchService,
   updateProductService,
 } from "../services/products.service";
 
@@ -68,6 +70,26 @@ export async function getProductsPageController(req: Request, res: Response) {
   }
 
   return res.status(200).json(page).end();
+}
+
+export async function simpleProductSearchController(req: Request, res: Response) {
+  const { tenantId } = req;
+
+  const { query } = simpleProductSearchSchema.parse(req);
+
+  const [error, products] = await simpleProductSearchService(tenantId!, query);
+
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while searching the products" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  return res.status(200).json(products).end();
 }
 
 export async function createProductsController(req: Request, res: Response) {

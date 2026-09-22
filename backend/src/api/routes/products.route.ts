@@ -7,6 +7,7 @@ import {
   createProductSchema,
   getProductsPageSchema,
   productIdParamsSchema,
+  simpleProductSearchSchema,
   updateProductSchema,
 } from "@vmaas/shared/schemas";
 import { Router } from "express";
@@ -18,6 +19,7 @@ import {
   getProductController,
   getProductsController,
   getProductsPageController,
+  simpleProductSearchController,
   unarchiveProductController,
   updateProductController,
 } from "../controllers/products.controller";
@@ -33,6 +35,13 @@ productsRouter.get(
   requirePermission(PERMISSIONS.PRODUCT_READ),
   validate(getProductsPageSchema),
   getProductsPageController,
+);
+// Same: a literal path above "/:id". Feeds the product picker.
+productsRouter.get(
+  "/simple-search",
+  requirePermission(PERMISSIONS.PRODUCT_READ),
+  validate(simpleProductSearchSchema),
+  simpleProductSearchController,
 );
 productsRouter.post(
   "/",

@@ -34,6 +34,23 @@ export const updateProductSchema = z.object({
 });
 
 /**
+ * `GET /api/products/simple-search`, the product picker's endpoint.
+ *
+ * `search` is required and one character is enough — the picker searches from
+ * the first keystroke — while `limit` is only coerced here and clamped in the
+ * service, so a hand-edited `limit=9999` still answers a short list.
+ *
+ * Request-shaped so it can run through `validate()`, which is what makes the
+ * missing-`search` case a 400 rather than a throw out of the controller.
+ */
+export const simpleProductSearchSchema = z.object({
+  query: z.object({
+    search: z.string().trim().min(1, { message: "search is required" }),
+    limit: z.coerce.number().optional(),
+  }),
+});
+
+/**
  * Request-shaped so it can run through `validate()` like every other products
  * schema. Every field stays optional — a bare `/paginated` is a valid request —
  * and the service is what clamps and whitelists the values it gets.
