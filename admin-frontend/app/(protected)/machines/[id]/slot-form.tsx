@@ -4,8 +4,10 @@ import { useForm } from "@tanstack/react-form"
 import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { ProductPicker } from "@/components/product-picker"
 import {
   Field,
   FieldDescription,
@@ -16,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { fetchData } from "@/lib/data/data-fetch"
 import { slotWriteSchema } from "@vmaas/shared/schemas"
+import type { SimpleProduct } from "@vmaas/shared/types/product"
 import type { SlotWriteData } from "@vmaas/shared/types/slot"
 
 import { slotWriteErrorMessage } from "../messages"
@@ -34,9 +37,8 @@ export type SlotFormValues = {
 }
 
 /**
- * The editable half of a slot: how much is in it, how much fits, and what it
- * costs. Which product sits in the slot is not a field — `PATCH /api/slots/:id`
- * takes a `productId`, but there is no product search endpoint to pick one with.
+ * The editable half of a slot: which product it holds, how much is in it, how
+ * much fits, and what it costs.
  *
  * Takes plain values rather than the slot row, like `<ProductActions>` does: the
  * row carries Prisma's `Decimal` price, and narrowing it here keeps the form to
@@ -45,15 +47,20 @@ export type SlotFormValues = {
 export function EditSlotForm({
   id,
   defaultValues,
+  defaultProduct,
   onSaved,
   onCancel,
 }: {
   id: string
   defaultValues: SlotFormValues
+  defaultProduct: Pick<SimpleProduct, "id" | "name">
   onSaved: () => void
   onCancel: () => void
 }) {
   const router = useRouter()
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    defaultProduct.id
+  )
 
   const form = useForm({
     defaultValues,
@@ -62,6 +69,11 @@ export function EditSlotForm({
     },
 
     onSubmit: async ({ value }) => {
+      if (!selectedProductId) {
+        toast.error("Select a product for this slot.")
+        return
+      }
+
       // All three go every time even when only one changed: the endpoint takes a
       // partial body, and a field that resends the value it already had is a
       // no-op there — the stock ledger is written off the row's delta, not off
@@ -70,7 +82,7 @@ export function EditSlotForm({
         `/api/slots/${id}`,
         {
           method: "PATCH",
-          body: value,
+          body: { ...value, productId: selectedProductId },
         }
       )
 
@@ -93,6 +105,20 @@ export function EditSlotForm({
       }}
     >
       <FieldGroup>
+        <Field orientation="vertical">
+          <FieldLabel htmlFor="product">Product*</FieldLabel>
+          <ProductPicker
+            id="product"
+            name="product"
+            defaultValue={defaultProduct.name}
+            onSelect={(product) => setSelectedProductId(product?.id ?? null)}
+            disabled={form.state.isSubmitting}
+          />
+          <FieldDescription>
+            Search for the product sold from this slot.
+          </FieldDescription>
+        </Field>
+
         <form.Field name="quantity">
           {(field) => {
             const isInvalid =

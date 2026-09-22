@@ -81,6 +81,7 @@ function SlotActionsCell({ slot }: { slot: SlotListItem }) {
           </DialogHeader>
           <EditSlotForm
             id={slot.id}
+            defaultProduct={slot.product}
             defaultValues={{
               quantity: slot.quantity,
               capacity: slot.capacity,
