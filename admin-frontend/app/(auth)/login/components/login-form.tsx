@@ -35,9 +35,7 @@ export function LoginForm({
   const router = useRouter()
   // Set when the user arrived from an invitation link, so signing in returns
   // them to the invitation instead of dropping them on the dashboard.
-  const redirectTo = safeRedirectTarget(
-    useSearchParams().get(REDIRECT_PARAM)
-  )
+  const redirectTo = safeRedirectTarget(useSearchParams().get(REDIRECT_PARAM))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -107,6 +105,15 @@ export function LoginForm({
           <FieldDescription className="px-6 text-center">
             Don&apos;t have an account?{" "}
             <a href={signInPath(redirectTo, "/sign-up")}>Sign up</a>
+          </FieldDescription>
+
+          <FieldDescription className="items flex flex-col text-center">
+            <a
+              href="/forgot-password"
+              className="text-sm underline-offset-4 hover:underline"
+            >
+              Forgot your password?
+            </a>
           </FieldDescription>
         </Field>
       </FieldGroup>
