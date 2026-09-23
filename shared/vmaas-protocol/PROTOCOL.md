@@ -33,7 +33,7 @@ Example, `RUN slot 3`: `AA 01 10 03 35`.
 | `0x10` | RUN    | `slot` u8                      |
 | `0x11` | STOP   | none                           |
 | `0x12` | STATUS | none                           |
-| `0x13` | CONFIG | `param` u8, `value` u16 LE     |
+| `0x13` | CONFIG | `param` u8, `value` u16 LE. Reserved: no params are defined, always `NAK BAD_PARAM`. |
 
 ## Replies (Motorcontrol -> Main-Controller)
 
@@ -46,7 +46,7 @@ table below. DONE and STATUS_REPLY are the two replies that carry data.
 |--------|--------------|------------------------------------------|
 | `0x80` | ACK          | `cmd` u8, the request being acknowledged |
 | `0x81` | NAK          | `cmd` u8, `error` u8                     |
-| `0x82` | DONE         | `slot` u8                                |
+| `0x82` | DONE         | `slot` u8. Sent once every STEP pulse of the vend has been emitted. |
 | `0x83` | STATUS_REPLY | `state` u8, `current_slot` u8            |
 
 ## Enumerations
@@ -70,11 +70,10 @@ NAK error codes:
 | 5    | BAD_PARAM    | CONFIG param id not recognised |
 | 6    | CONFIG_ERROR | Motorcontrol has no valid slot configuration; RUN/STOP/CONFIG refused |
 
-CONFIG params:
-
-| Id | Name        | Value                                     |
-|----|-------------|-------------------------------------------|
-| 1  | RUN_TIME_MS | u16, how long the motor runs on RUN. Default 500. Volatile (lost on reset). |
+CONFIG params: none. `RUN_TIME_MS` (id 1) was removed when the motors became
+steppers; the pulse count per vend is `motor.stepsPerVend` in Motorcontrol's
+`config.json` (see `shared/vmaas-config/README.md`) and the pulse interval is
+a firmware constant on Motorcontrol.
 
 ## Flows
 
@@ -83,7 +82,9 @@ Normal vend:
 ```
 Main  -> Motor : RUN 3
 Motor -> Main  : ACK RUN
-                 (motor runs RUN_TIME_MS)
+                 (slot 3's drivers are enabled, one tick later stepsPerVend
+                  STEP pulses are emitted on the shared line, then the
+                  drivers are disabled - about 2 s at the defaults)
 Motor -> Main  : DONE 3
 ```
 
@@ -94,7 +95,7 @@ Main  -> Motor : RUN 9
 Motor -> Main  : NAK RUN UNKNOWN_SLOT
 ```
 
-STOP while running: `ACK STOP`, pin goes low, no DONE for the interrupted slot.
+STOP while a vend is in progress: `ACK STOP`, the step generator stops, the slot's drivers are disabled, no DONE for the interrupted slot. STOP is also ACKed when nothing is running, so Main-Controller can send it blindly on its dispense timeout.
 
 Motorcontrol without a valid slot configuration:
 
@@ -112,8 +113,8 @@ STATUS: `STATUS_REPLY` is sent immediately. No ACK.
 CONFIG:
 
 ```
-Main  -> Motor : CONFIG RUN_TIME_MS 200
-Motor -> Main  : ACK CONFIG          (or NAK CONFIG BAD_PARAM for an unknown param id)
+Main  -> Motor : CONFIG 1 200
+Motor -> Main  : NAK CONFIG BAD_PARAM     (no params are defined)
 ```
 
 ## Receiver behaviour
@@ -126,12 +127,15 @@ Motor -> Main  : ACK CONFIG          (or NAK CONFIG BAD_PARAM for an unknown par
 
 ## Wiring
 
-Both boards use TX = GPIO17 and RX = GPIO16 (see each project's `pins.h`), so the link is crossed:
+Motorcontrol uses TX = GPIO17 and RX = GPIO16; Main-Controller uses TX = GPIO33 and RX = GPIO32 (see each project's `pins.h`), so the link is crossed:
 
-    Main-Controller GPIO17 (TX)  ->  Motorcontrol GPIO16 (RX)
-    Main-Controller GPIO16 (RX)  <-  Motorcontrol GPIO17 (TX)
+    Main-Controller GPIO33 (TX)  ->  Motorcontrol GPIO16 (RX)
+    Main-Controller GPIO32 (RX)  <-  Motorcontrol GPIO17 (TX)
     Main-Controller GND          --  Motorcontrol GND
 
-## Not in v1
+## Timeouts
 
-No timeouts, retries or sequence numbers. At most one request is in flight.
+Motorcontrol has none. Main-Controller fails a paid sale and sends STOP when
+no DONE or NAK has arrived `timings.dispense_timeout_ms` (default 30 s,
+Main-Controller `config.json`) after RUN. No retries or sequence numbers; at
+most one request is in flight.

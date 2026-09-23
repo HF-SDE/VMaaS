@@ -246,6 +246,39 @@ void test_a_v3_file_parses_and_defers_the_broker()
     TEST_ASSERT_EQUAL_STRING("", r.config.broker_host);
 }
 
+void test_dispense_timeout_is_read()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":4,"timings":{"dispense_timeout_ms":45000}})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT32(45000, r.config.dispense_timeout_ms);
+}
+
+void test_absent_dispense_timeout_defaults_to_thirty_seconds()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":4,"timings":{"keypad_debounce_ms":20}})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT32(30000, r.config.dispense_timeout_ms);
+    TEST_ASSERT_EQUAL_UINT32(30000, device_config_defaults().dispense_timeout_ms);
+}
+
+// Zero means "no timeout", so it is a value here, not an error like the other timings.
+void test_zero_dispense_timeout_is_accepted()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":4,"timings":{"dispense_timeout_ms":0}})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT(0, r.issue_count);
+    TEST_ASSERT_EQUAL_UINT32(0, r.config.dispense_timeout_ms);
+}
+
+void test_over_long_dispense_timeout_is_refused_and_defaulted()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version":4,"timings":{"dispense_timeout_ms":600001}})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL(ConfigIssueKind::OutOfRange, r.issues[0].kind);
+    TEST_ASSERT_EQUAL_STRING("timings.dispense_timeout_ms", r.issues[0].field);
+    TEST_ASSERT_EQUAL_UINT32(30000, r.config.dispense_timeout_ms);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -269,5 +302,9 @@ int main(int, char**)
     RUN_TEST(test_a_zero_broker_port_is_refused);
     RUN_TEST(test_an_over_long_broker_host_is_refused_and_deferred);
     RUN_TEST(test_a_v3_file_parses_and_defers_the_broker);
+    RUN_TEST(test_dispense_timeout_is_read);
+    RUN_TEST(test_absent_dispense_timeout_defaults_to_thirty_seconds);
+    RUN_TEST(test_zero_dispense_timeout_is_accepted);
+    RUN_TEST(test_over_long_dispense_timeout_is_refused_and_defaulted);
     return UNITY_END();
 }

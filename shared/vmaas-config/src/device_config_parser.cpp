@@ -108,6 +108,7 @@ namespace vmaas
         c.slot_entry_result_hold_ms = 2000;
         c.door_code[0] = '\0';
         c.door_unlock_ms = 500;
+        c.dispense_timeout_ms = 30000;
         return c;
     }
 
@@ -164,9 +165,6 @@ namespace vmaas
         if (const cJSON* broker = section(r, root, "broker"))
         {
             read_string(r, broker, "host", r.config.broker_host, MAX_BROKER_HOST, "broker.host");
-            // Low bound 1, not 0: 0 is the "defer to activation" sentinel, so
-            // accepting it would turn a typo into a silent fallback to the very
-            // address the file was written to replace.
             long long port = r.config.broker_port;
             read_int(r, broker, "port", 1, 65535, "broker.port", port);
             r.config.broker_port = static_cast<uint16_t>(port);
@@ -209,6 +207,11 @@ namespace vmaas
                 long long v = r.config.door_unlock_ms;
                 read_int(r, timings, "door_unlock_ms", 100, 2000, "timings.door_unlock_ms", v);
                 r.config.door_unlock_ms = static_cast<uint32_t>(v);
+            }
+            {
+                long long v = r.config.dispense_timeout_ms;
+                read_int(r, timings, "dispense_timeout_ms", 0, TIMING_MAX, "timings.dispense_timeout_ms", v);
+                r.config.dispense_timeout_ms = static_cast<uint32_t>(v);
             }
         }
         cJSON_Delete(root);

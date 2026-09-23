@@ -2,13 +2,16 @@
 
 #include <cstdio>
 #include <cstring>
+#include "driver/gpio.h"
 #include "esp_log.h"
+#include "pins.h"
 #include "slot_config_parser.h"
 #include "storage.h"
 
 namespace
 {
     constexpr const char* TAG = "ConfigStore";
+    constexpr size_t MAX_PINS_LOG = 24; // "18,19,21,22,23,25" fits
 
     config_store::LoadResult failed(const char* reason)
     {
@@ -16,6 +19,15 @@ namespace
         r.ok = false;
         std::snprintf(r.reason, sizeof(r.reason), "%s", reason);
         return r;
+    }
+
+    // GPIOs a slot must never drive: the shared STEP line, the link to
+    // Main-Controller, the console UART0 (1, 3) and the SPI flash (6-11).
+    bool is_reserved(int pin)
+    {
+        if (pin == Pins::STEP || pin == Pins::UART_TX || pin == Pins::UART_RX) return true;
+        if (pin == 1 || pin == 3) return true;
+        return pin >= 6 && pin <= 11;
     }
 }
 
@@ -67,10 +79,64 @@ namespace config_store
             return out;
         }
 
-        ESP_LOGI(TAG, "%s: %d bytes, %u slot(s)", CONFIG_PATH, n, (unsigned)out.config.slot_count);
-        for (size_t i = 0; i < out.config.slot_count; ++i) {
-            ESP_LOGI(TAG, "  slot %u -> GPIO %d", out.config.slots[i].slot, out.config.slots[i].pin);
-        }
+        ESP_LOGI(TAG, "%s: %d bytes, %u slot(s), %u steps per vend", CONFIG_PATH, n, (unsigned)out.config.slot_count, (unsigned)out.config.steps_per_vend);
         return out;
+    }
+
+    bool uses_reserved_pin(const vmaas::SlotConfig& cfg, char* reason, size_t cap)
+    {
+        for (size_t i = 0; i < cfg.slot_count; ++i)
+        {
+            for (size_t k = 0; k < cfg.slots[i].pin_count; ++k)
+            {
+                const int pin = cfg.slots[i].pins[k];
+                if (is_reserved(pin))
+                {
+                    std::snprintf(reason, cap, "slots[%u].pins[%u] reserved", (unsigned)i, (unsigned)k);
+                    ESP_LOGW(TAG, "%s: slot %u uses GPIO %d, which is %s on this board",
+                             CONFIG_PATH, cfg.slots[i].slot, pin,
+                             pin == Pins::STEP ? "the shared STEP line" :
+                             (pin == Pins::UART_TX || pin == Pins::UART_RX) ? "a UART pin" :
+                             (pin == 1 || pin == 3) ? "the console" : "a flash line");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void raise_enable_pin(gpio_num_t pin)
+    {
+        gpio_reset_pin(pin);
+        gpio_set_level(pin, 1);
+        gpio_set_direction(pin, GPIO_MODE_OUTPUT);
+        gpio_set_level(pin, 1);
+    }
+
+    void disable_all_motors(const vmaas::SlotConfig& cfg)
+    {
+        for (size_t i = 0; i < cfg.slot_count; ++i)
+        {
+            for (size_t k = 0; k < cfg.slots[i].pin_count; ++k)
+            {
+                const int pin = cfg.slots[i].pins[k];
+                if (is_reserved(pin)) continue;
+                raise_enable_pin(static_cast<gpio_num_t>(pin));
+            }
+        }
+    }
+
+    void log_table(const vmaas::SlotConfig& cfg)
+    {
+        for (size_t i = 0; i < cfg.slot_count; ++i)
+        {
+            const vmaas::SlotEntry& e = cfg.slots[i];
+            char pins[MAX_PINS_LOG];
+            size_t used = 0;
+            for (size_t k = 0; k < e.pin_count && used < sizeof(pins); ++k) {
+                used += std::snprintf(pins + used, sizeof(pins) - used, "%s%u", k ? "," : "", e.pins[k]);
+            }
+            ESP_LOGI(TAG, "  slot %u -> nENABLE GPIO %s", e.slot, pins);
+        }
     }
 }

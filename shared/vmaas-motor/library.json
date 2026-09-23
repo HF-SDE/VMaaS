@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-motor",
+  "version": "0.1.0",
+  "description": "Hardware-free stepper dispense sequencer for VMaaS Motorcontrol",
+  "keywords": ["stepper", "motor", "vending", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["vend_sequencer.h"]
+}

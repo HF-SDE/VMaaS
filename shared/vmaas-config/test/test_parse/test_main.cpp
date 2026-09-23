@@ -2,10 +2,10 @@
  * @file test_main.cpp
  * @brief Host tests for parse_slot_config() structure handling.
  *
- * The contract under test: a well-formed file yields the slot table in file
- * order and ok == true; anything that is not a JSON object with a "slots"
- * array yields ok == false and names the problem; unknown keys and a newer
- * schema version are tolerated.
+ * The contract under test: a well-formed v2 file yields the step count and
+ * the slot table in file order with ok == true; anything that is not a JSON
+ * object with a "motor" block and a "slots" array yields ok == false and
+ * names the problem; unknown keys and a newer schema version are tolerated.
  */
 #include <unity.h>
 #include <cstring>
@@ -17,15 +17,24 @@ using namespace vmaas;
 
 namespace
 {
+    constexpr const char* MOTOR = R"("motor": {"stepsPerVend": 6400},)";
+
     constexpr const char* FOUR_SLOTS = R"({
-        "version": 1,
+        "version": 2,
+        "motor": { "stepsPerVend": 6400 },
         "slots": [
-            { "slot": 1, "pin": 18 },
-            { "slot": 2, "pin": 19 },
-            { "slot": 3, "pin": 21 },
-            { "slot": 4, "pin": 22 }
+            { "slot": 1, "pins": [18] },
+            { "slot": 2, "pins": [19] },
+            { "slot": 3, "pins": [21, 22] },
+            { "slot": 4, "pins": [23] }
         ]
     })";
+
+    // Wraps a slots-array body in a complete v2 file with the default motor block.
+    std::string file(const char* slots_body)
+    {
+        return std::string("{") + MOTOR + "\"slots\": " + slots_body + "}";
+    }
 
     bool has_issue(const SlotParseResult& r, ConfigIssueKind kind, const char* field)
     {
@@ -39,36 +48,66 @@ namespace
 void setUp() {}
 void tearDown() {}
 
-void test_valid_file_gives_slots_in_file_order()
+void test_valid_file_gives_steps_and_slots_in_file_order()
 {
     const SlotParseResult r = parse_slot_config(FOUR_SLOTS);
     TEST_ASSERT_TRUE(r.json_valid);
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.issue_count);
+    TEST_ASSERT_EQUAL_UINT16(6400, r.config.steps_per_vend);
     TEST_ASSERT_EQUAL_UINT32(4, r.config.slot_count);
     TEST_ASSERT_EQUAL_UINT8(1, r.config.slots[0].slot);
-    TEST_ASSERT_EQUAL_INT(18, r.config.slots[0].pin);
+    TEST_ASSERT_EQUAL_UINT8(1, r.config.slots[0].pin_count);
+    TEST_ASSERT_EQUAL_UINT8(18, r.config.slots[0].pins[0]);
+    TEST_ASSERT_EQUAL_UINT8(3, r.config.slots[2].slot);
+    TEST_ASSERT_EQUAL_UINT8(2, r.config.slots[2].pin_count);
+    TEST_ASSERT_EQUAL_UINT8(21, r.config.slots[2].pins[0]);
+    TEST_ASSERT_EQUAL_UINT8(22, r.config.slots[2].pins[1]);
     TEST_ASSERT_EQUAL_UINT8(4, r.config.slots[3].slot);
-    TEST_ASSERT_EQUAL_INT(22, r.config.slots[3].pin);
+    TEST_ASSERT_EQUAL_UINT8(23, r.config.slots[3].pins[0]);
 }
 
 void test_single_slot_file_is_ok()
 {
-    const SlotParseResult r = parse_slot_config(R"({"slots": [{"slot": 7, "pin": 5}]})");
+    const SlotParseResult r = parse_slot_config(file(R"([{"slot": 7, "pins": [5]}])").c_str());
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.config.slot_count);
     TEST_ASSERT_EQUAL_UINT8(7, r.config.slots[0].slot);
-    TEST_ASSERT_EQUAL_INT(5, r.config.slots[0].pin);
+    TEST_ASSERT_EQUAL_UINT8(5, r.config.slots[0].pins[0]);
 }
 
-// There is no default wiring: a file without "slots" is unusable.
-void test_empty_object_is_missing_slots()
+// There is no default wiring and no default step count: an empty object is unusable on both counts.
+void test_empty_object_is_missing_motor_and_slots()
 {
     const SlotParseResult r = parse_slot_config("{}");
     TEST_ASSERT_TRUE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(0, r.config.slot_count);
+    TEST_ASSERT_EQUAL_UINT16(0, r.config.steps_per_vend);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "motor"));
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "slots"));
+}
+
+void test_missing_motor_block_is_missing_field()
+{
+    const SlotParseResult r = parse_slot_config(R"({"slots": [{"slot": 1, "pins": [18]}]})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_UINT32(0, r.config.slot_count);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "motor"));
+}
+
+void test_missing_steps_per_vend_is_missing_field()
+{
+    const SlotParseResult r = parse_slot_config(R"({"motor": {}, "slots": [{"slot": 1, "pins": [18]}]})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "motor.stepsPerVend"));
+}
+
+void test_motor_not_an_object_is_wrong_type()
+{
+    const SlotParseResult r = parse_slot_config(R"({"motor": 6400, "slots": [{"slot": 1, "pins": [18]}]})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::WrongType, "motor"));
 }
 
 void test_nullptr_is_invalid_json()
@@ -81,7 +120,7 @@ void test_nullptr_is_invalid_json()
 
 void test_invalid_json_gives_offset()
 {
-    const char* json = R"({"slots": [{"slot": 1,)";
+    const char* json = R"({"motor": {"stepsPerVend": 6400}, "slots": [{"slot": 1,)";
     const SlotParseResult r = parse_slot_config(json);
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
@@ -93,7 +132,7 @@ void test_invalid_json_gives_offset()
 
 void test_non_object_root_is_invalid_json()
 {
-    const SlotParseResult r = parse_slot_config(R"([{"slot": 1, "pin": 18}])");
+    const SlotParseResult r = parse_slot_config(R"([{"slot": 1, "pins": [18]}])");
     TEST_ASSERT_FALSE(r.json_valid);
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::InvalidJson, ""));
@@ -116,19 +155,20 @@ void test_deeply_nested_json_is_rejected_before_parsing()
     TEST_ASSERT_TRUE(r.json_error_offset < json.size());
 }
 
-// The schema itself is depth 3 (object > array > object) and must stay well inside the limit.
+// The schema itself is depth 4 (object > array > object > array) and must stay well inside the limit.
 void test_schema_depth_is_within_limit()
 {
-    const SlotParseResult r = parse_slot_config(R"({"slots": [{"slot": 1, "pin": 18, "meta": {"a": [1]}}]})");
+    const SlotParseResult r = parse_slot_config(file(R"([{"slot": 1, "pins": [18], "meta": {"a": [1]}}])").c_str());
     TEST_ASSERT_TRUE(r.ok);
 }
 
 void test_unknown_keys_are_ignored_everywhere()
 {
     const char* json = R"({
-        "version": 1,
+        "version": 2,
         "wifi": {"ssid": "x"},
-        "slots": [{"slot": 1, "pin": 18, "label": "cola"}],
+        "motor": {"stepsPerVend": 6400, "stepIntervalUs": 312},
+        "slots": [{"slot": 1, "pins": [18], "label": "cola"}],
         "notes": [1, 2, 3]
     })";
     const SlotParseResult r = parse_slot_config(json);
@@ -140,7 +180,7 @@ void test_unknown_keys_are_ignored_everywhere()
 // A file from a newer firmware still applies; the caller gets a hint.
 void test_newer_version_is_flagged_but_ok()
 {
-    const SlotParseResult r = parse_slot_config(R"({"version": 2, "slots": [{"slot": 1, "pin": 18}]})");
+    const SlotParseResult r = parse_slot_config(R"({"version": 3, "motor": {"stepsPerVend": 6400}, "slots": [{"slot": 1, "pins": [18]}]})");
     TEST_ASSERT_TRUE(r.ok);
     TEST_ASSERT_EQUAL_UINT32(1, r.issue_count);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::NewerVersion, "version"));
@@ -149,12 +189,22 @@ void test_newer_version_is_flagged_but_ok()
 
 void test_current_version_gives_no_issue()
 {
-    TEST_ASSERT_EQUAL_UINT32(0, parse_slot_config(R"({"version": 1, "slots": [{"slot": 1, "pin": 18}]})").issue_count);
+    TEST_ASSERT_EQUAL_UINT32(0, parse_slot_config(R"({"version": 2, "motor": {"stepsPerVend": 6400}, "slots": [{"slot": 1, "pins": [18]}]})").issue_count);
+}
+
+// A v1 file is not silently accepted with an older version number: it lacks
+// "motor" and uses the removed "pin" scalar, and both are reported.
+void test_v1_file_is_unusable()
+{
+    const SlotParseResult r = parse_slot_config(R"({"version": 1, "slots": [{"slot": 1, "pin": 18}]})");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "motor"));
+    TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::MissingField, "slots[0].pins"));
 }
 
 void test_non_numeric_version_is_wrong_type_and_not_ok()
 {
-    const SlotParseResult r = parse_slot_config(R"({"version": "1", "slots": [{"slot": 1, "pin": 18}]})");
+    const SlotParseResult r = parse_slot_config(R"({"version": "2", "motor": {"stepsPerVend": 6400}, "slots": [{"slot": 1, "pins": [18]}]})");
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_TRUE(has_issue(r, ConfigIssueKind::WrongType, "version"));
 }
@@ -162,9 +212,12 @@ void test_non_numeric_version_is_wrong_type_and_not_ok()
 int main(int, char**)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_valid_file_gives_slots_in_file_order);
+    RUN_TEST(test_valid_file_gives_steps_and_slots_in_file_order);
     RUN_TEST(test_single_slot_file_is_ok);
-    RUN_TEST(test_empty_object_is_missing_slots);
+    RUN_TEST(test_empty_object_is_missing_motor_and_slots);
+    RUN_TEST(test_missing_motor_block_is_missing_field);
+    RUN_TEST(test_missing_steps_per_vend_is_missing_field);
+    RUN_TEST(test_motor_not_an_object_is_wrong_type);
     RUN_TEST(test_nullptr_is_invalid_json);
     RUN_TEST(test_invalid_json_gives_offset);
     RUN_TEST(test_non_object_root_is_invalid_json);
@@ -173,6 +226,7 @@ int main(int, char**)
     RUN_TEST(test_unknown_keys_are_ignored_everywhere);
     RUN_TEST(test_newer_version_is_flagged_but_ok);
     RUN_TEST(test_current_version_gives_no_issue);
+    RUN_TEST(test_v1_file_is_unusable);
     RUN_TEST(test_non_numeric_version_is_wrong_type_and_not_ok);
     return UNITY_END();
 }

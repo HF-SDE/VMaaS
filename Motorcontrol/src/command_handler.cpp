@@ -1,8 +1,9 @@
 /**
  * @file command_handler.cpp
- * @brief CommandHandler request execution and motor timing. See command_handler.h.
+ * @brief CommandHandler request execution. See command_handler.h.
  */
 #include "command_handler.h"
+#include "config_store.h"
 #include "esp_log.h"
 #include "freertos/task.h"
 
@@ -13,39 +14,34 @@ namespace
     constexpr const char* TAG = "CmdHandler";
 }
 
-CommandHandler::CommandHandler(UartBus& bus, const SlotPin* slots, size_t count)
-    : bus_(bus), slots_(slots), slot_count_(count)
+CommandHandler::CommandHandler(UartBus& bus, const SlotConfig& cfg, IStepGenerator& gen)
+    : bus_(bus), cfg_(cfg), gen_(gen)
 {
 }
 
 void CommandHandler::begin()
 {
-    for (size_t i = 0; i < slot_count_; ++i)
+    for (size_t i = 0; i < cfg_.slot_count; ++i)
     {
-        gpio_reset_pin(slots_[i].pin);
-        gpio_set_level(slots_[i].pin, 0);
-        gpio_set_direction(slots_[i].pin, GPIO_MODE_OUTPUT);
-        gpio_set_level(slots_[i].pin, 0);
+        const SlotEntry& e = cfg_.slots[i];
+        for (size_t k = 0; k < e.pin_count; ++k)
+        {
+            config_store::raise_enable_pin(static_cast<gpio_num_t>(e.pins[k]));
+        }
     }
     bus_.on_frame([this](const Frame& f) { handle(f); });
-    ESP_LOGI(TAG, "ready, %u slots, run_time=%u ms", (unsigned)slot_count_, run_time_ms_);
+    ESP_LOGI(TAG, "ready, %u slots, %u steps per vend", (unsigned)cfg_.slot_count, (unsigned)cfg_.steps_per_vend);
 }
 
 void CommandHandler::tick()
 {
-    if (state_ != State::BUSY)
-        return;
-    const TickType_t elapsed = xTaskGetTickCount() - run_started_;
-    if (elapsed < pdMS_TO_TICKS(run_time_ms_))
-        return;
+    if (seq_.state() == VendState::Idle) return;
+    act(seq_.tick(xTaskGetTickCount(), gen_.done()));
+}
 
-    set_motor(current_pin_, false);
-    const uint8_t finished = current_slot_;
-    state_ = State::IDLE;
-    current_slot_ = 0;
-    current_pin_ = GPIO_NUM_NC;
-    bus_.send(frames::done(finished));
-    ESP_LOGI(TAG, "slot %u done", finished);
+State CommandHandler::state() const
+{
+    return seq_.state() == VendState::Idle ? State::IDLE : State::BUSY;
 }
 
 void CommandHandler::handle(const Frame& f)
@@ -77,17 +73,16 @@ void CommandHandler::handle_run(const Frame& f)
         bus_.send(frames::nak(Cmd::RUN, ErrorCode::BAD_PAYLOAD));
         return;
     }
-    // OWNER DECISION 2: policy when a RUN arrives while another is active.
-    // Current policy: reject. Alternative: queue it and start after DONE.
-    if (state_ == State::BUSY)
+
+    if (seq_.state() != VendState::Idle)
     {
-        ESP_LOGW(TAG, "RUN %u rejected: busy with slot %u", f.payload[0], current_slot_);
+        ESP_LOGW(TAG, "RUN %u rejected: busy with slot %u", f.payload[0], seq_.current_slot());
         bus_.send(frames::nak(Cmd::RUN, ErrorCode::BUSY));
         return;
     }
     const uint8_t slot = f.payload[0];
-    const gpio_num_t pin = pin_for(slot);
-    if (pin == GPIO_NUM_NC)
+    const SlotEntry* e = entry_for(slot);
+    if (e == nullptr)
     {
         ESP_LOGW(TAG, "RUN %u rejected: unknown slot", slot);
         bus_.send(frames::nak(Cmd::RUN, ErrorCode::UNKNOWN_SLOT));
@@ -95,12 +90,8 @@ void CommandHandler::handle_run(const Frame& f)
     }
 
     bus_.send(frames::ack(Cmd::RUN));
-    state_ = State::BUSY;
-    current_slot_ = slot;
-    current_pin_ = pin;
-    run_started_ = xTaskGetTickCount();
-    set_motor(pin, true);
-    ESP_LOGI(TAG, "slot %u running on GPIO %d for %u ms", slot, (int)pin, run_time_ms_);
+    act(seq_.run(slot, cfg_.steps_per_vend, xTaskGetTickCount()));
+    ESP_LOGI(TAG, "slot %u: %u driver(s) enabled, %u steps to follow", slot, (unsigned)e->pin_count, (unsigned)cfg_.steps_per_vend);
 }
 
 void CommandHandler::handle_stop(const Frame& f)
@@ -111,14 +102,10 @@ void CommandHandler::handle_stop(const Frame& f)
         bus_.send(frames::nak(Cmd::STOP, ErrorCode::BAD_PAYLOAD));
         return;
     }
-    if (state_ == State::BUSY)
-    {
-        set_motor(current_pin_, false);
-        ESP_LOGI(TAG, "slot %u stopped by request", current_slot_);
-        state_ = State::IDLE;
-        current_slot_ = 0;
-        current_pin_ = GPIO_NUM_NC;
+    if (seq_.state() != VendState::Idle) {
+        ESP_LOGI(TAG, "slot %u stopped by request", seq_.current_slot());
     }
+    act(seq_.stop());
     bus_.send(frames::ack(Cmd::STOP));
 }
 
@@ -130,7 +117,7 @@ void CommandHandler::handle_status(const Frame& f)
         bus_.send(frames::nak(Cmd::STATUS, ErrorCode::BAD_PAYLOAD));
         return;
     }
-    bus_.send(frames::status_reply(state_, current_slot_));
+    bus_.send(frames::status_reply(state(), seq_.current_slot()));
 }
 
 void CommandHandler::handle_config(const Frame& f)
@@ -141,31 +128,36 @@ void CommandHandler::handle_config(const Frame& f)
         bus_.send(frames::nak(Cmd::CONFIG, ErrorCode::BAD_PAYLOAD));
         return;
     }
-    const uint16_t value = static_cast<uint16_t>(f.payload[1] | (f.payload[2] << 8));
-    switch (static_cast<ConfigParam>(f.payload[0]))
+
+    ESP_LOGW(TAG, "CONFIG with unknown param %u", f.payload[0]);
+    bus_.send(frames::nak(Cmd::CONFIG, ErrorCode::BAD_PARAM));
+}
+
+const SlotEntry* CommandHandler::entry_for(uint8_t slot) const
+{
+    for (size_t i = 0; i < cfg_.slot_count; ++i)
+        if (cfg_.slots[i].slot == slot)
+            return &cfg_.slots[i];
+    return nullptr;
+}
+
+void CommandHandler::set_enabled(const SlotEntry& e, bool enabled)
+{
+    for (size_t k = 0; k < e.pin_count; ++k)
+        gpio_set_level(static_cast<gpio_num_t>(e.pins[k]), enabled ? 0 : 1);
+}
+
+void CommandHandler::act(const VendActions& a)
+{
+    const SlotEntry* e = (a.enable_pins || a.disable_pins) ? entry_for(a.slot) : nullptr;
+
+    if (a.stop_steps) gen_.stop();
+    if (a.enable_pins && e != nullptr) set_enabled(*e, true);
+    if (a.start_steps) gen_.start(a.steps);
+    if (a.disable_pins && e != nullptr) set_enabled(*e, false);
+    if (a.send_done)
     {
-    case ConfigParam::RUN_TIME_MS:
-        run_time_ms_ = value;
-        ESP_LOGI(TAG, "run_time set to %u ms", run_time_ms_);
-        bus_.send(frames::ack(Cmd::CONFIG));
-        break;
-    default:
-        ESP_LOGW(TAG, "CONFIG with unknown param %u", f.payload[0]);
-        bus_.send(frames::nak(Cmd::CONFIG, ErrorCode::BAD_PARAM));
-        break;
+        bus_.send(frames::done(a.slot));
+        ESP_LOGI(TAG, "slot %u done", a.slot);
     }
-}
-
-gpio_num_t CommandHandler::pin_for(uint8_t slot) const
-{
-    for (size_t i = 0; i < slot_count_; ++i)
-        if (slots_[i].slot == slot)
-            return slots_[i].pin;
-    return GPIO_NUM_NC;
-}
-
-void CommandHandler::set_motor(gpio_num_t pin, bool on)
-{
-    if (pin != GPIO_NUM_NC)
-        gpio_set_level(pin, on ? 1 : 0);
 }

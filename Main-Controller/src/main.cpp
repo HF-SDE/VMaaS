@@ -312,7 +312,7 @@ extern "C" void app_main()
 
     broker_client::start(cfg);
 
-    const bool cash_ok = purchase_task::begin(lcd, display_ok, motor);
+    const bool cash_ok = purchase_task::begin(lcd, display_ok, motor, cfg.dispense_timeout_ms);
     if (!cash_ok) {
         ESP_LOGW(TAG, "cash disabled; slot entry logs only, as before");
     }

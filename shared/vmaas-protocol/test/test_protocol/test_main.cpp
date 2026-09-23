@@ -47,14 +47,13 @@ void test_builder_stop_and_status_have_no_payload()
     TEST_ASSERT_EQUAL_UINT8(0, frames::status().len);
 }
 
-void test_builder_config_is_little_endian()
+// CONFIG has no parameters since stepsPerVend moved into config.json, but the
+// opcode and its wire layout (param u8, value u16) are kept so a stale
+// Main-Controller gets a well-formed NAK BAD_PARAM rather than UNKNOWN_CMD.
+void test_config_opcode_is_reserved_with_no_params()
 {
-    Frame f = frames::config(ConfigParam::RUN_TIME_MS, 0x01F4); // 500 ms
-    TEST_ASSERT_EQUAL(Cmd::CONFIG, f.cmd);
-    TEST_ASSERT_EQUAL_UINT8(3, f.len);
-    TEST_ASSERT_EQUAL_UINT8(1, f.payload[0]);
-    TEST_ASSERT_EQUAL_HEX8(0xF4, f.payload[1]);
-    TEST_ASSERT_EQUAL_HEX8(0x01, f.payload[2]);
+    TEST_ASSERT_EQUAL_HEX8(0x13, static_cast<uint8_t>(Cmd::CONFIG));
+    TEST_ASSERT_EQUAL_UINT8(5, static_cast<uint8_t>(ErrorCode::BAD_PARAM));
 }
 
 void test_builder_replies()
@@ -108,7 +107,7 @@ int main(int, char**)
     RUN_TEST(test_is_reply);
     RUN_TEST(test_builder_run);
     RUN_TEST(test_builder_stop_and_status_have_no_payload);
-    RUN_TEST(test_builder_config_is_little_endian);
+    RUN_TEST(test_config_opcode_is_reserved_with_no_params);
     RUN_TEST(test_builder_replies);
     return UNITY_END();
 }

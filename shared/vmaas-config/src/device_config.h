@@ -11,7 +11,7 @@
  *   "backend":  { "api_base_url": "https://vmaas.dk/api" },
  *   "broker":   { "host": "192.168.78.225", "port": 8883 },
  *   "door":     { "code": "4711" },
- *   "timings":  { "keypad_debounce_ms": 20, "slot_entry_timeout_ms": 10000, "slot_entry_result_hold_ms": 2000, "door_unlock_ms": 500 }
+ *   "timings":  { "keypad_debounce_ms": 20, "slot_entry_timeout_ms": 10000, "slot_entry_result_hold_ms": 2000, "door_unlock_ms": 500, "dispense_timeout_ms": 30000 }
  * }
  * @endcode
  */
@@ -67,6 +67,12 @@ namespace vmaas
         /// How long the door relay is energised, in milliseconds. The solenoid
         /// is pulse-to-release and not rated to be held, hence the narrow range.
         uint32_t door_unlock_ms;
+        /// How long a paid sale waits for Motorcontrol's DONE (or NAK) before
+        /// it is booked Failed and STOP is sent. 0 disables the timeout. Must
+        /// stay above the longest vend Motorcontrol can be configured for
+        /// (stepsPerVend x STEP_INTERVAL_US): 65535 x 312 us is 20.4 s, so 30 s
+        /// leaves margin. Raise it if STEP_INTERVAL_US is raised on Motorcontrol.
+        uint32_t dispense_timeout_ms;
     };
 
     /// The value of every field when config.json does not supply it, or supplies it badly.

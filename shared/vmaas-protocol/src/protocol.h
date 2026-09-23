@@ -59,9 +59,9 @@ namespace vmaas
     {
         UNKNOWN_CMD = 1,  ///< CMD byte is not a known request.
         BAD_PAYLOAD = 2,  ///< LEN does not match what the CMD requires.
-        BUSY = 3,         ///< RUN received while a motor is already running.
+        BUSY = 3,         ///< RUN received while a vend is already in progress.
         UNKNOWN_SLOT = 4, ///< Slot is not present in Motorcontrol's slot map.
-        BAD_PARAM = 5,    ///< CONFIG param id is not recognised.
+        BAD_PARAM = 5,    ///< CONFIG param id is not recognised (no params are defined).
         CONFIG_ERROR = 6, ///< Motorcontrol has no valid slot configuration (config.json) and refuses RUN/STOP/CONFIG.
     };
 
@@ -71,17 +71,21 @@ namespace vmaas
     enum class State : uint8_t
     {
         IDLE = 0,  ///< No motor running. STATUS_REPLY reports current_slot 0.
-        BUSY = 1,  ///< A motor is running; current_slot names it.
+        BUSY = 1,  ///< A vend is in progress; current_slot names it.
         ERROR = 2, ///< Motorcontrol has no valid slot configuration. current_slot is 0. Every RUN/STOP/CONFIG is answered NAK CONFIG_ERROR.
     };
 
     /**
      * @brief Parameter id in the first payload byte of a CONFIG request.
+     *
+     * Empty since the stepper redesign: the only parameter, RUN_TIME_MS, was
+     * replaced by motor.stepsPerVend in Motorcontrol's config.json, which the
+     * backend publishes. The CONFIG opcode and its 3-byte layout (param u8,
+     * value u16 LE) are kept reserved; Motorcontrol answers every param with
+     * NAK BAD_PARAM.
      */
     enum class ConfigParam : uint8_t
     {
-        /// How long the motor runs on RUN, in milliseconds (u16, default 500). Volatile: lost on reset.
-        RUN_TIME_MS = 1,
     };
 
     /**
@@ -142,22 +146,6 @@ namespace vmaas
         {
             Frame f;
             f.cmd = Cmd::STATUS;
-            return f;
-        }
-
-        /**
-         * @brief Build a CONFIG request.
-         * @param param Parameter to set.
-         * @param value New value, encoded little-endian in the payload.
-         */
-        inline Frame config(ConfigParam param, uint16_t value)
-        {
-            Frame f;
-            f.cmd = Cmd::CONFIG;
-            f.len = 3;
-            f.payload[0] = static_cast<uint8_t>(param);
-            f.payload[1] = static_cast<uint8_t>(value & 0xFF);
-            f.payload[2] = static_cast<uint8_t>(value >> 8);
             return f;
         }
 

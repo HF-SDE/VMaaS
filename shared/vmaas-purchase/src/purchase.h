@@ -50,6 +50,10 @@ namespace vmaas
         uint8_t    slot = 0;
         bool       settle_sale = false; ///< Append one line to the outbox.
         SaleStatus sale_status = SaleStatus::None;
+        /// Send STOP to Motorcontrol now. Set once, on the dispense timeout,
+        /// so a motor that is genuinely stuck is switched off; harmless when
+        /// the DONE was merely lost, because STOP is idempotent.
+        bool       stop_motor = false;
     };
 
     struct PurchaseConfig
@@ -60,6 +64,13 @@ namespace vmaas
         /// Whether the INHIBIT pin is wired. When false, a coin can arrive
         /// with no slot chosen and must still be honoured; see Task 4.
         bool has_inhibit = false;
+        /// How long Dispensing waits for DONE or NAK before the sale is booked
+        /// Failed and STOP is requested. 0 disables the timeout. Must exceed
+        /// the longest vend Motorcontrol can be configured for: 65535 steps at
+        /// STEP_INTERVAL_US = 312 is 20.4 s, so 30 s leaves margin. A false
+        /// timeout is worse than a slow failure - it books a successful vend as
+        /// Failed while the customer holds the item.
+        uint32_t dispense_timeout_ms = 30000;
     };
 
     class Purchase
@@ -74,7 +85,7 @@ namespace vmaas
         PurchaseOutput dispense_done(uint32_t now_ms);
         PurchaseOutput dispense_failed(uint32_t now_ms);
         PurchaseOutput cancel(uint32_t now_ms);
-        /// Call every loop pass. This is what enforces payment_timeout_ms.
+        /// Call every loop pass. This is what enforces payment_timeout_ms and dispense_timeout_ms.
         PurchaseOutput tick(uint32_t now_ms);
         /**
          * @brief Back to Idle, credit cleared. The only way out of Settled.
@@ -98,8 +109,10 @@ namespace vmaas
         uint32_t   credit_minor_ = 0;
         uint8_t    slot_ = 0;
         uint32_t   last_activity_ms_ = 0;
+        uint32_t   dispense_started_ms_ = 0; ///< When RUN was issued; the dispense deadline counts from here.
         bool       run_slot_ = false;
         bool       settle_sale_ = false;
         SaleStatus sale_status_ = SaleStatus::None;
+        bool       stop_motor_ = false;
     };
 }

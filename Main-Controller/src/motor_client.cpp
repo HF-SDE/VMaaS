@@ -34,11 +34,6 @@ bool MotorClient::request_status()
     return bus_.send(frames::status());
 }
 
-bool MotorClient::config(ConfigParam param, uint16_t value)
-{
-    return bus_.send(frames::config(param, value));
-}
-
 void MotorClient::handle(const Frame& f)
 {
     if (!is_reply(f.cmd))

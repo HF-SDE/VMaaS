@@ -17,15 +17,18 @@
 namespace purchase_task
 {
     /// Load the price table, install the ISR, start the drain task.
+    /// @param dispense_timeout_ms From config.json timings.dispense_timeout_ms;
+    ///        how long a paid vend waits for DONE before it is booked Failed. 0 disables.
     /// @return False when there are no prices, in which case cash is disabled
     ///         and the firmware behaves as it did before this feature.
-    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor);
+    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms);
 
     /// SlotEntry reported Confirmed.
     void on_slot_confirmed(uint8_t slot);
     /// Motorcontrol reported DONE.
     void on_dispense_done();
-    /// Motorcontrol reported NAK, or DONE never arrived.
+    /// Motorcontrol reported NAK for RUN. (A DONE that never arrives is
+    /// handled by the dispense timeout inside tick().)
     void on_dispense_failed();
 
     /// Call every main-loop pass.

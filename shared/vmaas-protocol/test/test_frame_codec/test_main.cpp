@@ -4,6 +4,22 @@
 
 using namespace vmaas;
 
+namespace
+{
+    // A CONFIG frame built by hand: the builder was removed with RUN_TIME_MS,
+    // but the codec must still round-trip the 3-byte layout.
+    Frame raw_config(uint8_t param, uint16_t value)
+    {
+        Frame f;
+        f.cmd = Cmd::CONFIG;
+        f.len = 3;
+        f.payload[0] = param;
+        f.payload[1] = static_cast<uint8_t>(value & 0xFF);
+        f.payload[2] = static_cast<uint8_t>(value >> 8);
+        return f;
+    }
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -32,7 +48,7 @@ void test_encode_zero_payload_is_four_bytes()
 
 void test_encode_crc_covers_len_cmd_payload_not_start()
 {
-    Frame f = frames::config(ConfigParam::RUN_TIME_MS, 500);
+    Frame f = raw_config(1, 500);
     uint8_t out[MAX_FRAME_SIZE] = {};
     size_t n = encode(f, out, sizeof(out));
     TEST_ASSERT_EQUAL_UINT32(7, n);
@@ -90,7 +106,7 @@ void test_parse_round_trip_every_command()
         frames::run(3),
         frames::stop(),
         frames::status(),
-        frames::config(ConfigParam::RUN_TIME_MS, 1234),
+        raw_config(1, 1234),
         frames::ack(Cmd::RUN),
         frames::nak(Cmd::CONFIG, ErrorCode::BAD_PARAM),
         frames::done(3),

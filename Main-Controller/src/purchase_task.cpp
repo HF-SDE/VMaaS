@@ -276,6 +276,14 @@ namespace
 
         port.set_inhibit(o.inhibit_coins);
 
+        if (o.stop_motor && motor_ != nullptr)
+        {
+            ESP_LOGW(TAG, "no DONE for slot %u within the dispense timeout; sending STOP", static_cast<unsigned>(o.slot));
+            if (!motor_->stop()) {
+                ESP_LOGE(TAG, "STOP was not sent");
+            }
+        }
+
         if (o.settle_sale && !settle(o, reason))
         {
             notice_until_ms = 0;
@@ -335,7 +343,7 @@ namespace
 
 namespace purchase_task
 {
-    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor)
+    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms)
     {
         lcd_ = &lcd;
         display_ok_ = display_ok;
@@ -346,6 +354,10 @@ namespace purchase_task
             ESP_LOGE(TAG, "no price table: cash sales disabled");
             return false;
         }
+
+        // A device timing, not part of the backend's cash block: prices::load
+        // never touches it, so set it after the load.
+        purchase_cfg.dispense_timeout_ms = dispense_timeout_ms;
 
         outbox::begin();
 
@@ -367,7 +379,7 @@ namespace purchase_task
         }
 
         cash_enabled = true;
-        ESP_LOGI(TAG, "cash enabled: COIN on GPIO%d, inhibit %s", Pins::COIN_IN, inhibit >= 0 ? "wired" : "absent");
+        ESP_LOGI(TAG, "cash enabled: COIN on GPIO%d, inhibit %s, dispense timeout %lu ms", Pins::COIN_IN, inhibit >= 0 ? "wired" : "absent", static_cast<unsigned long>(purchase_cfg.dispense_timeout_ms));
 
         apply(machine->reset(), nullptr);
         return true;
@@ -394,7 +406,15 @@ namespace purchase_task
     {
         if (!cash_enabled) return;
         const uint32_t now = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        apply(machine->dispense_done(now), nullptr);
+        const vmaas::PurchaseOutput o = machine->dispense_done(now);
+        if (!(o.state == vmaas::PurchaseState::Settled && o.sale_status == vmaas::SaleStatus::Completed))
+        {
+            // Nothing was Dispensing. Most likely a DONE that arrived after the
+            // dispense timeout already booked the sale Failed: the item may have
+            // dropped, but the record stands.
+            ESP_LOGW(TAG, "DONE with no vend in progress (late after timeout?); sale record unchanged");
+        }
+        apply(o, nullptr);
     }
 
     void on_dispense_failed()
@@ -433,7 +453,7 @@ namespace purchase_task
         }
 
         const vmaas::PurchaseOutput tick_out = machine->tick(now_ms);
-        apply(tick_out, nullptr);
+        apply(tick_out, tick_out.stop_motor ? "done_timeout" : nullptr);
         if (settled_until_ms != 0 && now_ms >= settled_until_ms)
         {
             settled_until_ms = 0;

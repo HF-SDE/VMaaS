@@ -14,7 +14,8 @@
     "keypad_debounce_ms": 20,
     "slot_entry_timeout_ms": 10000,
     "slot_entry_result_hold_ms": 2000,
-    "door_unlock_ms": 500
+    "door_unlock_ms": 500,
+    "dispense_timeout_ms": 30000
   },
   "broker": {
     "host": "192.168.78.225",

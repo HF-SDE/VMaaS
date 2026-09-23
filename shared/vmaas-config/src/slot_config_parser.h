@@ -10,11 +10,14 @@ namespace vmaas
     /**
      * @brief Parse @p json_text into a validated slot table.
      *
+     * - "motor" is required: an object with integer "stepsPerVend"
+     *   (1-65535). Absent gives MissingField "motor" / "motor.stepsPerVend".
      * - "slots" is required: an array of objects, each with integer "slot"
-     *   (1-255) and "pin" (0-33). Absent, empty or not an array gives
-     *   MissingField.
-     * - Slot numbers and pins must each be unique across the table
-     *   (DuplicateSlot / DuplicatePin on the later entry).
+     *   (1-255) and "pins", a non-empty array of at most MAX_PINS_PER_SLOT
+     *   integers (0-33). Absent, empty or not an array gives MissingField.
+     * - Slot numbers must be unique across the table (DuplicateSlot on the
+     *   later entry). Pins must be unique across the whole file, within one
+     *   slot as well as between slots (DuplicatePin on the later pin).
      * - At most MAX_SLOTS entries (TooManySlots). The first MAX_SLOTS are
      *   still validated so the log can name every problem it can see.
      * - Unknown keys are ignored. "version" higher than

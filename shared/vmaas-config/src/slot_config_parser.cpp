@@ -15,6 +15,9 @@ namespace vmaas
         constexpr long long GPIO_MAX = 39;
         constexpr long long INPUT_ONLY_MIN = 34; // GPIO 34-39 have no output driver on the ESP32.
 
+        /// Longest field path: "slots[31].pins[5]" is 17 chars; leave headroom.
+        constexpr size_t FIELD_CAP = 24;
+
         void add_issue(SlotParseResult& r, ConfigIssueKind kind, const char* field)
         {
             if (r.issue_count >= SlotParseResult::MAX_ISSUES) return;
@@ -23,7 +26,7 @@ namespace vmaas
             std::snprintf(issue.field, sizeof(issue.field), "%s", field);
         }
 
-        // Builds "slots[i]" or "slots[i].key" into buf. buf must hold at least 20 chars.
+        // Builds "slots[i]" or "slots[i].key" into buf.
         const char* entry_field(char* buf, size_t cap, size_t index, const char* key)
         {
             if (key == nullptr) {
@@ -35,30 +38,26 @@ namespace vmaas
             return buf;
         }
 
-        // Reads parent[key] as an integer into out. Returns false (with an issue) when the
-        // key is absent or not an integer number; true when out holds the value.
-        // Reads parent[key] as a whole number in [lo, hi]. The caller's range is checked
-        // here rather than afterwards, so the cast below is provably safe.
-        bool read_int(const cJSON* parent, const char* key, const char* field, bool required,
-                      long long lo, long long hi, long long& out, SlotParseResult& r)
+        // Builds "slots[i].pins[j]" into buf.
+        const char* pin_field(char* buf, size_t cap, size_t index, size_t j)
         {
-            const cJSON* item = cJSON_GetObjectItemCaseSensitive(parent, key);
-            if (item == nullptr)
-            {
-                if (required) {
-                    add_issue(r, ConfigIssueKind::MissingField, field);
-                }
-                return false;
-            }
+            std::snprintf(buf, cap, "slots[%u].pins[%u]", static_cast<unsigned>(index), static_cast<unsigned>(j));
+            return buf;
+        }
+
+        // Validates one JSON value as a whole number in [lo, hi]. Reports the
+        // problem under `field` and returns false; true when out holds the value.
+        // The range test runs before any cast: converting a double outside long
+        // long's range is undefined behaviour, not a wrap-around. Written negated
+        // so NaN and infinity fail it too - every comparison against NaN is false.
+        bool read_number(const cJSON* item, const char* field, long long lo, long long hi, long long& out, SlotParseResult& r)
+        {
             if (!cJSON_IsNumber(item))
             {
                 add_issue(r, ConfigIssueKind::WrongType, field);
                 return false;
             }
             const double d = cJSON_GetNumberValue(item);
-            // Range test before any cast: converting a double outside long long's
-            // range is undefined behaviour, not a wrap-around. Written negated so
-            // NaN and infinity fail it too - every comparison against NaN is false.
             if (!(d >= static_cast<double>(lo) && d <= static_cast<double>(hi)))
             {
                 add_issue(r, ConfigIssueKind::OutOfRange, field);
@@ -74,6 +73,22 @@ namespace vmaas
             return true;
         }
 
+        // Reads parent[key] as a whole number in [lo, hi]. Absent and required gives
+        // MissingField; absent and optional returns false with no issue.
+        bool read_int(const cJSON* parent, const char* key, const char* field, bool required,
+                      long long lo, long long hi, long long& out, SlotParseResult& r)
+        {
+            const cJSON* item = cJSON_GetObjectItemCaseSensitive(parent, key);
+            if (item == nullptr)
+            {
+                if (required) {
+                    add_issue(r, ConfigIssueKind::MissingField, field);
+                }
+                return false;
+            }
+            return read_number(item, field, lo, hi, out, r);
+        }
+
         SlotParseResult invalid(size_t error_offset)
         {
             SlotParseResult r{};
@@ -83,49 +98,109 @@ namespace vmaas
             return r;
         }
 
-        // Validates one entry and appends it to r.config when it is well formed on its own.
-        // Cross-entry rules (duplicates) run afterwards over the appended entries.
+        // True when `pin` is already used by an accepted entry, or by an earlier
+        // pin of the entry being built (candidate[0..count)).
+        bool pin_in_use(const SlotParseResult& r, const uint8_t* candidate, size_t count, uint8_t pin)
+        {
+            for (size_t j = 0; j < r.config.slot_count; ++j)
+                for (size_t k = 0; k < r.config.slots[j].pin_count; ++k)
+                    if (r.config.slots[j].pins[k] == pin) return true;
+            for (size_t k = 0; k < count; ++k)
+                if (candidate[k] == pin) return true;
+            return false;
+        }
+
+        // Validates one entry and appends it to r.config when it is well formed on its own
+        // and its pins collide with nothing accepted so far.
         void read_entry(const cJSON* item, size_t index, SlotParseResult& r)
         {
-            char field[20];
+            char field[FIELD_CAP];
             if (!cJSON_IsObject(item))
             {
                 add_issue(r, ConfigIssueKind::WrongType, entry_field(field, sizeof(field), index, nullptr));
                 return;
             }
 
-            long long slot = 0, pin = 0;
-            const bool have_slot = read_int(item, "slot", entry_field(field, sizeof(field), index, "slot"),
-                                            true, SLOT_MIN, SLOT_MAX, slot, r);
-            const bool have_pin  = read_int(item, "pin", entry_field(field, sizeof(field), index, "pin"),
-                                            true, GPIO_MIN, GPIO_MAX, pin, r);
-            bool valid = have_slot && have_pin;
+            long long slot = 0;
+            bool valid = read_int(item, "slot", entry_field(field, sizeof(field), index, "slot"),
+                                  true, SLOT_MIN, SLOT_MAX, slot, r);
 
-            // read_int already reported anything outside 1-255 and 0-39. What is left
-            // is the pin that is in range but has no output driver.
-            if (have_pin && pin >= INPUT_ONLY_MIN)
+            const cJSON* pins = cJSON_GetObjectItemCaseSensitive(item, "pins");
+            if (pins == nullptr || !cJSON_IsArray(pins) || cJSON_GetArraySize(pins) == 0)
             {
-                add_issue(r, ConfigIssueKind::InputOnlyPin, entry_field(field, sizeof(field), index, "pin"));
-                valid = false;
+                add_issue(r, ConfigIssueKind::MissingField, entry_field(field, sizeof(field), index, "pins"));
+                return;
             }
+            if (static_cast<size_t>(cJSON_GetArraySize(pins)) > MAX_PINS_PER_SLOT)
+            {
+                add_issue(r, ConfigIssueKind::OutOfRange, entry_field(field, sizeof(field), index, "pins"));
+                return;
+            }
+
+            uint8_t candidate[MAX_PINS_PER_SLOT] = {};
+            size_t count = 0;
+            size_t j = 0;
+            const cJSON* pin_item = nullptr;
+            cJSON_ArrayForEach(pin_item, pins)
+            {
+                long long pin = 0;
+                const char* pf = pin_field(field, sizeof(field), index, j);
+                if (!read_number(pin_item, pf, GPIO_MIN, GPIO_MAX, pin, r))
+                {
+                    valid = false;
+                }
+                else if (pin >= INPUT_ONLY_MIN)
+                {
+                    add_issue(r, ConfigIssueKind::InputOnlyPin, pf);
+                    valid = false;
+                }
+                else if (pin_in_use(r, candidate, count, static_cast<uint8_t>(pin)))
+                {
+                    add_issue(r, ConfigIssueKind::DuplicatePin, pf);
+                    valid = false;
+                }
+                else
+                {
+                    candidate[count++] = static_cast<uint8_t>(pin);
+                }
+                ++j;
+            }
+
             if (!valid || r.config.slot_count >= MAX_SLOTS)
                 return;
 
-            // Duplicates are checked against the entries accepted so far, so the later one is named.
-            for (size_t j = 0; j < r.config.slot_count; ++j)
+            for (size_t k = 0; k < r.config.slot_count; ++k)
             {
-                if (r.config.slots[j].slot == static_cast<uint8_t>(slot))
+                if (r.config.slots[k].slot == static_cast<uint8_t>(slot))
                 {
                     add_issue(r, ConfigIssueKind::DuplicateSlot, entry_field(field, sizeof(field), index, "slot"));
                     return;
                 }
-                if (r.config.slots[j].pin == static_cast<int>(pin))
-                {
-                    add_issue(r, ConfigIssueKind::DuplicatePin, entry_field(field, sizeof(field), index, "pin"));
-                    return;
-                }
             }
-            r.config.slots[r.config.slot_count++] = SlotEntry{static_cast<uint8_t>(slot), static_cast<int>(pin)};
+
+            SlotEntry& e = r.config.slots[r.config.slot_count++];
+            e.slot = static_cast<uint8_t>(slot);
+            e.pin_count = static_cast<uint8_t>(count);
+            std::memcpy(e.pins, candidate, sizeof(e.pins));
+        }
+
+        void read_motor(const cJSON* root, SlotParseResult& r)
+        {
+            const cJSON* motor = cJSON_GetObjectItemCaseSensitive(root, "motor");
+            if (motor == nullptr)
+            {
+                add_issue(r, ConfigIssueKind::MissingField, "motor");
+                return;
+            }
+            if (!cJSON_IsObject(motor))
+            {
+                add_issue(r, ConfigIssueKind::WrongType, "motor");
+                return;
+            }
+            long long steps = 0;
+            if (read_int(motor, "stepsPerVend", "motor.stepsPerVend", true, STEPS_PER_VEND_MIN, STEPS_PER_VEND_MAX, steps, r)) {
+                r.config.steps_per_vend = static_cast<uint16_t>(steps);
+            }
         }
 
         bool only_newer_version_issues(const SlotParseResult& r)
@@ -164,6 +239,8 @@ namespace vmaas
             add_issue(r, ConfigIssueKind::NewerVersion, "version");
         }
 
+        read_motor(root, r);
+
         const cJSON* slots = cJSON_GetObjectItemCaseSensitive(root, "slots");
         if (slots == nullptr || !cJSON_IsArray(slots) || cJSON_GetArraySize(slots) == 0)
         {
@@ -190,6 +267,7 @@ namespace vmaas
         r.ok = only_newer_version_issues(r);
         if (!r.ok)
         {
+            r.config.steps_per_vend = 0;
             r.config.slot_count = 0;
             std::memset(r.config.slots, 0, sizeof(r.config.slots));
         }

@@ -2,55 +2,53 @@
 /**
  * @file command_handler.h
  * @brief Motorcontrol's request handler: receives protocol requests from
- *        Main-Controller, drives the motor pins, and sends replies.
+ *        Main-Controller, runs the dispense sequence, and sends replies.
  */
 #include <cstddef>
 #include <cstdint>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "protocol.h"
+#include "slot_config.h"
+#include "step_generator.h"
 #include "uart_bus.h"
-
-/// One row of the slot table: which GPIO drives which protocol slot.
-struct SlotPin
-{
-    uint8_t slot;   ///< Slot number as sent by Main-Controller in RUN.
-    gpio_num_t pin; ///< GPIO that drives this slot's motor.
-};
+#include "vend_sequencer.h"
 
 /**
- * @brief Executes RUN/STOP/STATUS/CONFIG requests against the slot pins.
+ * @brief Executes RUN/STOP/STATUS/CONFIG requests against the slot table.
  *
- * One motor may run at a time. A RUN drives the slot's GPIO high, replies
- * ACK, and after run_time_ms the pin goes low again and a DONE is sent.
- * Every request is answered with ACK, NAK or STATUS_REPLY as specified in
- * PROTOCOL.md.
+ * The motors are DRV8825 steppers on one shared STEP line with one nENABLE
+ * GPIO per driver (active LOW). One vend runs at a time. A RUN replies ACK
+ * and hands the slot to a VendSequencer, which decides when to enable the
+ * slot's drivers, start the pulse generator, disable them again and send
+ * DONE; this class only executes those actions. Every request is answered
+ * with ACK, NAK or STATUS_REPLY as specified in PROTOCOL.md.
  */
 class CommandHandler
 {
 public:
     /**
-     * @brief Bind the handler to a bus and a slot map. Both must outlive the handler.
+     * @brief Bind the handler to a bus, a validated slot table and a pulse source. All must outlive the handler.
      * @param bus Transport shared with Main-Controller.
-     * @param slots Table mapping slot numbers to GPIOs.
-     * @param count Number of entries in @p slots.
+     * @param cfg Slot table and pulse count from config.json.
+     * @param gen The STEP pulse source.
      */
-    CommandHandler(vmaas::UartBus& bus, const SlotPin* slots, size_t count);
+    CommandHandler(vmaas::UartBus& bus, const vmaas::SlotConfig& cfg, IStepGenerator& gen);
 
     /**
-     * @brief Configure every slot pin as an output driven low and register
-     *        the frame handler on the bus.
+     * @brief Configure every nENABLE pin as an output driven HIGH (disabled)
+     *        and register the frame handler on the bus.
      *
      * Call once after bus.begin().
      */
     void begin();
 
     /**
-     * @brief Advance the run timer.
+     * @brief Advance the vend.
      *
-     * Call regularly from the main loop. When a running motor has reached
-     * its run time this turns the pin off, returns to IDLE and sends DONE.
-     * Does nothing while idle.
+     * Call regularly from the main loop. Moves the sequencer through its
+     * settle delay, starts the pulses, and when the generator reports done
+     * disables the drivers and sends DONE. Does nothing while idle.
      */
     void tick();
 
@@ -61,17 +59,16 @@ private:
     void handle_status(const vmaas::Frame& f);
     void handle_config(const vmaas::Frame& f);
 
-    /** @brief Get the GPIO for a slot, or GPIO_NUM_NC if the slot is unknown. */
-    gpio_num_t pin_for(uint8_t slot) const;
-    void set_motor(gpio_num_t pin, bool on);
+    /** @brief Find a slot's table entry, or nullptr if the slot is unknown. */
+    const vmaas::SlotEntry* entry_for(uint8_t slot) const;
+    /** @brief Drive every nENABLE pin of a slot. enabled == true means LOW. */
+    void set_enabled(const vmaas::SlotEntry& e, bool enabled);
+    /** @brief Execute what the sequencer asked for. */
+    void act(const vmaas::VendActions& a);
+    vmaas::State state() const;
 
     vmaas::UartBus& bus_;
-    const SlotPin* slots_;
-    size_t slot_count_;
-
-    vmaas::State state_ = vmaas::State::IDLE;
-    uint8_t current_slot_ = 0;
-    gpio_num_t current_pin_ = GPIO_NUM_NC;
-    TickType_t run_started_ = 0;
-    uint16_t run_time_ms_ = 500;
+    const vmaas::SlotConfig& cfg_;
+    IStepGenerator& gen_;
+    vmaas::VendSequencer seq_;
 };

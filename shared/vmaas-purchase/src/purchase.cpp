@@ -23,6 +23,7 @@ namespace vmaas
         o.run_slot = run_slot_;
         o.settle_sale = settle_sale_;
         o.sale_status = sale_status_;
+        o.stop_motor = stop_motor_;
 
         // The coin slot is open only while the machine is genuinely waiting
         // for money it still needs. A price of 0 means no slot is chosen yet,
@@ -31,10 +32,11 @@ namespace vmaas
         // correct: the pin does not exist in that configuration anyway.
         o.inhibit_coins = !(state_ == PurchaseState::AwaitingPayment && o.missing_minor > 0);
 
-        // One-shot: run the motor once, book the sale once. Cleared here so a
-        // caller that asks twice cannot do either twice.
+        // One-shot: run the motor once, book the sale once, stop the motor once.
+        // Cleared here so a caller that asks twice cannot do either twice.
         run_slot_ = false;
         settle_sale_ = false;
+        stop_motor_ = false;
 
         return o;
     }
@@ -56,6 +58,7 @@ namespace vmaas
         {
             run_slot_ = true;
             state_ = PurchaseState::Dispensing;
+            dispense_started_ms_ = now_ms;
         }
 
         return out();
@@ -83,6 +86,7 @@ namespace vmaas
         {
             run_slot_ = true;
             state_ = PurchaseState::Dispensing;
+            dispense_started_ms_ = now_ms;
         }
 
         return out();
@@ -133,6 +137,17 @@ namespace vmaas
             sale_status_ = SaleStatus::None;
         }
 
+        if (state_ == PurchaseState::Dispensing &&
+            cfg_.dispense_timeout_ms > 0 &&
+            now_ms - dispense_started_ms_ >= cfg_.dispense_timeout_ms)
+        {
+            state_ = PurchaseState::Settled;
+            sale_status_ = SaleStatus::Failed;
+            settle_sale_ = true;
+            stop_motor_ = true;
+            last_activity_ms_ = now_ms;
+        }
+
         return out();
     }
 
@@ -145,6 +160,7 @@ namespace vmaas
         run_slot_ = false;
         settle_sale_ = false;
         sale_status_ = SaleStatus::None;
+        stop_motor_ = false;
 
         return out();
     }
