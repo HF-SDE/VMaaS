@@ -13,6 +13,7 @@
  *       public `mqtt_client.h` that a file of that name here would shadow.
  */
 #include "esp_err.h"
+#include "device_config.h"
 
 /// The machine's connection to the platform MQTT broker.
 namespace broker_client
@@ -28,12 +29,17 @@ namespace broker_client
      * An unactivated machine has no certificate to connect with, so this does
      * nothing and it stays Offline until it is activated.
      *
+     * @param cfg config.json as loaded by config_store. Its broker.host and
+     *        broker.port override what activation stored in NVS; empty and
+     *        zero defer to activation. See vmaas::broker_endpoint() for the
+     *        precedence rule and why a file override exists at all.
+     *
      * @return ESP_OK once the task is started, ESP_ERR_INVALID_STATE when the
      *         machine is not activated, ESP_ERR_NO_MEM when the task could not
      *         be created. Failing to reach the broker later is logged and
      *         retried, not reported here.
      */
-    esp_err_t start();
+    esp_err_t start(const vmaas::DeviceConfig& cfg);
 
     /// @return true while the MQTT connection to the broker is up.
     bool is_connected();

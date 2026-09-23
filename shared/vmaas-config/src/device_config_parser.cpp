@@ -101,6 +101,8 @@ namespace vmaas
         c.name[0] = '\0';
         c.machine_id[0] = '\0';
         c.api_base_url[0] = '\0';
+        c.broker_host[0] = '\0';
+        c.broker_port = 0;
         c.keypad_debounce_ms = 20;
         c.slot_entry_timeout_ms = 10000;
         c.slot_entry_result_hold_ms = 2000;
@@ -157,6 +159,17 @@ namespace vmaas
         {
             read_string(r, backend, "api_base_url", r.config.api_base_url, MAX_API_BASE_URL,
                         "backend.api_base_url");
+        }
+
+        if (const cJSON* broker = section(r, root, "broker"))
+        {
+            read_string(r, broker, "host", r.config.broker_host, MAX_BROKER_HOST, "broker.host");
+            // Low bound 1, not 0: 0 is the "defer to activation" sentinel, so
+            // accepting it would turn a typo into a silent fallback to the very
+            // address the file was written to replace.
+            long long port = r.config.broker_port;
+            read_int(r, broker, "port", 1, 65535, "broker.port", port);
+            r.config.broker_port = static_cast<uint16_t>(port);
         }
 
         if (const cJSON* door = section(r, root, "door"))

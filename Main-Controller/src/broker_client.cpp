@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "activation.h"
+#include "broker_endpoint.h"
 #include "config.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
@@ -37,6 +38,9 @@ namespace
 
     /// Host and client id are handed to esp-mqtt by pointer too, so this stays put.
     activation::Identity identity;
+    /// Where we actually dial: activation's value unless config.json overrode it.
+    /// Resolved once in load_credentials(), read by the event handler and connect_now().
+    vmaas::BrokerEndpoint endpoint{};
 
     esp_mqtt_client_handle_t client = nullptr;
     volatile bool connected = false;
@@ -59,7 +63,7 @@ namespace
         {
         case MQTT_EVENT_CONNECTED:
             connected = true;
-            ESP_LOGI(TAG, "connected to %s:%u, machine reads Online from here", identity.mqtt_host, static_cast<unsigned>(identity.mqtt_port));
+            ESP_LOGI(TAG, "connected to %s:%u, machine reads Online from here", endpoint.host, static_cast<unsigned>(endpoint.port));
             break;
 
         case MQTT_EVENT_DISCONNECTED:
@@ -84,7 +88,8 @@ namespace
     }
 
     /// Load the identity and the three PEMs out of NVS. All or nothing.
-    esp_err_t load_credentials()
+
+    esp_err_t load_credentials(const vmaas::DeviceConfig& cfg)
     {
         esp_err_t err = activation::load_identity(identity);
         if (err != ESP_OK)
@@ -111,6 +116,19 @@ namespace
             return err;
         }
 
+        endpoint = vmaas::broker_endpoint(cfg.broker_host, cfg.broker_port, identity.mqtt_host, identity.mqtt_port);
+
+        ESP_LOGI(TAG, "broker %s:%u (host from %s, port from %s)",
+                 endpoint.host, static_cast<unsigned>(endpoint.port),
+                 endpoint.host_overridden ? "config.json" : "activation",
+                 endpoint.port_overridden ? "config.json" : "activation");
+
+        if (!endpoint.usable)
+        {
+            ESP_LOGE(TAG, "no broker address from either source; machine stays Offline");
+            return ESP_ERR_INVALID_STATE;
+        }
+
         return ESP_OK;
     }
 
@@ -118,8 +136,8 @@ namespace
     {
         esp_mqtt_client_config_t cfg = {};
 
-        cfg.broker.address.hostname  = identity.mqtt_host;
-        cfg.broker.address.port      = identity.mqtt_port;
+        cfg.broker.address.hostname  = endpoint.host;
+        cfg.broker.address.port      = endpoint.port;
         cfg.broker.address.transport = MQTT_TRANSPORT_OVER_SSL;
 
         // The broker server certificate is verified against the CA the
@@ -213,7 +231,7 @@ namespace
 
 namespace broker_client
 {
-    esp_err_t start()
+    esp_err_t start(const vmaas::DeviceConfig& cfg)
     {
         if (started)
         {
@@ -227,7 +245,7 @@ namespace broker_client
             return ESP_ERR_INVALID_STATE;
         }
         
-        const esp_err_t err = load_credentials();
+        const esp_err_t err = load_credentials(cfg);
         if (err != ESP_OK) return err;
 
         const BaseType_t ok = xTaskCreate(connect_task, "broker", Config::broker_task_stack, nullptr, Config::broker_task_priority, nullptr);

@@ -310,7 +310,7 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
     }
 
-    broker_client::start();
+    broker_client::start(cfg);
 
     const bool cash_ok = purchase_task::begin(lcd, display_ok, motor);
     if (!cash_ok) {

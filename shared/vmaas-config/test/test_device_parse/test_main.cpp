@@ -156,6 +156,96 @@ void test_a_version_two_file_still_parses()
     TEST_ASSERT_EQUAL_STRING("", r.config.door_code);
 }
 
+
+/**
+ * Schema v4: the broker address may be overridden from the file.
+ *
+ * Until v4 it could only come back from POST /device/activate, which meant a
+ * machine could not be pointed at a different broker without being activated
+ * again - a new certificate and a new claim to change an IP. An empty host and
+ * a zero port mean "use whatever activation stored", so a file that says
+ * nothing about the broker behaves exactly as it did before.
+ */
+void test_broker_host_and_port_are_read()
+{
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 4,
+        "broker": { "host": "192.168.78.225", "port": 8883 }
+    })");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT(0, r.issue_count);
+    TEST_ASSERT_EQUAL_STRING("192.168.78.225", r.config.broker_host);
+    TEST_ASSERT_EQUAL_UINT16(8883, r.config.broker_port);
+}
+
+void test_an_absent_broker_section_defers_to_activation()
+{
+    const DeviceParseResult r = parse_device_config(R"({"version": 4})");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.broker_host);
+    TEST_ASSERT_EQUAL_UINT16(0, r.config.broker_port);
+}
+
+// The host may be overridden on its own: a broker that moved to a new address
+// on the standard port needs no port line, and writing one only invites drift.
+void test_a_broker_host_without_a_port_leaves_the_port_deferred()
+{
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 4,
+        "broker": { "host": "broker.vmaas.dk" }
+    })");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("broker.vmaas.dk", r.config.broker_host);
+    TEST_ASSERT_EQUAL_UINT16(0, r.config.broker_port);
+}
+
+void test_an_out_of_range_broker_port_is_refused_and_deferred()
+{
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 4,
+        "broker": { "host": "192.168.78.225", "port": 70000 }
+    })");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_UINT16(0, r.config.broker_port);
+}
+
+// Port 0 is not a usable port and is also the sentinel for "defer to
+// activation", so writing it is refused rather than silently meaning that.
+void test_a_zero_broker_port_is_refused()
+{
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 4,
+        "broker": { "host": "192.168.78.225", "port": 0 }
+    })");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_UINT16(0, r.config.broker_port);
+}
+
+void test_an_over_long_broker_host_is_refused_and_deferred()
+{
+    // MAX_BROKER_HOST is 64, so 64 characters is one too many with the NUL.
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 4,
+        "broker": { "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    })");
+    TEST_ASSERT_FALSE(r.ok);
+    TEST_ASSERT_EQUAL_STRING("", r.config.broker_host);
+}
+
+// A machine already in the field carries a v3 file. It must keep working and
+// must not be told it is newer than the firmware understands.
+void test_a_v3_file_parses_and_defers_the_broker()
+{
+    const DeviceParseResult r = parse_device_config(R"({
+        "version": 3,
+        "backend": { "api_base_url": "https://vmaas.dk/api" }
+    })");
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT(0, r.issue_count);
+    TEST_ASSERT_EQUAL_STRING("https://vmaas.dk/api", r.config.api_base_url);
+    TEST_ASSERT_EQUAL_STRING("", r.config.broker_host);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -172,5 +262,12 @@ int main(int, char**)
     RUN_TEST(test_a_non_digit_door_code_is_refused_and_defaulted);
     RUN_TEST(test_a_door_code_with_one_non_digit_character_is_refused);
     RUN_TEST(test_a_version_two_file_still_parses);
+    RUN_TEST(test_broker_host_and_port_are_read);
+    RUN_TEST(test_an_absent_broker_section_defers_to_activation);
+    RUN_TEST(test_a_broker_host_without_a_port_leaves_the_port_deferred);
+    RUN_TEST(test_an_out_of_range_broker_port_is_refused_and_deferred);
+    RUN_TEST(test_a_zero_broker_port_is_refused);
+    RUN_TEST(test_an_over_long_broker_host_is_refused_and_deferred);
+    RUN_TEST(test_a_v3_file_parses_and_defers_the_broker);
     return UNITY_END();
 }
