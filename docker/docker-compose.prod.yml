@@ -91,6 +91,8 @@ services:
     environment:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD__DEFAULT_PASSWORD:?set EMQX_DASHBOARD__DEFAULT_PASSWORD in .env.backend.prod}
       EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/api_key_bootstrap.txt
+      EMQX_NODE_COOKIE: ${EMQX_NODE_COOKIE:?set EMQX_NODE_COOKIE in .env.backend.prod}
+
     # Rendered from the committed dev config by `npm run prod:emqx-config`.
     volumes:
       - pki:/pki:ro
