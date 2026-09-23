@@ -301,7 +301,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const currentPath = pathname || "/"
   const { user, hasPermission, subscriptionStatus } = useSession()
-  console.log("🚀 ~ AppSidebar ~ subscriptionStatus:", subscriptionStatus)
+
   const navItems = getVisibleNavItems(
     data.navMain,
     (item) =>
