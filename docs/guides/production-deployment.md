@@ -152,6 +152,20 @@ The broker and nginx-internal certificates that `pki-init` issues are valid for
 
 ## Updating
 
+A push to `main` deploys itself: `.github/workflows/ci.yml` runs the tests on a
+GitHub-hosted runner, then a self-hosted runner on this host updates the
+checkout below and runs `npm run prod:up`. If the stack is not healthy within
+200 seconds it resets to the previous commit and starts that again — code only,
+so a deploy that failed on a migration still needs the database restored by
+hand.
+
+The runner's user must be in the `docker` group, and the checkout it deploys
+from is `/srv/vmaas` unless the repository variable `DEPLOY_DIR` says otherwise.
+That directory is where the `.env.*.prod` files, `config/nginx/certs` and
+`config/emqx/prod` live; the workflow never runs `git clean`, so they survive.
+
+To deploy by hand:
+
 ```sh
 git pull
 npm run prod:up
