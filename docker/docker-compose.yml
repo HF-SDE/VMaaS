@@ -36,7 +36,7 @@ services:
       # `next dev` on the host is first because that is how the frontend is run
       # today; put http://localhost first if you serve it through nginx instead.
       FRONTEND_URL: http://localhost:3000,http://localhost
-      BETTER_AUTH_URL: http://localhost
+      BETTER_AUTH_URL: http://localhost:5000
       MQTT_URL: mqtts://emqx:8884
       MQTT_PUBLIC_HOST: localhost
       MQTT_PUBLIC_PORT: 8883
