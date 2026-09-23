@@ -2,6 +2,11 @@
 
 import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
+import {
+  Controller,
+  FieldErrors,
+  useForm as useReactForm,
+} from "react-hook-form"
 import { toast } from "sonner"
 import { KeyRound, Loader2 } from "lucide-react"
 import { updateUserSchema } from "@vmaas/shared/schemas"
@@ -25,6 +30,9 @@ import { Separator } from "@/components/ui/separator"
 import { authClient } from "@/lib/auth-client"
 
 import { fetchData } from "@/lib/data/data-fetch"
+
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 
 type ProfileCardProps = {
   name: string
@@ -59,7 +67,7 @@ export function ProfileCard({ name, email }: ProfileCardProps) {
 
         <Separator />
 
-        <PasswordReset email={email} />
+        <PasswordReset />
       </CardContent>
     </Card>
   )
@@ -140,36 +148,116 @@ function NameForm({ name }: { name: string }) {
   )
 }
 
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters"),
+    confirmNewPassword: z.string().min(1, "Please confirm your new password"),
+  })
+  .refine((data) => data.newPassword === data.confirmNewPassword, {
+    message: "New password and confirmation do not match",
+    path: ["confirmNewPassword"],
+  })
+
+type ChangePasswordData = z.infer<typeof changePasswordSchema>
+
 /**
  * Sends the Better Auth reset link rather than asking for a new password here.
  *
  * The email address is the session's, not an input, so a hijacked tab cannot
  * aim the link somewhere else — the worst it can do is mail the real owner.
  */
-function PasswordReset({ email }: { email: string }) {
+function PasswordReset() {
   const [pending, setPending] = useState(false)
-  const [sent, setSent] = useState(false)
+
+  const form = useReactForm<ChangePasswordData>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmNewPassword: "",
+    },
+  })
+
+  async function handleSendResetLink(data: ChangePasswordData) {
+    const { currentPassword, newPassword } = data
+
+    setPending(true)
+
+    const { error } = await authClient.changePassword({
+      currentPassword,
+      newPassword,
+      revokeOtherSessions: true,
+    })
+
+    setPending(false)
+
+    if (error) {
+      console.log("Password change error:", error)
+      toast.error(error?.message)
+      return
+    }
+
+    toast.success("Password successfully changed!")
+    form.reset()
+  }
+
+  function handleInvalid(errors: FieldErrors<ChangePasswordData>) {
+    const first = Object.values(errors)[0]
+    toast.error(first?.message ?? "Check the fields and try again.")
+  }
 
   return (
     <div className="grid gap-2">
       <p className="text-sm font-medium">Password</p>
-      <p className="text-sm text-muted-foreground">
-        {sent
-          ? "Check your inbox — the link expires in 1 hour."
-          : "We'll email you a link to choose a new password."}
-      </p>
-      <div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            console.log("Send reset link")
-          }}
-          disabled={pending}
-        >
+      <form
+        className="grid w-1/2 gap-2"
+        onSubmit={form.handleSubmit(handleSendResetLink, handleInvalid)}
+      >
+        <Controller
+          name="currentPassword"
+          control={form.control}
+          render={({ field }) => (
+            <Input
+              type="password"
+              placeholder="Current password"
+              autoComplete="off"
+              {...field}
+            />
+          )}
+        />
+        <Controller
+          name="newPassword"
+          control={form.control}
+          render={({ field }) => (
+            <Input
+              type="password"
+              placeholder="New password"
+              autoComplete="off"
+              {...field}
+            />
+          )}
+        />
+        <Controller
+          name="confirmNewPassword"
+          control={form.control}
+          render={({ field }) => (
+            <Input
+              type="password"
+              placeholder="Confirm new password"
+              autoComplete="off"
+              {...field}
+            />
+          )}
+        />
+
+        <Button type="submit" variant="outline" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : <KeyRound />}
-          {sent ? "Send another link" : "Reset password"}
+          Change password
         </Button>
-      </div>
+      </form>
     </div>
   )
 }
