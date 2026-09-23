@@ -68,6 +68,8 @@ services:
       CA_CERT_PATH: /pki/ca.crt
       CA_KEY_PATH: /pki/ca.key
       EMQX_API_URL: http://emqx:18083
+      PKI_EXTRA_HOSTS: ${PKI_EXTRA_HOSTS:?set PKI_EXTRA_HOSTS (the public MQTT host) in .env.backend.prod}
+      
     volumes:
       - pki:/pki:ro
     depends_on:

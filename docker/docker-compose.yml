@@ -42,6 +42,7 @@ services:
       MQTT_PUBLIC_PORT: 8883
       CA_CERT_PATH: /pki/ca.crt
       CA_KEY_PATH: /pki/ca.key
+      PKI_EXTRA_HOSTS: localhost:18083
     volumes:
       - ../backend/src:/usr/src/app/src
       - ../backend/prisma:/usr/src/app/prisma
