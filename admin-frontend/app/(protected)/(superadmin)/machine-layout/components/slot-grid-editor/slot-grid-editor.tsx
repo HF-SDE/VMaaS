@@ -7,6 +7,7 @@ import { AxisLabels } from "./components/axis-labels"
 import { EditorToolbar } from "./components/editor-toolbar"
 import { SizeControl } from "./components/size-control"
 import { SlotGrid } from "./components/slot-grid"
+import { SlotInspector } from "./components/slot-inspector"
 import { GAP } from "./constants"
 import { useLayoutHistory } from "./hooks/use-layout-history"
 import { useSlotDragging } from "./hooks/use-slot-dragging"
@@ -17,6 +18,7 @@ import type { EditorSlot } from "./types"
 import { fetchData } from "@/lib/data/data-fetch"
 import { findFloatingSlots } from "@vmaas/shared/lib/slot-layout"
 
+import { PublishPanel } from "../publish-panel"
 import { saveLayoutErrorMessage } from "../../messages"
 
 interface SlotGridEditorProps {
@@ -31,6 +33,11 @@ export function SlotGridEditor({
   const history = useLayoutHistory(initialSlots)
   const { layout } = history
   const { slots, columns, rows } = layout
+
+  // Bumped only after a successful save, never on every keystroke: the publish
+  // panel's drift banner is measured against what's stored, so an unsaved pin
+  // edit must not move it, only an actual save should trigger its refetch.
+  const [savedRevision, setSavedRevision] = useState(0)
 
   const [selection, setSelection] = useState<string | null>(null)
   // Undo can remove the selected slot, so the selection only counts while the slot exists
@@ -54,7 +61,15 @@ export function SlotGridEditor({
   useUnsavedChangesWarning(history.isDirty)
 
   function deleteSelected() {
-    if (!selectedKey) return
+    if (!selectedKey || !selectedSlot) return
+
+    if (selectedSlot.quantity > 0) {
+      toast.error(`Slot #${selectedSlot.slotNumber} still holds stock`, {
+        description: `It has ${selectedSlot.quantity} unit(s) recorded. Empty it in the machine's stock view before removing it from the layout.`,
+      })
+      return
+    }
+
     history.update({ slots: slots.filter((slot) => slot.key !== selectedKey) })
     setSelection(null)
   }
@@ -93,6 +108,7 @@ export function SlotGridEditor({
     }
 
     history.markSaved()
+    setSavedRevision((revision) => revision + 1)
     toast.success("The layout was saved")
   }
 
@@ -134,6 +150,33 @@ export function SlotGridEditor({
   // Emphasise the axis numbers of the slot being dragged, or else the selected slot
   const highlightedRect = dragging.preview?.rect ?? selectedSlot
 
+  // Every GPIO already used anywhere in this machine, including the selected
+  // slot's own pins: a GPIO drives exactly one motor, so a slot's own pin is
+  // just as much "already used" as another slot's. The inspector tells its
+  // own pins apart from another slot's pins on its own, so this set doesn't
+  // need to (and must not) exclude the selection to stay accurate.
+  const allPinNumbers = slots.flatMap((slot) =>
+    slot.pins.map((pin) => pin.number)
+  )
+  const usedPins = new Set(allPinNumbers)
+
+  // GPIOs that appear on more than one slot. The inspector refuses a duplicate
+  // and the database has a unique index on (machineId, number), so this should
+  // always be empty — it is a tripwire for a future hole in that guard, showing
+  // the clash on the grid rather than letting it surface as a rejected save.
+  const duplicatePins = new Set(
+    allPinNumbers.filter(
+      (number, index) => allPinNumbers.indexOf(number) !== index
+    )
+  )
+
+  // Routed through history.update so a pin change is undoable like every other edit.
+  function updateSelected(next: EditorSlot) {
+    history.update({
+      slots: slots.map((slot) => (slot.key === next.key ? next : slot)),
+    })
+  }
+
   return (
     <div className="my-3 space-y-3" onKeyDown={handleEditorKeyDown}>
       <EditorToolbar
@@ -155,67 +198,83 @@ export function SlotGridEditor({
         remove it.
       </p>
 
-      <div className="max-w-full overflow-x-auto p-1">
-        {/*
-          3x3 layout:
-                    [row controls]
-          [y axis]  [grid]          [column controls]
-                    [x axis]
-        */}
-        <div
-          className="grid w-max"
-          style={{ gridTemplateColumns: "auto auto auto", gap: GAP }}
-        >
-          {/* Top row */}
-          <div />
-          <SizeControl
-            orientation="horizontal"
-            label="row"
-            showDecrease={rows > 1}
-            canDecrease={canRemoveRow(layout)}
-            onDecrease={() => history.update({ rows: rows - 1 })}
-            onIncrease={() => history.update({ rows: rows + 1 })}
-          />
-          <div />
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="max-w-full overflow-x-auto p-1">
+          {/*
+            3x3 layout:
+                      [row controls]
+            [y axis]  [grid]          [column controls]
+                      [x axis]
+          */}
+          <div
+            className="grid w-max"
+            style={{ gridTemplateColumns: "auto auto auto", gap: GAP }}
+          >
+            {/* Top row */}
+            <div />
+            <SizeControl
+              orientation="horizontal"
+              label="row"
+              showDecrease={rows > 1}
+              canDecrease={canRemoveRow(layout)}
+              onDecrease={() => history.update({ rows: rows - 1 })}
+              onIncrease={() => history.update({ rows: rows + 1 })}
+            />
+            <div />
 
-          {/* Middle row */}
-          <AxisLabels
-            orientation="vertical"
-            count={rows}
-            highlighted={
-              highlightedRect && [highlightedRect.beginY, highlightedRect.endY]
-            }
-          />
-          <SlotGrid
-            layout={layout}
-            selectedKey={selectedKey}
-            invalidSlotKeys={invalidSlotKeys}
-            interaction={dragging.interaction}
-            preview={dragging.preview}
-            pointerHandlers={dragging.pointerHandlers}
-            onKeyDown={handleGridKeyDown}
-          />
-          <SizeControl
-            orientation="vertical"
-            label="column"
-            showDecrease={columns > 1}
-            canDecrease={canRemoveColumn(layout)}
-            onDecrease={() => history.update({ columns: columns - 1 })}
-            onIncrease={() => history.update({ columns: columns + 1 })}
-          />
+            {/* Middle row */}
+            <AxisLabels
+              orientation="vertical"
+              count={rows}
+              highlighted={
+                highlightedRect && [highlightedRect.beginY, highlightedRect.endY]
+              }
+            />
+            <SlotGrid
+              layout={layout}
+              selectedKey={selectedKey}
+              invalidSlotKeys={invalidSlotKeys}
+              duplicatePins={duplicatePins}
+              interaction={dragging.interaction}
+              preview={dragging.preview}
+              pointerHandlers={dragging.pointerHandlers}
+              onKeyDown={handleGridKeyDown}
+            />
+            <SizeControl
+              orientation="vertical"
+              label="column"
+              showDecrease={columns > 1}
+              canDecrease={canRemoveColumn(layout)}
+              onDecrease={() => history.update({ columns: columns - 1 })}
+              onIncrease={() => history.update({ columns: columns + 1 })}
+            />
 
-          {/* Bottom row */}
-          <div />
-          <AxisLabels
-            orientation="horizontal"
-            count={columns}
-            highlighted={
-              highlightedRect && [highlightedRect.beginX, highlightedRect.endX]
-            }
-          />
-          <div />
+            {/* Bottom row */}
+            <div />
+            <AxisLabels
+              orientation="horizontal"
+              count={columns}
+              highlighted={
+                highlightedRect && [highlightedRect.beginX, highlightedRect.endX]
+              }
+            />
+            <div />
+          </div>
         </div>
+
+        <SlotInspector
+          key={selectedKey ?? "none"}
+          slot={selectedSlot}
+          usedPins={usedPins}
+          onChange={updateSelected}
+        />
       </div>
+
+      <PublishPanel
+        machineId={machineId}
+        layoutIsDirty={history.isDirty}
+        savedRevision={savedRevision}
+      />
     </div>
   )
 }

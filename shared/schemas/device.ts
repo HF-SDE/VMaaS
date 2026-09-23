@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { DEVICE_MAX_SLOT } from "../types/slot";
 
 /**
  * None of these carry a machine, tenant or site id. The machine is implicit in
@@ -67,7 +68,7 @@ export const deviceEventBatchSchema = z.object({
  * while a report can be built whenever someone wants one.
  */
 export const cashSalePayloadSchema = z.object({
-  slot: z.coerce.number().int().min(1).max(32),
+  slot: z.coerce.number().int().min(1).max(DEVICE_MAX_SLOT),
   price_minor: z.coerce.number().int().nonnegative(),
   received_minor: z.coerce.number().int().nonnegative(),
   status: z.enum(["completed", "failed"]),

@@ -10,6 +10,7 @@ import {
   getMachineSchema,
   getMachinesPageSchema,
   machineIdParamsSchema,
+  publishConfigurationSchema,
   saveSlotLayoutSchema,
   simpleMachineSearchSchema,
   updateMachineSchema,
@@ -17,12 +18,13 @@ import {
 import { Router } from "express";
 
 import { claimMachineController } from "../controllers/activation.controller";
+import { listConfigurationsController, publishConfigurationController } from "../controllers/configuration.controller";
 import {
   createMachineController,
   deleteMachineController,
   disableMachineController,
   getMachineController,
-  getMachineWithoutTenantController,
+  getMachineForLayoutController,
   getMachinesController,
   getMachinesPageController,
   getMachinesWithoutTenantController,
@@ -34,13 +36,6 @@ import {
 export const machinesRouter = Router();
 
 machinesRouter.get("/without-tenant", requireAuth, requireSuperAdmin, getMachinesWithoutTenantController);
-machinesRouter.get(
-  "/without-tenant/:id",
-  requireAuth,
-  requireSuperAdmin,
-  validate(machineIdParamsSchema),
-  getMachineWithoutTenantController,
-);
 machinesRouter.post(
   "/save-slot-layout",
   requireAuth,
@@ -49,6 +44,9 @@ machinesRouter.post(
   saveSlotLayoutController,
 );
 machinesRouter.post("/", requireAuth, requireSuperAdmin, validate(createMachineSchema), createMachineController);
+machinesRouter.post( "/:id/publish-configuration", requireAuth, requireSuperAdmin, validate(publishConfigurationSchema), publishConfigurationController );
+machinesRouter.get( "/:id/configurations", requireAuth, requireSuperAdmin, validate(machineIdParamsSchema), listConfigurationsController);
+machinesRouter.get( "/:id/layout", requireAuth, requireSuperAdmin, validate(machineIdParamsSchema), getMachineForLayoutController);
 
 machinesRouter.use(requireAuth, requireTenant, requireSubscription);
 

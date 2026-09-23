@@ -15,8 +15,6 @@ interface History {
  * Every change goes through `update`, which makes it a new undoable step.
  */
 export function useLayoutHistory(initialSlots: EditorSlot[]) {
-  // The last saved layout (at first, the loaded one). Kept in state so its identity is
-  // stable, since isDirty compares against it.
   const [savedLayout, setSavedLayout] = useState(() =>
     layoutFromSlots(initialSlots)
   )
@@ -63,7 +61,6 @@ export function useLayoutHistory(initialSlots: EditorSlot[]) {
 
   /** Go back to the last saved layout. It's a step of its own, so it can be undone too. */
   function reset() {
-    // Pushing savedLayout itself (not a copy) makes isDirty false again
     push(savedLayout)
   }
 

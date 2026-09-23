@@ -17,7 +17,6 @@ export function AxisLabels({
   highlighted,
 }: AxisLabelsProps) {
   const isVertical = orientation === "vertical"
-  // y grows upwards, so the vertical axis lists the highest row first
   const values = Array.from({ length: count }, (_, i) =>
     isVertical ? count - 1 - i : i
   )

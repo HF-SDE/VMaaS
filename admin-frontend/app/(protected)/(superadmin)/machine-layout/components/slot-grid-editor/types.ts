@@ -15,6 +15,7 @@ export interface EditorSlot {
   endY: number
   quantity: number
   capacity: number
+  pins: { number: number; description?: string }[]
 }
 
 export type Rect = Pick<EditorSlot, "beginX" | "endX" | "beginY" | "endY">

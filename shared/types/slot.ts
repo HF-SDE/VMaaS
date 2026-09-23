@@ -46,6 +46,22 @@ export const LOW_STOCK_RATIO = 0.2;
 /** The restock queue is a summary card, not the machines list. */
 export const LOW_STOCK_LIMIT = 50;
 
+/**
+ * The highest slot number a machine can address.
+ *
+ * Mirrors `MAX_SLOT` in `Main-Controller/src/prices.h`, which sizes
+ * `by_slot[MAX_SLOT + 1]` — so this is a highest *number*, not a count. It is
+ * deliberately NOT the same thing as `MAX_SLOTS` in
+ * `shared/vmaas-config/src/slot_config.h`, which bounds how many rows the
+ * wiring table holds. The two share the value 32 today and would diverge the
+ * moment slots were numbered with gaps.
+ *
+ * A property of the board rather than of the domain: future hardware is
+ * expected to carry more pins. Raising it means changing this constant AND
+ * both firmware constants — nothing enforces that the three agree.
+ */
+export const DEVICE_MAX_SLOT = 32;
+
 /** One row of the restock queue, flattened for the wire like `MachineAlertRow`. */
 export interface LowStockSlot {
   slotId: string;

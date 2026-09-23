@@ -106,6 +106,7 @@ export function useSlotDragging({
         ...rect,
         quantity: 0,
         capacity: NEW_SLOT_CAPACITY,
+        pins: [],
       }
       onChange({ slots: [...slots, newSlot] })
       onSelect(newSlot.key)

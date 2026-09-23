@@ -24,6 +24,17 @@ export function createPublish(mqttClient: MqttClient): (topic: string, payload: 
   };
 }
 
+/**
+ * Publish through the platform's live connection.
+ *
+ * `createPublish` stays exported for tests to bind a fake client to; this is
+ * what production code calls.
+ */
+export async function publishToBroker(topic: string, payload: Record<string, unknown>): Promise<void> {
+  if (!client) throw new Error("mqtt: not connected");
+  await createPublish(client)(topic, payload);
+}
+
 async function onMessage(topic: string, buffer: Buffer): Promise<void> {
   const parsed = parseTopic(topic);
   if (!parsed) {

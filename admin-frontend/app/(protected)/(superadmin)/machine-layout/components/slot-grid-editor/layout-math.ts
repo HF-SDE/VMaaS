@@ -115,7 +115,7 @@ export function getResizableEdges(
 export function nextSlotNumber(slots: EditorSlot[]) {
   return slots.length
     ? Math.max(...slots.map((slot) => slot.slotNumber)) + 1
-    : 0
+    : 1
 }
 
 /** Columns are removed from the right; only possible when no slot reaches into that column */

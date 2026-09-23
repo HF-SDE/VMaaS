@@ -1,8 +1,10 @@
 import { Suspense } from "react"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { RoleGate } from "@/components/role-gate"
 import { Badge } from "@/components/ui/badge"
-import { requirePermission } from "@/lib/dal"
+import { Button } from "@/components/ui/button"
+import { getSession, requirePermission } from "@/lib/dal"
 import { formatDate } from "@/lib/utils"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
@@ -37,6 +39,14 @@ export async function MachineDetailLoader({
 }) {
   const { id } = await params
   await requirePermission(PERMISSIONS.MACHINE_READ, NO_READ_ACCESS)
+
+  // Not part of the Promise.all below: this is an auth read, not a fetch that
+  // belongs to this machine, and getSession() is cached so it costs nothing
+  // extra here. No argument, so a tenant user without the flag gets `null`
+  // back and keeps rendering — this only decides whether to show the link,
+  // never whether the destination is reachable.
+  const session = await getSession()
+  const isSuperAdmin = session?.user.isSuperAdmin === true
 
   // Together rather than one after the other: the slots belong to the same
   // machine and neither read depends on the other's answer.
@@ -76,18 +86,27 @@ export async function MachineDetailLoader({
           </p>
         </div>
 
-        {/* Hiding the buttons for a read-only user must not take the page away,
-            hence performRedirect={false}. */}
-        <Suspense>
-          <RoleGate perms={[PERMISSIONS.MACHINE_WRITE]} performRedirect={false}>
-            <MachineActions
-              id={machine.id}
-              name={machine.name}
-              site={{ id: site.id, name: site.name }}
-              canDelete={machine.canDelete}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Hiding the buttons for a read-only user must not take the page away,
+              hence performRedirect={false}. */}
+          <Suspense>
+            <RoleGate perms={[PERMISSIONS.MACHINE_WRITE]} performRedirect={false}>
+              <MachineActions
+                id={machine.id}
+                name={machine.name}
+                site={{ id: site.id, name: site.name }}
+                canDelete={machine.canDelete}
+              />
+            </RoleGate>
+          </Suspense>
+
+          {isSuperAdmin && (
+            <Button
+              variant="outline"
+              render={<Link href={`/machine-layout/${id}`}>Edit layout</Link>}
             />
-          </RoleGate>
-        </Suspense>
+          )}
+        </div>
       </div>
       {/* Full width, not the 400px the tabs shipped with: the KPI row below
           needs four columns to lay out on a wide screen. */}

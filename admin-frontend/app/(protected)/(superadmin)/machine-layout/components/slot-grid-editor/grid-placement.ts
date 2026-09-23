@@ -42,7 +42,6 @@ export function cellAtPoint(
 
   return {
     x: Math.min(Math.max(column, 0), columns - 1),
-    // Flip the row, since y = 0 is the bottom row
     y: Math.min(Math.max(rows - 1 - rowFromTop, 0), rows - 1),
   }
 }

@@ -45,6 +45,19 @@ export const machineIdParamsSchema = z.object({
 });
 
 /**
+ * `POST /api/machines/:id/publish-configuration`.
+ *
+ * `fromVersion` turns the call into a rollback: that version's stored payload is
+ * written as the next version rather than the machine's current rows being
+ * rebuilt. Forward-only, so the history stays a truthful record of what was on
+ * the machine and when.
+ */
+export const publishConfigurationSchema = z.object({
+  params: machineIdParamsSchema.shape.params,
+  body: z.object({ fromVersion: z.number().int().min(1).optional() }).default({}),
+});
+
+/**
  * `GET /api/machines/:id`, which answers the machine plus its KPI block.
  *
  * `days` is the KPI window and is optional — the service defaults it to 30 and
@@ -113,15 +126,36 @@ export const getMachinesPageSchema = z.object({
 /** A grid coordinate: 0-based, so the bottom row and the left column are 0 */
 const coordinate = z.number().int().min(0);
 
+/**
+ * One motor GPIO on a slot.
+ *
+ * 0-33 because GPIO 34-39 are input-only on the ESP32 and cannot drive a motor;
+ * the same bound is in `shared/vmaas-config/src/slot_config.h`, and a value the
+ * firmware refuses at boot must not be storable here.
+ *
+ * The description is a label for whoever traces the cabinet later ("row 2, left
+ * bank"). It is stored but never sent to the device — every byte in the wiring
+ * payload counts against Motorcontrol's MAX_CONFIG_BYTES.
+ */
+const slotPinSchema = z.object({
+  number: z
+    .number()
+    .int()
+    .min(0, { message: "a GPIO cannot be negative" })
+    .max(33, { message: "GPIO 34-39 are input-only and cannot drive a motor" }),
+  description: z.string().trim().max(60).optional(),
+});
+
 const slotLayoutSlotSchema = z
   .object({
     id: z.uuid({ message: "slot id must be a uuid" }).optional(),
-    slotNumber: z.number().int().min(0),
+    slotNumber: z.number().int().min(1),
     beginX: coordinate,
     endX: coordinate,
     beginY: coordinate,
     endY: coordinate,
     capacity: z.number().int().min(0),
+    pins: z.array(slotPinSchema).max(6, { message: "a slot can have at most six pins" }).default([]),
   })
   .refine((slot) => slot.endX >= slot.beginX && slot.endY >= slot.beginY, {
     message: "a slot must end on or after where it begins",
@@ -153,6 +187,14 @@ export const saveSlotLayoutSchema = z.object({
       const slotNumbers = slots.map((slot) => slot.slotNumber);
       if (new Set(slotNumbers).size !== slotNumbers.length) {
         ctx.addIssue({ code: "custom", path: ["slots"], message: "slot numbers must be unique" });
+      }
+
+      // Across the whole layout, not merely within one slot: Motorcontrol's
+      // pin_for() returns the first slot matching a GPIO, so a duplicate
+      // anywhere in the machine silently drives the wrong motor.
+      const pinNumbers = slots.flatMap((slot) => slot.pins.map((pin) => pin.number));
+      if (new Set(pinNumbers).size !== pinNumbers.length) {
+        ctx.addIssue({ code: "custom", path: ["slots"], message: "a GPIO can only drive one slot" });
       }
 
       const ids = slots.flatMap((slot) => (slot.id ? [slot.id] : []));

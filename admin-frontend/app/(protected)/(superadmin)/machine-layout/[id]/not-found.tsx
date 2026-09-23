@@ -3,7 +3,8 @@ import { ServerCrash } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
-/** Also what a machine that has been given to a tenant renders; its layout isn't edited from here */
+/** The loader serves claimed and unclaimed machines alike, so reaching this
+ *  page means the id matched no machine at all — not that it was claimed. */
 export default function MachineLayoutNotFound() {
   return (
     <div className="container mx-auto flex flex-col items-center gap-4 py-20 text-center">
@@ -11,7 +12,7 @@ export default function MachineLayoutNotFound() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Machine not found</h1>
         <p className="text-muted-foreground">
-          It has either been deleted, or it has already been given to a tenant.
+          No machine matches this id. It may have been deleted.
         </p>
       </div>
       <Button render={<Link href="/create-machine">Back to machines</Link>} />

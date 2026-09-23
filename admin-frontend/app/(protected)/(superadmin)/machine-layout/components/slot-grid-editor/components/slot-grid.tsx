@@ -13,6 +13,8 @@ interface SlotGridProps {
   selectedKey: string | null
   /** Slots to outline as invalid, e.g. slots that failed the check when saving */
   invalidSlotKeys: Set<string>
+  /** GPIOs that appear on more than one slot; marked on every card that carries one */
+  duplicatePins: Set<number>
   interaction: Interaction | null
   preview: Preview | null
   pointerHandlers: {
@@ -29,6 +31,7 @@ export function SlotGrid({
   layout,
   selectedKey,
   invalidSlotKeys,
+  duplicatePins,
   interaction,
   preview,
   pointerHandlers,
@@ -75,6 +78,7 @@ export function SlotGrid({
             isInvalid={
               isChanging ? !preview.valid : invalidSlotKeys.has(slot.key)
             }
+            duplicatePins={duplicatePins}
           />
         )
       })}

@@ -20,6 +20,7 @@ export function createSavePayload(
       beginY: slot.beginY,
       endY: slot.endY,
       capacity: slot.capacity,
+      pins: slot.pins,
     })),
   }
 }

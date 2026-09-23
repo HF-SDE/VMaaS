@@ -439,9 +439,14 @@ model Machine {
 
 model Pin {
   id          String  @id @default(uuid()) @db.Uuid
+  machineId   String  @db.Uuid
+  slotId      String  @db.Uuid
+  slot        Slot    @relation(fields: [slotId], references: [id], onDelete: Cascade)
   number      Int
   description String?
 
+  @@unique([machineId, number])
+  @@index([slotId])
   @@map("pin")
   @@schema("public")
 }
@@ -461,7 +466,7 @@ model Slot {
   capacity   Int
   price      Decimal?
 
-  // pins Pins[] - Jeg har kommenteret dette ud, da det ikke er implementeret endnu.
+  pins Pin[]
 
   inventoryMovements InventoryMovement[]
 

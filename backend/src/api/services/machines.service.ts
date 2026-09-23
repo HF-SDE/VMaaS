@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { type Machine, Prisma, type Slot } from "@/generated/prisma/client";
+import { type Machine, type Pin, Prisma, type Slot } from "@/generated/prisma/client";
 import { kickMqttClient } from "@/lib/emqx";
 import { prisma } from "@/lib/prisma";
 
@@ -37,6 +37,10 @@ export type MachineSiteNotFoundError = { reason: "SITE_NOT_FOUND"; message: stri
 export type UnknownMachineError = { reason: "UNKNOWN_ERROR"; message: string };
 /** A saved layout named a slot id that isn't one of the machine's slots. */
 export type SlotNotFoundError = { reason: "SLOT_NOT_FOUND"; message: string };
+/** A layout save would remove a slot that still holds stock. Carries the slot
+ *  numbers so the caller can name them; the message already does, but the array
+ *  is what a UI would highlight if `HttpError` ever carried response bodies. */
+export type SlotsNotEmptyError = { reason: "SLOTS_NOT_EMPTY"; message: string; slots: number[] };
 
 /** A machine row with the site it stands at, as every tenant-scoped read
  *  returns it — see the invariant note on `narrowToSite` below. */
@@ -46,12 +50,14 @@ export type MachineDetail = MachineListItem & MachineUsage & MachineKpis;
 /** What the detail read takes beyond the id — only the KPI window so far. */
 export type MachineReadParams = { days?: number };
 
-/** A machine that has neither a tenant nor a site is not a `MachineListItem`:
- *  it deliberately keeps a nullable site, unlike every tenant-scoped read,
- *  because a factory-registered machine genuinely hasn't been placed yet. Built
- *  from `Machine` directly rather than from `MachineListItem`, so tightening
- *  `MachineSite` to non-null can never drag this type along with it. */
-export type MachineWithoutTenant = Machine & { site: SimpleSite | null; slots: Slot[] };
+/** What `getMachineForLayoutService` returns — a machine for the slot layout
+ *  editor, claimed or not. It deliberately keeps a nullable site, unlike every
+ *  tenant-scoped read, because a factory-registered machine genuinely hasn't
+ *  been placed yet, and a claimed one still has to render here. Built from
+ *  `Machine` directly rather than from `MachineListItem`, so tightening
+ *  `MachineSite` to non-null can never drag this type along with it. Slots
+ *  carry their pins so the slot layout editor can show a slot's existing wiring. */
+export type MachineForLayout = Machine & { site: SimpleSite | null; slots: (Slot & { pins: Pin[] })[] };
 
 /** What `MachineSite` carries — enough to name the site and link to it. */
 const SITE_SELECT = { select: { id: true, name: true, city: true } } as const;
@@ -216,16 +222,30 @@ export async function getMachinesWithoutTenantService() {
 }
 
 /**
- * One machine that hasn't been given to a tenant yet, for the slot layout editor.
- * A machine that has a tenant reads as not found: its layout is no longer edited from there.
+ * One machine for the slot layout editor, claimed or not.
+ *
+ * It deliberately does NOT filter on `tenantId`. The layout describes the
+ * cabinet's physics — how many slots there are, how big they are, and which
+ * GPIO drives each motor — which is a property of the hardware rather than of
+ * whoever owns it. A cabinet rebuilt in the field belongs to a tenant by then,
+ * and had no way to be re-described while this read filtered them out.
+ *
+ * Authorisation is the route's job: `requireSuperAdmin` guards it, so opening
+ * this read does not widen who may see a machine.
  */
-export async function getMachineWithoutTenantService(
+export async function getMachineForLayoutService(
   id: string,
-): Promise<Result<MachineNotFoundError | UnknownMachineError, MachineWithoutTenant>> {
+): Promise<Result<MachineNotFoundError | UnknownMachineError, MachineForLayout>> {
   try {
     const machine = await prisma.machine.findFirst({
-      where: { id, tenantId: null },
-      include: { site: SITE_SELECT, slots: { orderBy: { slotNumber: "asc" } } },
+      where: { id },
+      include: {
+        site: SITE_SELECT,
+        slots: {
+          orderBy: { slotNumber: "asc" },
+          include: { pins: { orderBy: { number: "asc" } } },
+        },
+      },
     });
 
     if (!machine) return err(MACHINE_NOT_FOUND);
@@ -250,15 +270,16 @@ export async function getMachineWithoutTenantService(
  */
 export async function saveSlotLayoutService(
   data: SaveSlotLayoutData,
-): Promise<Result<MachineNotFoundError | SlotNotFoundError | UnknownMachineError, Slot[]>> {
-  const { machineId } = data;
-
+): Promise<Result<MachineNotFoundError | SlotNotFoundError | SlotsNotEmptyError | UnknownMachineError, Slot[]>> {
   try {
     const machine = await prisma.machine.findUnique({
-      where: { id: machineId },
-      select: { slots: { select: { id: true } } },
+      where: { id: data.machineId },
+      select: { id: true, slots: { select: { id: true, slotNumber: true, quantity: true } } },
     });
     if (!machine) return err(MACHINE_NOT_FOUND);
+
+
+    const machineId = machine.id;
 
     const storedIds = new Set(machine.slots.map((slot) => slot.id));
     const keptSlots = data.slots.filter((slot) => slot.id !== undefined);
@@ -270,6 +291,17 @@ export async function saveSlotLayoutService(
     const keptIds = new Set(keptSlots.map((slot) => slot.id!));
     const removedIds = [...storedIds].filter((id) => !keptIds.has(id));
 
+    const removed = machine.slots.filter((slot) => removedIds.includes(slot.id));
+    const stillStocked = removed.filter((slot) => slot.quantity > 0).map((slot) => slot.slotNumber);
+
+    if (stillStocked.length > 0) {
+      return err({
+        reason: "SLOTS_NOT_EMPTY",
+        message: `These slots still hold stock and cannot be removed: ${stillStocked.map((n) => `#${n}`).join(", ")}`,
+        slots: stillStocked,
+      });
+    }
+
     const slots = await prisma.$transaction(async (tx) => {
       await tx.slot.deleteMany({ where: { machineId, id: { in: removedIds } } });
 
@@ -280,12 +312,35 @@ export async function saveSlotLayoutService(
         await tx.slot.update({ where: { id: slot.id }, data: { slotNumber: -(index + 1) } });
       }
 
-      for (const { id, ...slot } of keptSlots) {
+      for (const { id, pins: _keptPins, ...slot } of keptSlots) {
         await tx.slot.update({ where: { id }, data: slot });
       }
 
       if (newSlots.length > 0) {
-        await tx.slot.createMany({ data: newSlots.map((slot) => ({ ...slot, machineId })) });
+        await tx.slot.createMany({
+          data: newSlots.map(({ pins: _newPins, ...slot }) => ({ ...slot, machineId })),
+        });
+      }
+
+      await tx.pin.deleteMany({ where: { machineId } });
+
+      const stored = await tx.slot.findMany({
+        where: { machineId },
+        select: { id: true, slotNumber: true },
+      });
+      const slotIdByNumber = new Map(stored.map((slot) => [slot.slotNumber, slot.id]));
+
+      const pinRows = data.slots.flatMap((slot) =>
+        slot.pins.map((pin) => ({
+          machineId,
+          slotId: slotIdByNumber.get(slot.slotNumber)!,
+          number: pin.number,
+          description: pin.description,
+        })),
+      );
+
+      if (pinRows.length > 0) {
+        await tx.pin.createMany({ data: pinRows });
       }
 
       return tx.slot.findMany({ where: { machineId }, orderBy: { slotNumber: "asc" } });

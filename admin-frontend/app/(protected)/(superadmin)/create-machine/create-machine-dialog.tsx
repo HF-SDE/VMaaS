@@ -83,7 +83,7 @@ function CreateMachineForm({ onCancel }: { onCancel: () => void }) {
 
       toast.success("Machine created.")
 
-      router.push(`/create-machine/${machine.id}`)
+      router.push(`/machine-layout/${machine.id}`)
     },
   })
 

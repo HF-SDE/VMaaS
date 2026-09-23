@@ -272,14 +272,16 @@ async function seedTenant(tenantNumber: number) {
       });
 
       // The same product may sit in more than one slot, as it does in a real machine.
+      // Slots are 1-based to match the device (prices.h), so the layout's array
+      // index (0-based) is never the slot number on its own.
       const slots = await Promise.all(
-        generateSlotLayout().map((row, slotNumber) => {
+        generateSlotLayout().map((row, index) => {
           const product = faker.helpers.arrayElement(products);
           return prisma.slot.create({
             data: {
               machineId: machine.id,
               productId: product.id,
-              slotNumber,
+              slotNumber: index + 1,
               ...toSlotRect(row),
               quantity: 0,
               capacity: slotCapacity(row),
@@ -327,9 +329,9 @@ async function seedMachinesWithoutTenant(siteId: string) {
     data: { siteId, serialNumber: generateSerialNumber(), name: `VM-NEW-${faker.string.alphanumeric({ length: 4, casing: "upper" })}` },
   });
   await prisma.slot.createMany({
-    data: generateSlotLayout().map((row, slotNumber) => ({
+    data: generateSlotLayout().map((row, index) => ({
       machineId: withLayout.id,
-      slotNumber,
+      slotNumber: index + 1,
       ...toSlotRect(row),
       capacity: slotCapacity(row),
     })),

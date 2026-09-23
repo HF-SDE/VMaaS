@@ -23,7 +23,7 @@ import { fetchData } from "@/lib/data/data-fetch"
 import { MachinesWithoutTenants } from "@/types/responses"
 
 import { CreateMachineDialog } from "./create-machine-dialog"
-import { machineLoadErrorMessage } from "./messages"
+import { machineLoadErrorMessage } from "../machine-layout/messages"
 
 /** Machines that haven't been given to a tenant yet. Clicking one opens its slot layout editor. */
 export default async function CreateMachinePage() {
@@ -83,7 +83,7 @@ async function MachinesList() {
         <Item
           key={machine.id}
           variant="outline"
-          render={<Link href={`/create-machine/${machine.id}`} />}
+          render={<Link href={`/machine-layout/${machine.id}`} />}
         >
           <ItemMedia variant="icon">
             <Blocks />

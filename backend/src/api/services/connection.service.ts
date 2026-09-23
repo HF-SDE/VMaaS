@@ -1,3 +1,5 @@
+import { redeliverOpenCommands } from "@/mqtt/commands";
+
 import { type Result, err, ok } from "@vmaas/shared/lib";
 
 /**
@@ -167,6 +169,8 @@ export async function recordConnectionEventService(
     });
 
     if (transitioned) {
+      if (input.status === "online") void redeliverOpenCommands(machine.id);
+
       return ok({ applied: true });
     }
 

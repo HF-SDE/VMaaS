@@ -44,7 +44,6 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
  */
 function handleLinkClick(event: MouseEvent) {
   if (event.defaultPrevented || event.button !== 0) return
-  // Modified clicks open a new tab/window, which doesn't leave this page
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
 
   const link = (event.target as Element | null)?.closest("a[href]")
@@ -52,7 +51,6 @@ function handleLinkClick(event: MouseEvent) {
   if (link.target === "_blank" || link.hasAttribute("download")) return
 
   const url = new URL(link.href)
-  // Links to other sites do a full page load, which beforeunload already covers
   if (url.origin !== window.location.origin) return
 
   const isSamePage =

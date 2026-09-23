@@ -15,7 +15,7 @@ import {
   deleteMachineService,
   disableMachineService,
   getMachineByIdService,
-  getMachineWithoutTenantService,
+  getMachineForLayoutService,
   getMachinesPageService,
   getMachinesService,
   getMachinesWithoutTenantService,
@@ -84,10 +84,10 @@ export async function getMachinesWithoutTenantController(req: Request, res: Resp
   return res.status(200).json(machines).end();
 }
 
-export async function getMachineWithoutTenantController(req: Request, res: Response) {
+export async function getMachineForLayoutController(req: Request, res: Response) {
   const { params } = machineIdParamsSchema.parse(req);
 
-  const [error, machine] = await getMachineWithoutTenantService(params.id);
+  const [error, machine] = await getMachineForLayoutService(params.id);
 
   if (error) {
     const reason = error.reason;
@@ -122,6 +122,9 @@ export async function saveSlotLayoutController(req: Request, res: Response) {
       // 400 rather than 404: a wrong slot id is a problem with the payload
       case "SLOT_NOT_FOUND":
         return res.status(400).json({ error: "One or more slots do not belong to this machine" }).end();
+      // 422 rather than 400: the request is well-formed, the machine's state is what refuses it
+      case "SLOTS_NOT_EMPTY":
+        return res.status(422).json({ error: error.message, slots: error.slots }).end();
       case "UNKNOWN_ERROR":
         return res.status(500).json({ error: "An unknown error occurred while saving the slot layout" }).end();
       default:

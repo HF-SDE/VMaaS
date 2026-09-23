@@ -1,5 +1,6 @@
-import { deviceEventBatchSchema, deviceEventSchema } from "@vmaas/shared/schemas";
+import { cashSalePayloadSchema, deviceEventBatchSchema, deviceEventSchema } from "@vmaas/shared/schemas";
 import { describe, expect, it } from "vitest";
+import { DEVICE_MAX_SLOT } from "@vmaas/shared/types/slot";
 
 /**
  * `deviceEventSchema`'s `.refine()` is the crux of Step 1a: a clock-less ESP32
@@ -125,5 +126,24 @@ describe("deviceEventSchema", () => {
   it("accepts a type at exactly 64 characters", () => {
     const result = deviceEventSchema.safeParse({ body: event({ type: "x".repeat(64) }) });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("cashSalePayloadSchema — the device's slot ceiling", () => {
+  const sale = (slot: number) =>
+    cashSalePayloadSchema.safeParse({ slot, price_minor: 1500, received_minor: 1500, status: "completed" });
+
+  it("accepts the highest slot the device can address", () => {
+    expect(sale(DEVICE_MAX_SLOT).success).toBe(true);
+  });
+
+  // The firmware indexes `by_slot[MAX_SLOT + 1]`, so a higher number has no
+  // cell to land in — it is not merely unusual, it is unrepresentable.
+  it("rejects a slot above the ceiling", () => {
+    expect(sale(DEVICE_MAX_SLOT + 1).success).toBe(false);
+  });
+
+  it("rejects slot 0, since slots are 1-based", () => {
+    expect(sale(0).success).toBe(false);
   });
 });
