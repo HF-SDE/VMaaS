@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  push:
+    branches: [main, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            admin-frontend/package-lock.json
+
+      - name: Install shared
+        run: npm install --prefix shared --omit=dev --no-package-lock
+
+      # The frontend type-checks against backend sources and the generated
+      # Prisma client, so the backend is installed and generated first.
+      - name: Install backend
+        working-directory: backend
+        run: npm ci --ignore-scripts && npx prisma generate
+
+      - name: Backend typecheck
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Backend tests
+        working-directory: backend
+        run: npm test
+
+      - name: Install frontend
+        working-directory: admin-frontend
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: admin-frontend
+        run: npm run lint
+
+      - name: Frontend typecheck
+        working-directory: admin-frontend
+        run: npm run typecheck
+
+      - name: Frontend tests
+        working-directory: admin-frontend
+        run: npm test
+
+      - name: Frontend production build
+        working-directory: admin-frontend
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_BACKEND_URL: https://ci.invalid
+          FRONTEND_URL: https://ci.invalid
+        run: npm run build
+
+  # Runs on the self-hosted runner installed on the production host. It does not
+  # check out into the runner workspace: it updates the long-lived clone the
+  # stack is already served from, because the env files, the TLS certificate and
+  # config/emqx/prod are gitignored and only exist there. See
+  # docs/guides/production-deployment.md.
+  #
+  # Set the repository variable DEPLOY_DIR if that clone is not at /srv/vmaas.
+  deploy:
+    needs: web
+    runs-on: self-hosted
+    # Never cancel a deploy halfway through; queue instead.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ vars.DEPLOY_DIR || '/srv/vmaas' }}
+    env:
+      COMPOSE_ARGS: >-
+        --env-file ./config/environment-variables/.env.backend.prod
+        -f ./docker/docker-compose.prod.yml
+      # Services expected to stay up. pki-init is excluded: it runs once and exits.
+      HEALTH_SERVICES: db backend emqx admin-frontend reverse-proxy
+    steps:
+      # The runner service may not inherit an interactive shell's PATH, and
+      # `npm run prod:up` renders the EMQX config with node before calling compose.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Record the running revision
+        id: current
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Update the checkout
+        # Uses the credentials the clone on the host already has. No `git clean`:
+        # it would delete the gitignored secrets and certificates alongside it.
+        run: |
+          git fetch --prune origin
+          git reset --hard "${{ github.sha }}"
+
+      - name: Deploy
+        run: npm run prod:up
+
+      - name: Health check
+        id: health
+        continue-on-error: true
+        run: |
+          for _ in $(seq 1 40); do
+            bad=""
+            for service in $HEALTH_SERVICES; do
+              id=$(docker compose $COMPOSE_ARGS ps -q "$service")
+              if [ -z "$id" ]; then
+                bad="$bad $service:absent"
+                continue
+              fi
+              state=$(docker inspect -f \
+                '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id")
+              case "$state" in
+                healthy | running) ;;
+                *) bad="$bad $service:$state" ;;
+              esac
+            done
+            if [ -z "$bad" ]; then
+              echo "All services healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Services not healthy after 200s:$bad"
+          docker compose $COMPOSE_ARGS ps
+          docker compose $COMPOSE_ARGS logs --tail=200 --no-color
+          exit 1
+
+      # Code only. `prisma migrate deploy` runs on every backend start and is not
+      # reversed by this, so a deploy that failed *because* of a migration needs
+      # the database restored from a dump by hand.
+      - name: Roll back
+        if: steps.health.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back to ${{ steps.current.outputs.sha }}"
+          git reset --hard "${{ steps.current.outputs.sha }}"
+          npm run prod:up
+          docker compose $COMPOSE_ARGS ps
+
+      - name: Report deploy failure
+        if: steps.health.outcome == 'failure'
+        run: exit 1
