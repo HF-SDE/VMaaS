@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { getSession } from "@/lib/dal"
-import { resolveUserAccess } from "@/lib/access"
+import { getAccess } from "@/lib/dal"
 
 import { OnboardingClient } from "./client"
 
@@ -18,8 +17,7 @@ export const metadata = { title: "Get started" }
  * steps and a user who has both should not have to guess.
  */
 export default async function OnboardingPage() {
-  const session = await getSession()
-  const access = resolveUserAccess(session)
+  const { access } = await getAccess()
 
   if (access.accessState === "AUTH_REQUIRED") redirect("/login")
 

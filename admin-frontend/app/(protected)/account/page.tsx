@@ -1,8 +1,6 @@
 import { Suspense } from "react"
-import { PERMISSIONS } from "../../../../shared/types/permissions"
 
 import { requireUser } from "@/lib/dal"
-import { hasPermission } from "@/lib/permissions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { InvoicesCard } from "./invoices-card"
@@ -48,10 +46,6 @@ async function AccountSection() {
           <InvoicesCard />
         </TabsContent>
       </Tabs>
-      <p>Welcome, {session.user.name}</p>
-      {hasPermission(session, PERMISSIONS.TENANT_MANAGE) && (
-        <p>Administrator</p>
-      )}
     </>
   )
 }

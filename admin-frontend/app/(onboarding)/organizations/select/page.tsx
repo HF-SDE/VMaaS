@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { getSession } from "@/lib/dal"
-import { resolveUserAccess } from "@/lib/access"
+import { getAccess } from "@/lib/dal"
 
 import { SelectOrganizationClient } from "./client"
 
@@ -17,8 +16,7 @@ export const metadata = { title: "Choose an organization" }
  * because there is no choice to make.
  */
 export default async function SelectOrganizationPage() {
-  const session = await getSession()
-  const access = resolveUserAccess(session)
+  const { access } = await getAccess()
 
   if (access.accessState === "AUTH_REQUIRED") redirect("/login")
   if (access.accessState === "NO_ORGANIZATION") redirect("/onboarding")

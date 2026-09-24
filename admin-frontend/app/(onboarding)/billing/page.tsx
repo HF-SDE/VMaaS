@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { getSession } from "@/lib/dal"
-import { resolveUserAccess } from "@/lib/access"
+import { getAccess } from "@/lib/dal"
 
 import { BillingClient, type CheckoutOutcome } from "./client"
 
@@ -22,8 +21,7 @@ export default async function BillingPage({
 }: {
   searchParams: Promise<{ checkout?: string }>
 }) {
-  const session = await getSession()
-  const access = resolveUserAccess(session)
+  const { access } = await getAccess()
 
   if (access.accessState === "AUTH_REQUIRED") redirect("/login")
   if (access.accessState === "NO_ORGANIZATION") redirect("/onboarding")

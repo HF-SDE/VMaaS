@@ -11,8 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getSession } from "@/lib/dal"
-import { resolveUserAccess } from "@/lib/access"
+import { getAccess } from "@/lib/dal"
 
 import { SwitchOrganizationButton } from "./switch-button"
 
@@ -28,8 +27,7 @@ export const metadata = { title: "Organization locked" }
  * be a hole, not a convenience.
  */
 export default async function BillingLockedPage() {
-  const session = await getSession()
-  const access = resolveUserAccess(session)
+  const { access } = await getAccess()
 
   if (access.accessState === "AUTH_REQUIRED") redirect("/login")
   if (access.accessState === "NO_ORGANIZATION") redirect("/onboarding")

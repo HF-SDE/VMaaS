@@ -49,6 +49,19 @@ export async function getFreshSession(): Promise<Session | null> {
   return fetchSession(getAuthCookie(store.getAll()))
 }
 
+/** The session and where it leaves the user. `resolveUserAccess` reads the
+ *  clock (trial expiry), which Next forbids during prerender outside a cache
+ *  scope — so it is resolved here, under the same private cache as the session. */
+export async function getAccess() {
+  "use cache: private"
+  cacheLife({ stale: 60 })
+  cacheTag("tenants")
+
+  const session = await getSession()
+
+  return { session, access: resolveUserAccess(session) }
+}
+
 export async function requireUser(): Promise<Session> {
   const session = await getSession()
   if (!session) redirect("/login")
@@ -69,8 +82,7 @@ export async function requireUser(): Promise<Session> {
 export async function requireAccess(): Promise<
   Session & { activeTenantId: string }
 > {
-  const session = await getSession()
-  const access = resolveUserAccess(session)
+  const { session, access } = await getAccess()
 
   if (access.accessState !== "READY") {
     redirect(ACCESS_REDIRECTS[access.accessState])

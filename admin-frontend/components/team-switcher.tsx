@@ -87,7 +87,6 @@ export function TeamSwitcher() {
                     <FallbackAvatar seed={tenant?.id ?? ""} />
                   </div>
                   {tenant.name}
-                  <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
