@@ -13,6 +13,7 @@
 
 #include "grove_lcd_rgb.h"
 #include "motor_client.h"
+#include "prices.h"
 
 namespace purchase_task
 {
@@ -22,6 +23,23 @@ namespace purchase_task
     /// @return False when there are no prices, in which case cash is disabled
     ///         and the firmware behaves as it did before this feature.
     bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms);
+
+    /**
+     * @brief Swap in a freshly fetched price table.
+     *
+     * Called from config_sync's task rather than the main loop, which is why
+     * the swap is guarded: on_slot_confirmed() reads a price on the main task
+     * and a settled sale copies the currency out of the same struct. @p fresh
+     * is copied, so the caller keeps ownership of it.
+     *
+     * Only prices and the currency go live. The cash calibration that arrives
+     * in the same payload - coin pulse values, payment timeout, inhibit - was
+     * copied into the CoinAcceptor and Purchase state machines when begin()
+     * constructed them, so a change to it takes effect at the next reboot and
+     * not before. Anywhere an operator is told the configuration was applied
+     * has to say so.
+     */
+    void set_prices(const prices::Table &fresh);
 
     /// SlotEntry reported Confirmed.
     void on_slot_confirmed(uint8_t slot);

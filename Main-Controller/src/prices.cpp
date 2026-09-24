@@ -18,7 +18,6 @@ namespace
     constexpr const char *PATH = "/storage/prices.json";
     /// Generous for 32 slots plus the cash block, and still small next to the
     /// 8 KB the TLS handshake wants.
-    constexpr size_t MAX_FILE = 4096;
 
     /// Reads obj[key] as a whole, non-negative number that fits in uint32_t.
     /// Leaves @p out untouched when the key is absent, the value is not a
@@ -57,7 +56,7 @@ namespace prices
 {
     bool load(vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table)
     {
-        static char buf[MAX_FILE];
+        static char buf[MAX_PAYLOAD];
         const int n = vmaas::fs::read_text_file(PATH, buf, sizeof(buf));
         if (n == -1)
         {
@@ -67,14 +66,75 @@ namespace prices
         if (n == -2)
         {
             ESP_LOGE(TAG, "%s is larger than %u bytes, refusing to parse a fragment",
-                     PATH, static_cast<unsigned>(MAX_FILE));
+                     PATH, static_cast<unsigned>(MAX_PAYLOAD));
             return false;
         }
 
-        cJSON *root = cJSON_Parse(buf);
+        return parse(buf, coin, purchase, table);
+    }
+
+    bool merge_store(const char *json)
+    {
+        cJSON *fresh = cJSON_Parse(json);
+        if (!cJSON_IsObject(fresh))
+        {
+            ESP_LOGE(TAG, "refusing to merge a payload that is not a JSON object");
+            cJSON_Delete(fresh);
+            return false;
+        }
+
+        static char buf[MAX_PAYLOAD];
+        cJSON *merged = nullptr;
+        if (vmaas::fs::read_text_file(PATH, buf, sizeof(buf)) > 0) merged = cJSON_Parse(buf);
+
+        if (!cJSON_IsObject(merged))
+        {
+            // Unprovisioned, or a file that no longer parses.
+            cJSON_Delete(merged);
+            merged = cJSON_CreateObject();
+        }
+
+        if (merged == nullptr)
+        {
+            cJSON_Delete(fresh);
+            return false;
+        }
+
+        const cJSON *item = nullptr;
+        cJSON_ArrayForEach(item, fresh)
+        {
+            if (cJSON_IsObject(item) && item->child == nullptr) continue;
+
+            cJSON *copy = cJSON_Duplicate(item, true);
+            if (copy == nullptr) continue;
+
+            cJSON_DeleteItemFromObjectCaseSensitive(merged, item->string);
+            cJSON_AddItemToObject(merged, item->string, copy);
+        }
+
+        char *text = cJSON_PrintUnformatted(merged);
+        cJSON_Delete(merged);
+        cJSON_Delete(fresh);
+
+        if (text == nullptr)
+        {
+            ESP_LOGE(TAG, "out of memory rendering the merged configuration");
+            return false;
+        }
+
+        const bool ok = vmaas::fs::write_text_file(PATH, text, std::strlen(text));
+        cJSON_free(text);
+        return ok;
+    }
+
+    bool parse(const char *json, vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table)
+    {
+        if (json == nullptr) return false;
+
+        cJSON *root = cJSON_Parse(json);
         if (root == nullptr || !cJSON_IsObject(root))
         {
-            ESP_LOGE(TAG, "%s is not a valid JSON object", PATH);
+            ESP_LOGE(TAG, "configuration payload is not a valid JSON object");
             cJSON_Delete(root);
             return false;
         }

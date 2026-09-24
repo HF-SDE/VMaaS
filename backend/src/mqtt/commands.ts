@@ -22,10 +22,16 @@ export async function publishCommand(
   payload: Record<string, unknown>,
   commandId: string,
 ): Promise<void> {
-  const topic = `${buildTopicPrefix(machine)}/commands/${commandId}`;
+  // The command id rides in the payload rather than as a topic segment, so the
+  // topic is a constant the device can hold one subscription to. A per-command
+  // topic would force it to subscribe with a wildcard, and `parseTopic` refuses
+  // every wildcard — deliberately, because the ACL is built on comparing three
+  // concrete uuids against the certificate's machine. Keeping the id out of the
+  // path is what lets that rule stay exactly as strict as it is.
+  const topic = `${buildTopicPrefix(machine)}/commands`;
 
   try {
-    await publishToBroker(topic, payload);
+    await publishToBroker(topic, { commandId, ...payload });
   } catch (error) {
     console.warn(`mqtt: could not publish ${topic}, leaving it for redelivery:`, error);
   }

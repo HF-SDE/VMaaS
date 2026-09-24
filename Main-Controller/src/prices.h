@@ -13,6 +13,7 @@
  * so no cash sale can happen — the machine falls back to logging slot choices,
  * which is what it did before this feature.
  */
+#include <cstddef>
 #include <cstdint>
 
 #include "coin_acceptor.h"
@@ -37,6 +38,45 @@ namespace prices
      *         except @p table, whose `loaded` stays false.
      */
     bool load(vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table);
+
+    /**
+     * @brief Parse a configuration payload over the given defaults.
+     *
+     * The body of load(), reachable without going through flash first: this is
+     * the same JSON, and config_sync has it in memory the moment
+     * GET /device/configuration answers. Parsing before storing is also what
+     * lets a malformed payload be rejected without overwriting a good file.
+     *
+     * @param json NUL-terminated MachineConfiguration.payload.
+     * @return True when it parsed. False leaves every argument untouched
+     *         except @p table, whose `loaded` stays false.
+     */
+    bool parse(const char *json, vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table);
+
+    /**
+     * @brief Merge a fetched payload into the cached one on flash.
+     *
+     * Merge and not replace, for the same reason parse() treats every field as
+     * optional: a block the payload does not carry is not a block the platform
+     * is asking to have cleared. The backend publishes `cash: {}` today - it
+     * has no coin calibration to publish yet - and writing that over the file
+     * would wipe the provisioned pulse values, leaving the machine unable to
+     * value a coin from its next reboot on.
+     *
+     * Top-level keys present in @p json replace their stored counterparts. An
+     * empty object replaces nothing. Keys only in the stored file are kept.
+     *
+     * Kept here rather than in config_sync so the path stays private to the
+     * one file that knows what lives at it.
+     *
+     * @return True once the merged document is on flash.
+     */
+    bool merge_store(const char *json);
+
+    /// Largest payload the device will accept, in bytes. The response buffer
+    /// the fetch reads into has to be at least this big for a configuration
+    /// that fits on flash to also fit through the wire.
+    constexpr size_t MAX_PAYLOAD = 4096;
 
     /// @return The price for @p slot in minor units, or 0 if it has none.
     uint32_t for_slot(const Table &table, uint8_t slot);

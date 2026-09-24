@@ -14,12 +14,13 @@
  * Thread safety: begin() must run once, from a single task at startup - it
  * creates the internal lock, and every other call fails rather than touching
  * the shared PEM/url buffers unlocked if made before begin() has run. After
- * that, post_json(), post_json_mtls() and drain_outbox_once() are all safe to
+ * that, post_json(), post_json_mtls(), get_mtls() and drain_outbox_once() are
+ * all safe to
  * call from different tasks: Task 10 gives outbox draining its own FreeRTOS
  * task precisely so a slow HTTPS POST cannot stall the main loop mid-payment,
  * which means a second caller can genuinely be in flight here at the same
  * time (e.g. activation running from the onboarding task). The lock is held
- * for the whole of one POST, including the TLS handshake, which can take
+ * for the whole of one request, including the TLS handshake, which can take
  * seconds - that is correct, since two concurrent handshakes over the same
  * static PEM buffers would corrupt both, not merely race harmlessly.
  */
@@ -33,6 +34,18 @@ namespace device_api
     {
         int    status = 0;   ///< HTTP status, or 0 when the request never completed.
         size_t body_len = 0;
+
+        /**
+         * @brief The body was longer than the buffer, so `resp` holds a fragment.
+         *
+         * A flag rather than an error return, because the status line is still
+         * valid and some callers only want that: drain_outbox_once decides
+         * drop-vs-keep from the status alone, and must not start keeping
+         * already-accepted sales because the backend grew a chattier response
+         * body. A caller that parses the body checks this first — a truncated
+         * JSON document otherwise reads as the backend sending invalid JSON.
+         */
+        bool   truncated = false;
     };
 
     /**
@@ -53,6 +66,12 @@ namespace device_api
     /// POST JSON with the machine's client certificate. @p path is appended to
     /// the base URL given to begin(), e.g. "/device/events".
     esp_err_t post_json_mtls(const char *path, const char *body, char *resp, size_t resp_len, Response &out);
+
+    /// GET with the machine's client certificate, for endpoints that answer with
+    /// a body the device reads rather than only a status. @p path is appended to
+    /// the base URL given to begin(), e.g. "/device/configuration". Check
+    /// Response::truncated before parsing @p resp.
+    esp_err_t get_mtls(const char *path, char *resp, size_t resp_len, Response &out);
 
     /**
      * @brief Send the oldest outbox line, and drop it once the backend has

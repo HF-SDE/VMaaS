@@ -70,9 +70,22 @@ namespace
 
     // Everything below this point assumes the caller already holds g_mutex.
 
-    esp_err_t post_impl(const char *url, const char *body, bool with_client_cert, char *resp, size_t resp_len, device_api::Response &out)
+    /**
+     * One request, POST or GET. The two differ only in whether a body is sent:
+     * a GET is this function with @p body null, which is why the TLS setup,
+     * certificate loading and response handling are not duplicated for it.
+     *
+     * A body that does not fit sets Response::truncated rather than returning
+     * an error, since the status line is still valid - see device_api.h. It is
+     * declared from Content-Length before a byte is read; a chunked response
+     * carries none, so a read that exactly fills the buffer is called truncated
+     * too, that being the one case where "it just fits" and "there was more"
+     * are indistinguishable.
+     */
+    esp_err_t request_impl(esp_http_client_method_t method, const char *url, const char *body, bool with_client_cert, char *resp, size_t resp_len, device_api::Response &out)
     {
-        if (url == nullptr || body == nullptr) return ESP_ERR_INVALID_ARG;
+        if (url == nullptr) return ESP_ERR_INVALID_ARG;
+        if (method == HTTP_METHOD_POST && body == nullptr) return ESP_ERR_INVALID_ARG;
         if (resp != nullptr && resp_len > 0) resp[0] = '\0';
 
         if (!wifi_sta::is_connected())
@@ -83,7 +96,7 @@ namespace
 
         esp_http_client_config_t cfg = {};
         cfg.url = url;
-        cfg.method = HTTP_METHOD_POST;
+        cfg.method = method;
         cfg.timeout_ms = TIMEOUT_MS;
 
         if (with_client_cert)
@@ -114,9 +127,9 @@ namespace
         esp_http_client_handle_t client = esp_http_client_init(&cfg);
         if (client == nullptr) return ESP_FAIL;
 
-        esp_http_client_set_header(client, "Content-Type", "application/json");
+        const size_t body_len = body != nullptr ? std::strlen(body) : 0;
+        if (body != nullptr) esp_http_client_set_header(client, "Content-Type", "application/json");
 
-        const size_t body_len = std::strlen(body);
         esp_err_t err = esp_http_client_open(client, static_cast<int>(body_len));
         if (err != ESP_OK)
         {
@@ -125,26 +138,41 @@ namespace
             return err;
         }
 
-        if (esp_http_client_write(client, body, static_cast<int>(body_len)) < 0 ||
-            esp_http_client_fetch_headers(client) < 0)
+        if (body_len > 0 && esp_http_client_write(client, body, static_cast<int>(body_len)) < 0)
         {
-            ESP_LOGE(TAG, "write or headers failed for %s", url);
+            ESP_LOGE(TAG, "write failed for %s", url);
+            esp_http_client_cleanup(client);
+            return ESP_FAIL;
+        }
+
+        const int content_length = esp_http_client_fetch_headers(client);
+        if (content_length < 0)
+        {
+            ESP_LOGE(TAG, "headers failed for %s", url);
             esp_http_client_cleanup(client);
             return ESP_FAIL;
         }
 
         out.status = esp_http_client_get_status_code(client);
-        if (resp != nullptr && resp_len > 1)
+
+        const size_t room = resp != nullptr && resp_len > 1 ? resp_len - 1 : 0;
+        if (room > 0)
         {
-            const int read = esp_http_client_read_response(client, resp, static_cast<int>(resp_len) - 1);
+            if (content_length > 0 && static_cast<size_t>(content_length) > room) out.truncated = true;
+
+            const int read = esp_http_client_read_response(client, resp, static_cast<int>(room));
             if (read > 0)
             {
                 resp[read] = '\0';
                 out.body_len = static_cast<size_t>(read);
+
+                if (content_length <= 0 && static_cast<size_t>(read) == room) out.truncated = true;
             }
         }
 
-        ESP_LOGI(TAG, "POST %s -> %d (%u bytes)", url, out.status, static_cast<unsigned>(out.body_len));
+        ESP_LOGI(TAG, "%s %s -> %d (%u bytes%s)",
+                 method == HTTP_METHOD_GET ? "GET" : "POST", url, out.status,
+                 static_cast<unsigned>(out.body_len), out.truncated ? ", TRUNCATED" : "");
 
         esp_http_client_cleanup(client);
         return ESP_OK;
@@ -183,7 +211,7 @@ namespace device_api
     esp_err_t post_json(const char *url, const char *body, char *resp, size_t resp_len, Response &out)
     {
         if (!lock()) return ESP_ERR_INVALID_STATE;
-        const esp_err_t result = post_impl(url, body, false, resp, resp_len, out);
+        const esp_err_t result = request_impl(HTTP_METHOD_POST, url, body, false, resp, resp_len, out);
         unlock();
         return result;
     }
@@ -202,7 +230,28 @@ namespace device_api
         {
             char url[256];
             std::snprintf(url, sizeof(url), "%s%s", base_url, path);
-            result = post_impl(url, body, true, resp, resp_len, out);
+            result = request_impl(HTTP_METHOD_POST, url, body, true, resp, resp_len, out);
+        }
+
+        unlock();
+        return result;
+    }
+
+    esp_err_t get_mtls(const char *path, char *resp, size_t resp_len, Response &out)
+    {
+        if (!lock()) return ESP_ERR_INVALID_STATE;
+
+        esp_err_t result;
+        if (base_url[0] == '\0')
+        {
+            ESP_LOGE(TAG, "begin() was never called; no base url");
+            result = ESP_ERR_INVALID_STATE;
+        }
+        else
+        {
+            char url[256];
+            std::snprintf(url, sizeof(url), "%s%s", base_url, path);
+            result = request_impl(HTTP_METHOD_GET, url, nullptr, true, resp, resp_len, out);
         }
 
         unlock();

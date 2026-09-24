@@ -29,11 +29,31 @@ beforeEach(() => {
 });
 
 describe("publishCommand", () => {
-  it("addresses the machine's own commands topic, with the command id as the last segment", async () => {
+  // The id is in the payload, not the topic, so the topic is a constant the
+  // device can subscribe to. A per-command topic would force a wildcard
+  // subscription, and `parseTopic` refuses every wildcard — which is what the
+  // ACL is built on.
+  it("addresses the machine's own commands topic, with no per-command segment", async () => {
     await publishCommand(MACHINE, { type: "apply_configuration", version: 4 }, "cfg-1");
 
     const [topic] = publish.mock.calls[0];
-    expect(topic).toBe(`v1/${MACHINE.tenantId}/${MACHINE.siteId}/${MACHINE.id}/commands/cfg-1`);
+    expect(topic).toBe(`v1/${MACHINE.tenantId}/${MACHINE.siteId}/${MACHINE.id}/commands`);
+  });
+
+  it("carries the command id in the payload, since the topic no longer does", async () => {
+    await publishCommand(MACHINE, { type: "apply_configuration", version: 4 }, "cfg-1");
+
+    const [, payload] = publish.mock.calls[0];
+    expect(payload).toEqual({ commandId: "cfg-1", type: "apply_configuration", version: 4 });
+  });
+
+  // The whole point of the move: one topic the device can hold a subscription
+  // to. If a command id ever leaked back into the path, this fails.
+  it("keeps the topic identical for two different commands", async () => {
+    await publishCommand(MACHINE, { type: "apply_configuration", version: 4 }, "cfg-1");
+    await publishCommand(MACHINE, { type: "apply_configuration", version: 5 }, "cfg-2");
+
+    expect(publish.mock.calls[0][0]).toBe(publish.mock.calls[1][0]);
   });
 
   // A broker that is down must not fail a publish whose rows are already stored;

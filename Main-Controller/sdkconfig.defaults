@@ -55,3 +55,29 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 # screen. Subsystem C fetches configuration over the same transport from the
 # same task, so this is the app's real requirement, not a patch for one call.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288
+
+# Two TLS sessions at once. The broker connection is long-lived, and
+# config_sync fetches GET /device/configuration over HTTPS while it is up, so
+# mbedTLS has to hold two sessions simultaneously. Measured on hardware
+# 2026-09-23 with the defaults below unset: the broker connected, the fetch
+# then failed every time with
+#
+#   E esp-tls-mbedtls: mbedtls_ssl_setup returned -0x008D
+#
+# which is MBEDTLS_ERR_SSL_ALLOC_FAILED - out of heap, not a network or
+# certificate problem, though "Connection failed, sock < 0" one line later
+# reads exactly like one.
+#
+# DYNAMIC_BUFFER releases a session's handshake buffers once the handshake is
+# done, which is what makes the idle broker session cheap to keep open.
+# DYNAMIC_FREE_CA_CERT is deliberately left off: the activation path falls
+# back to the Mozilla bundle above, and freeing the parsed CA interacts badly
+# with it.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# 16384 is the mbedTLS default and sizes the largest incoming TLS record. The
+# certificate chains here are a private PKI's - the device certificate buffer
+# is 2 KB and the CA 2.5 KB - and the largest response body is under 1 KB, so
+# half of it is still several times what is needed, and it is the single
+# biggest per-session allocation.
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192

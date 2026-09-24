@@ -121,4 +121,34 @@ namespace Config
 
     /// Size at which the journal is compacted, in bytes.
     constexpr size_t reporter_journal_cap = 128 * 1024;
+
+    // --- Configuration sync -------------------------------------------------
+
+    /// Stack for the task that fetches GET /device/configuration. The same
+    /// 12288 as the outbox drain and the event sender, for the same reason: it
+    /// runs a TLS handshake, and mbedTLS wants several KB of its own while that
+    /// is live. Its high-water mark is logged after every fetch, so this can be
+    /// tuned down from a bench figure rather than a guess.
+    constexpr int config_sync_task_stack = 12288;
+
+    /// Priority of the configuration fetcher. Below the keypad, matching the
+    /// other network tasks: a fetch must never delay a key press.
+    constexpr int config_sync_task_priority = 4;
+
+    /// How many commands can wait while a fetch is in flight. They all ask for
+    /// the same thing - the newest configuration - so this only has to be deep
+    /// enough that a reconnect redelivering a few open commands at once does
+    /// not have any of them dropped before they can be answered.
+    constexpr int config_sync_queue_len = 4;
+
+    /// Gap before retrying a fetch that failed on the network, in milliseconds.
+    /// Shorter than the other retry gaps here: someone is usually standing at
+    /// the machine when a configuration is published.
+    constexpr uint32_t config_sync_retry_ms = 10000;
+
+    /// Attempts one request makes before it gives up and waits for the next
+    /// command. Bounded rather than endless because the boot fetch has no
+    /// command behind it to report a failure against, and a machine retrying
+    /// forever against a backend that is down would say nothing about it.
+    constexpr int config_sync_max_attempts = 3;
 }

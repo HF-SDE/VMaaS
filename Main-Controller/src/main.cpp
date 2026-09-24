@@ -22,6 +22,7 @@
 #include "purchase_task.h"
 #include "service_code.h"
 #include "door_lock.h"
+#include "config_sync.h"
 #include "event_reporter.h"
 
 namespace
@@ -317,6 +318,10 @@ extern "C" void app_main()
         ESP_LOGW(TAG, "cash disabled; slot entry logs only, as before");
     }
     event_reporter::start(cfg.api_base_url);
+
+    if (config_sync::begin() != ESP_OK) {
+        ESP_LOGW(TAG, "configuration sync did not start; the machine keeps the configuration on flash");
+    }
 
     show_prompt();
 

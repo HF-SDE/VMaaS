@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"   // esp_timer_get_time
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "activation.h"  // load_identity, for the machine id in the event id
@@ -36,6 +37,19 @@ namespace
     vmaas::CoinConfig coin_cfg;
     vmaas::PurchaseConfig purchase_cfg;
     prices::Table table;
+
+    /**
+     * @brief Guards `table` alone, not the rest of this file's state.
+     *
+     * Everything else here belongs to the main task. `table` is the one piece
+     * config_sync writes from its own task, and both of its readers matter:
+     * on_slot_confirmed() decides a price from it, and settle() takes
+     * `table.currency` as a *pointer* into the struct, so a swap partway
+     * through formatting a sale line would splice two currencies together.
+     * Both readers copy what they need out under the lock and release it
+     * before doing anything slow.
+     */
+    SemaphoreHandle_t price_mutex = nullptr;
 
     vmaas::CoinAcceptor *acceptor = nullptr;
     vmaas::Purchase *machine = nullptr;
@@ -240,7 +254,14 @@ namespace
         line.reason = reason;
         line.occurred_at = clock_ok ? stamp : nullptr;
         line.uptime_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-        line.currency = table.currency;
+        // Copied, not pointed at: config_sync may swap the table mid-format.
+        char currency[sizeof(table.currency)] = {};
+        if (price_mutex != nullptr && xSemaphoreTake(price_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            std::snprintf(currency, sizeof(currency), "%s", table.currency);
+            xSemaphoreGive(price_mutex);
+        }
+        line.currency = currency;
 
         char text[outbox::MAX_LINE];
         if (vmaas::format_sale_line(line, text, sizeof(text)) == 0)
@@ -263,14 +284,6 @@ namespace
     /// Apply one machine output: settle first, then act.
     void apply(const vmaas::PurchaseOutput &o, const char *reason)
     {
-        // Fix round 2: capture whether the *previous* output we processed
-        // was already Settled, before overwriting prev_state_ with this
-        // one. That is what turns the arm below into an edge trigger (fires
-        // once, on the transition) instead of a level trigger (fires again
-        // on every pass while o.state happens to be Settled). Done first,
-        // unconditionally, so every exit path below - including the early
-        // return in the settle-failure branch - leaves prev_state_ correct
-        // for the next call.
         const bool was_already_settled = (prev_state_ == vmaas::PurchaseState::Settled);
         prev_state_ = o.state;
 
@@ -349,14 +362,19 @@ namespace purchase_task
         display_ok_ = display_ok;
         motor_ = &motor;
 
+        if (price_mutex == nullptr) price_mutex = xSemaphoreCreateMutex();
+        if (price_mutex == nullptr)
+        {
+            ESP_LOGE(TAG, "could not create the price lock; cash sales disabled");
+            return false;
+        }
+
         if (!prices::load(coin_cfg, purchase_cfg, table))
         {
             ESP_LOGE(TAG, "no price table: cash sales disabled");
             return false;
         }
 
-        // A device timing, not part of the backend's cash block: prices::load
-        // never touches it, so set it after the load.
         purchase_cfg.dispense_timeout_ms = dispense_timeout_ms;
 
         outbox::begin();
@@ -385,11 +403,38 @@ namespace purchase_task
         return true;
     }
 
+    void set_prices(const prices::Table &fresh)
+    {
+        if (price_mutex == nullptr)
+        {
+            ESP_LOGE(TAG, "set_prices before begin(); the new prices are on flash but not live");
+            return;
+        }
+
+        if (xSemaphoreTake(price_mutex, portMAX_DELAY) != pdTRUE) return;
+        table = fresh;
+        xSemaphoreGive(price_mutex);
+
+        if (cash_enabled) {
+            ESP_LOGI(TAG, "prices updated live");
+        }
+        else {
+            // begin() never reached the coin port, so nothing counts pulses yet.
+            ESP_LOGW(TAG, "prices updated, but cash was disabled at boot; a restart is needed to sell");
+        }
+    }
+
     void on_slot_confirmed(uint8_t slot)
     {
         if (!cash_enabled) return;
 
-        const uint32_t price = prices::for_slot(table, slot);
+        uint32_t price = 0;
+        if (price_mutex != nullptr && xSemaphoreTake(price_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            price = prices::for_slot(table, slot);
+            xSemaphoreGive(price_mutex);
+        }
+
         if (price == 0)
         {
             ESP_LOGW(TAG, "slot %u has no price", static_cast<unsigned>(slot));
@@ -409,9 +454,6 @@ namespace purchase_task
         const vmaas::PurchaseOutput o = machine->dispense_done(now);
         if (!(o.state == vmaas::PurchaseState::Settled && o.sale_status == vmaas::SaleStatus::Completed))
         {
-            // Nothing was Dispensing. Most likely a DONE that arrived after the
-            // dispense timeout already booked the sale Failed: the item may have
-            // dropped, but the record stands.
             ESP_LOGW(TAG, "DONE with no vend in progress (late after timeout?); sale record unchanged");
         }
         apply(o, nullptr);
@@ -440,11 +482,6 @@ namespace purchase_task
             apply(machine->coin(ev.value_minor, now_ms), nullptr);
         }
 
-        // A dropped edge is not a lost diagnostic: the decoder is a
-        // pulse-open/pulse-close machine, so losing one edge can merge two
-        // pulses and credit the WRONG coin rather than rejecting cleanly.
-        // Filling a 64-slot queue needs about ten coins inside one loop pass,
-        // which no hand can do — but if it ever happens, it must be loud.
         const uint32_t drops = port.dropped_edges();
         if (drops != last_dropped_edges)
         {

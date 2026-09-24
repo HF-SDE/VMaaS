@@ -4,12 +4,16 @@
  */
 #include "broker_client.h"
 
+#include <cstdio>
+#include <cstring>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "activation.h"
 #include "broker_endpoint.h"
 #include "config.h"
+#include "config_sync.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
 #include "wifi_sta.h"
@@ -49,6 +53,21 @@ namespace
     /// minutes later if Wi-Fi is slow, so a second start() would still see null.
     bool started = false;
 
+    /// The one topic the platform sends commands on, built once from the
+    /// identity. `{topic_prefix}/commands` with no per-command segment: the
+    /// command id travels in the payload precisely so this string is constant
+    /// and can be subscribed to. The backend's ACL refuses every wildcard, so a
+    /// per-command topic would be unsubscribable.
+    char commands_topic[activation::TOPIC_PREFIX_MAX + sizeof("/commands")] = {};
+
+    /// QoS 1, matching the publisher. The platform sends at-least-once because
+    /// a missed configuration command is a machine left on stale wiring.
+    constexpr int COMMANDS_QOS = 1;
+
+    /// Largest command payload accepted, matching config_sync's own limit.
+    /// Today's commands are under 200 bytes.
+    constexpr size_t COMMAND_JSON_MAX = 512;
+
     /// Gap between polls while waiting for the first IP address.
     constexpr TickType_t WIFI_POLL = pdMS_TO_TICKS(1000);
 
@@ -64,6 +83,38 @@ namespace
         case MQTT_EVENT_CONNECTED:
             connected = true;
             ESP_LOGI(TAG, "connected to %s:%u, machine reads Online from here", endpoint.host, static_cast<unsigned>(endpoint.port));
+
+            if (commands_topic[0] != '\0')
+            {
+                const int id = esp_mqtt_client_subscribe(client, commands_topic, COMMANDS_QOS);
+                if (id < 0)
+                {
+                    ESP_LOGE(TAG, "subscribe to %s failed to enqueue", commands_topic);
+                }
+            }
+            break;
+
+        case MQTT_EVENT_SUBSCRIBED:
+            ESP_LOGI(TAG, "subscribed to %s", commands_topic);
+            break;
+
+        case MQTT_EVENT_DATA:
+            if (ev != nullptr && ev->data != nullptr)
+            {
+                ESP_LOGI(TAG, "command received on %.*s: %.*s", ev->topic_len, ev->topic ? ev->topic : "", ev->data_len, ev->data);
+
+                char json[COMMAND_JSON_MAX] = {};
+                if (ev->data_len > 0 && static_cast<size_t>(ev->data_len) < sizeof(json))
+                {
+                    std::memcpy(json, ev->data, static_cast<size_t>(ev->data_len));
+
+                    config_sync::on_command(json);
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "command payload is %d bytes, over the %u-byte limit; dropping it", ev->data_len, static_cast<unsigned>(sizeof(json) - 1));
+                }
+            }
             break;
 
         case MQTT_EVENT_DISCONNECTED:
@@ -96,6 +147,13 @@ namespace
         {
             ESP_LOGE(TAG, "no stored identity: %s", esp_err_to_name(err));
             return err;
+        }
+
+        const int written = std::snprintf(commands_topic, sizeof(commands_topic), "%s/commands", identity.topic_prefix);
+        if (written < 0 || static_cast<size_t>(written) >= sizeof(commands_topic))
+        {
+            commands_topic[0] = '\0';
+            ESP_LOGE(TAG, "topic prefix does not fit the commands topic buffer; no commands will be received");
         }
 
         if ((err = activation::load_certificate(cert_pem, sizeof(cert_pem))) != ESP_OK)

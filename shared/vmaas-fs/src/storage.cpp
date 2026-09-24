@@ -59,4 +59,45 @@ namespace vmaas::fs
         buf[n] = '\0';
         return static_cast<int>(n);
     }
+
+    bool write_text_file(const char* path, const char* data, size_t len)
+    {
+        if (path == nullptr || data == nullptr) return false;
+
+        char tmp[128];
+        const int built = std::snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+        if (built < 0 || static_cast<size_t>(built) >= sizeof(tmp))
+        {
+            ESP_LOGE(TAG, "%s is too long to build a temporary name from", path);
+            return false;
+        }
+
+        FILE* f = std::fopen(tmp, "wb");
+        if (f == nullptr)
+        {
+            ESP_LOGE(TAG, "cannot open %s for writing", tmp);
+            return false;
+        }
+
+        const bool wrote = len == 0 || std::fwrite(data, 1, len, f) == len;
+
+        std::fflush(f);
+        const bool closed = std::fclose(f) == 0;
+
+        if (!wrote || !closed)
+        {
+            ESP_LOGE(TAG, "writing %s failed; leaving %s as it was", tmp, path);
+            std::remove(tmp);
+            return false;
+        }
+
+        if (std::rename(tmp, path) != 0)
+        {
+            ESP_LOGE(TAG, "cannot rename %s into place as %s", tmp, path);
+            std::remove(tmp);
+            return false;
+        }
+
+        return true;
+    }
 }

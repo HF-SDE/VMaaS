@@ -32,4 +32,21 @@ namespace vmaas::fs
      *         -2 if it does not fit or the arguments are invalid.
      */
     int read_text_file(const char* path, char* buf, size_t capacity);
+
+    /**
+     * @brief Write a whole text file, replacing any existing one.
+     *
+     * Writes to "<path>.tmp" and renames it over @p path, the same dance
+     * outbox.cpp does for its rewrites. The reason is the mirror image of
+     * read_text_file's: a power cut partway through a plain write leaves a
+     * shortened file behind, and a truncated config parses as valid JSON
+     * surprisingly often. With the rename, a cut either leaves the previous
+     * file untouched or lands the new one whole.
+     *
+     * @param path Absolute VFS path.
+     * @param data Bytes to write. Not required to be NUL-terminated.
+     * @param len Number of bytes from @p data to write.
+     * @return true once the new contents are on flash under @p path.
+     */
+    bool write_text_file(const char* path, const char* data, size_t len);
 }
