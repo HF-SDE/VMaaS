@@ -31,11 +31,11 @@ function ResetPasswordForm() {
       <Card className="max-w-md w-full">
         <CardHeader>
           <CardTitle className="text-lg md:text-xl text-destructive">
-            Ugyldigt link
+            Invalid link
           </CardTitle>
           <CardDescription>
-            Dette link er ugyldigt eller udløbet. Anmod om et nyt
-            nulstillingslink.
+            This link is invalid or has expired. Request a new reset
+            link.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -43,7 +43,7 @@ function ResetPasswordForm() {
             href="/forgot-password"
             className="text-sm underline underline-offset-4"
           >
-            Anmod om nyt link
+            Request a new link
           </Link>
         </CardContent>
       </Card>
@@ -56,16 +56,16 @@ function ResetPasswordForm() {
         <CardHeader className="items-center text-center">
           <CheckCircle2 className="mb-2 h-10 w-10 text-green-500" />
           <CardTitle className="text-lg md:text-xl">
-            Adgangskode opdateret
+            Password updated
           </CardTitle>
           <CardDescription>
-            Din adgangskode er nu ændret. Du kan logge ind med din nye
-            adgangskode.
+            Your password has been changed. You can now sign in with your
+            new password.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <Button render={<Link href="/login" />} className="w-full">
-            Gå til login
+            Go to login
           </Button>
         </CardContent>
       </Card>
@@ -77,12 +77,12 @@ function ResetPasswordForm() {
     setError(null);
 
     if (newPassword !== confirmPassword) {
-      setError("Adgangskoderne stemmer ikke overens.");
+      setError("The passwords do not match.");
       return;
     }
 
     if (newPassword.length < 8) {
-      setError("Adgangskoden skal være mindst 8 tegn.");
+      setError("The password must be at least 8 characters.");
       return;
     }
 
@@ -97,9 +97,9 @@ function ResetPasswordForm() {
 
     if (error) {
       if (error.status === 400 || error.status === 422) {
-        setError("Linket er udløbet eller ugyldigt. Anmod om et nyt link.");
+        setError("The link has expired or is invalid. Request a new link.");
       } else {
-        setError(error.message ?? "Noget gik galt. Prøv igen.");
+        setError(error.message ?? "Something went wrong. Please try again.");
       }
     } else {
       setDone(true);
@@ -110,20 +110,20 @@ function ResetPasswordForm() {
     <Card className="max-w-md w-full">
       <CardHeader>
         <CardTitle className="text-lg md:text-xl">
-          Opret ny adgangskode
+          Choose a new password
         </CardTitle>
         <CardDescription className="text-xs md:text-sm">
-          Vælg en ny adgangskode til din konto.
+          Choose a new password for your account.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="new-password">Ny adgangskode</Label>
+            <Label htmlFor="new-password">New password</Label>
             <Input
               id="new-password"
               type="password"
-              placeholder="Mindst 8 tegn"
+              placeholder="At least 8 characters"
               required
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -131,11 +131,11 @@ function ResetPasswordForm() {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="confirm-password">Bekræft adgangskode</Label>
+            <Label htmlFor="confirm-password">Confirm password</Label>
             <Input
               id="confirm-password"
               type="password"
-              placeholder="Gentag adgangskoden"
+              placeholder="Repeat the password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -149,7 +149,7 @@ function ResetPasswordForm() {
             {loading ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
-              "Gem ny adgangskode"
+              "Save new password"
             )}
           </Button>
         </form>

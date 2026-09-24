@@ -91,3 +91,9 @@ export async function startMqttClient(): Promise<void> {
   client.on("error", (error) => console.error("mqtt: connection error:", error.message));
   client.on("reconnect", () => console.log("mqtt: reconnecting"));
 }
+
+/** Closes the MQTT connection, if there is one. Used on shutdown. */
+export async function stopMqttClient(): Promise<void> {
+  await client?.endAsync();
+  client = null;
+}

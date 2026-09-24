@@ -1,7 +1,8 @@
 import { config } from "../config";
 import { type SendEmailError, sendEmail } from "./send";
 import { type InvitationEmail, renderInvitationEmail } from "./templates/invitation";
-import { type ResetPasswordEmail, renderResetPasswordEmail } from "./templates/reset-password";
+import { type PasswordResetEmail, renderPasswordResetEmail } from "./templates/password-reset";
+import { type VerifyEmail, renderVerifyEmail } from "./templates/verify-email";
 
 export { sendEmail };
 export type { SendEmailError };
@@ -21,11 +22,14 @@ export async function sendInvitationEmail(to: string, invitation: InvitationEmai
   return sendEmail({ to, subject, html });
 }
 
-/** Better Auth builds the reset URL (token plus the caller's `redirectTo`), so
- *  this only renders and sends it. Answers a `Result` like the send above; the
- *  auth callback logs a failure rather than throwing, which would turn a
- *  bounced email into a 500 that tells an enumerating caller the account exists. */
-export async function sendResetPasswordEmail(to: string, reset: ResetPasswordEmail) {
-  const { subject, html } = renderResetPasswordEmail(reset);
+/** Called from Better Auth's `sendResetPassword`. Like `sendEmail`, never throws. */
+export async function sendPasswordResetEmail(to: string, email: PasswordResetEmail) {
+  const { subject, html } = renderPasswordResetEmail(email);
+  return sendEmail({ to, subject, html });
+}
+
+/** Called from Better Auth's `sendVerificationEmail`. Like `sendEmail`, never throws. */
+export async function sendVerifyEmail(to: string, email: VerifyEmail) {
+  const { subject, html } = renderVerifyEmail(email);
   return sendEmail({ to, subject, html });
 }

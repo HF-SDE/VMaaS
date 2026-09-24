@@ -18,7 +18,7 @@ import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 import { productsErrorMessage } from "../messages"
 import { ProductActions } from "./product-actions"
 import { fetchData } from "@/lib/data/data-fetch"
-import { ProductDetail } from "@vmaas/shared/types/product"
+import type { ProductDetail } from "@backend-responses"
 
 export const NO_READ_ACCESS = "You do not have access to products."
 

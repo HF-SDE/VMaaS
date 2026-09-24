@@ -36,12 +36,13 @@ services:
       # `next dev` on the host is first because that is how the frontend is run
       # today; put http://localhost first if you serve it through nginx instead.
       FRONTEND_URL: http://localhost:3000,http://localhost
-      BETTER_AUTH_URL: http://localhost
+      BETTER_AUTH_URL: http://localhost:5000
       MQTT_URL: mqtts://emqx:8884
       MQTT_PUBLIC_HOST: localhost
       MQTT_PUBLIC_PORT: 8883
       CA_CERT_PATH: /pki/ca.crt
       CA_KEY_PATH: /pki/ca.key
+      PKI_EXTRA_HOSTS: localhost:18083
     volumes:
       - ../backend/src:/usr/src/app/src
       - ../backend/prisma:/usr/src/app/prisma

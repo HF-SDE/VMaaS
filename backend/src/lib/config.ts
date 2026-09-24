@@ -39,6 +39,7 @@ const schema = z.object({
   }),
   /** Resend API key. Optional on purpose: without it `lib/emails` logs the
    *  message instead of sending it, so onboarding still works end-to-end on a
+   *  machine without mail credentials. */
   RESEND_API_KEY: z.string().min(1).optional(),
   /** The From: address on transactional mail. Must be a domain verified in
    *  Resend, or the send is rejected. */
@@ -59,13 +60,11 @@ const schema = z.object({
 });
 
 export const config = (() => {
-  const parsed = schema.parse(process.env);
+  // Filter out keys with empty values
+  const env = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== ""));
+  const parsed = schema.parse(env);
   return {
     ...parsed,
-    /** The one origin every link this backend hands out is built from — Stripe
-     *  redirects, invitation emails. `FRONTEND_URL` is the allow-list and may
-     *  hold several origins; interpolating that array into a template literal
-     *  joins it with commas and produces a URL no browser can follow. */
     APP_URL: parsed.FRONTEND_URL[0],
   };
 })();

@@ -18,7 +18,7 @@ import { EditProductForm } from "../form"
 import { productWriteErrorMessage } from "../messages"
 import { DeleteProductDialog } from "./delete-product-dialog"
 import { fetchData } from "@/lib/data/data-fetch"
-import { ProductDetail } from "@vmaas/shared/types/product"
+import type { ProductDetail } from "@backend-responses"
 
 type ProductActionsProps = {
   id: string

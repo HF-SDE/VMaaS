@@ -56,7 +56,7 @@ export function PaymentMethodCard() {
         <CardTitle>Manage your subscription</CardTitle>
         <CardDescription>
           Update your billing information, payment method, and subscription
-          through Stripe's secure portal.
+          through Stripe&apos;s secure portal.
         </CardDescription>
       </CardHeader>
       <CardContent>

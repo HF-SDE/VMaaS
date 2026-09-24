@@ -2,7 +2,7 @@ import { hash, verify } from "@node-rs/argon2";
 import { type Result, err, ok } from "@vmaas/shared/lib";
 import { webcrypto } from "node:crypto";
 
-import { config } from "@/lib/config";
+import { config } from "../../lib/config";
 import { type CertificateAuthority, signDeviceCsr } from "@/lib/pki";
 import { buildTopicPrefix } from "@/mqtt/topics";
 

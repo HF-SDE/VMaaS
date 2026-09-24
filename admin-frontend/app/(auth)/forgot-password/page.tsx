@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message ?? "Noget gik galt. Prøv igen.");
+      setError(error.message ?? "Something went wrong. Please try again.");
     } else {
       setSent(true);
     }
@@ -47,12 +47,12 @@ export default function ForgotPasswordPage() {
           <CardHeader className="items-center text-center">
             <MailCheck className="mb-2 h-10 w-10 text-muted-foreground" />
             <CardTitle className="text-lg md:text-xl">
-              Tjek din indbakke
+              Check your inbox
             </CardTitle>
             <CardDescription className="text-xs md:text-sm">
-              Hvis kontoen eksisterer, har vi sendt et link til{" "}
+              If an account exists, we have sent a link to{" "}
               <span className="font-medium text-foreground">{email}</span>.
-              Linket udløber om 1 time.
+              The link expires in 1 hour.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
               href="/login"
               className="text-sm underline underline-offset-4"
             >
-              Tilbage til login
+              Back to login
             </Link>
           </CardContent>
         </Card>
@@ -73,21 +73,21 @@ export default function ForgotPasswordPage() {
       <Card className="max-w-md w-full">
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">
-            Glemt adgangskode?
+            Forgot your password?
           </CardTitle>
           <CardDescription className="text-xs md:text-sm">
-            Indtast din e-mailadresse, så sender vi dig et link til at nulstille
-            din adgangskode.
+            Enter your email address and we will send you a link to reset
+            your password.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="din@email.dk"
+                placeholder="m@example.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -100,13 +100,13 @@ export default function ForgotPasswordPage() {
               {loading ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                "Send nulstillingslink"
+                "Send reset link"
               )}
             </Button>
 
             <p className="text-center text-sm">
               <Link href="/login" className="underline underline-offset-4">
-                Tilbage til login
+                Back to login
               </Link>
             </p>
           </form>
