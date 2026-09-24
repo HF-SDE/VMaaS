@@ -5,15 +5,16 @@
 import { DEFAULT_GRID_SIZE } from "./constants"
 import type { Cell, Edge, EditorSlot, Layout, Rect } from "./types"
 
-export function layoutFromSlots(slots: EditorSlot[]): Layout {
+export function layoutFromSlots(slots: EditorSlot[], stepsPerVend: number): Layout {
   if (slots.length === 0) {
-    return { slots, columns: DEFAULT_GRID_SIZE, rows: DEFAULT_GRID_SIZE }
+    return { slots, columns: DEFAULT_GRID_SIZE, rows: DEFAULT_GRID_SIZE, stepsPerVend }
   }
 
   return {
     slots,
     columns: Math.max(...slots.map((slot) => slot.endX + 1)),
     rows: Math.max(...slots.map((slot) => slot.endY + 1)),
+    stepsPerVend,
   }
 }
 

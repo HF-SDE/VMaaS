@@ -30,7 +30,7 @@ beforeEach(() => {
   // exception (machine not found) overrides this itself. `slots: []` is the
   // shape Prisma actually returns for a machine with no rows in that relation
   // — a test that cares about drift overrides this with real slots.
-  machineFindFirst.mockResolvedValue({ id: MACHINE, slots: [] });
+  machineFindFirst.mockResolvedValue({ id: MACHINE, stepsPerVend: 6400, slots: [] });
   // Most of the tests below are about the version list, not drift; a machine
   // with no configuration at all is a safe default so `latest` stays null.
   configFindFirst.mockResolvedValue(null);
@@ -142,7 +142,7 @@ describe("listConfigurationsService — drift", () => {
   // every drift test above, since those only control what configFindFirst
   // resolves to, not what it was asked for.
   it("asks for the newest version of this machine's own configuration", async () => {
-    machineFindFirst.mockResolvedValue({ id: MACHINE, slots: [] });
+    machineFindFirst.mockResolvedValue({ id: MACHINE, stepsPerVend: 6400, slots: [] });
     configFindMany.mockResolvedValue([]);
     configFindFirst.mockResolvedValue(null);
 
@@ -153,7 +153,7 @@ describe("listConfigurationsService — drift", () => {
   });
 
   it("reports null drift when nothing has been published", async () => {
-    machineFindFirst.mockResolvedValue({ id: MACHINE, slots: [] });
+    machineFindFirst.mockResolvedValue({ id: MACHINE, stepsPerVend: 6400, slots: [] });
     configFindMany.mockResolvedValue([]);
     configFindFirst.mockResolvedValue(null);
 
@@ -166,11 +166,16 @@ describe("listConfigurationsService — drift", () => {
   it("reports no drift when the current rows match the latest version", async () => {
     machineFindFirst.mockResolvedValue({
       id: MACHINE,
+      stepsPerVend: 6400,
       slots: [{ slotNumber: 1, price: "15.00", product: null, pins: [{ number: 18 }] }],
     });
     configFindMany.mockResolvedValue([{ version: 1, createdAt: new Date(), createdById: null }]);
     configFindFirst.mockResolvedValue({
-      payload: { cash: {}, prices: [{ slot: 1, priceMinor: 1500 }], wiring: { version: 2, slots: [{ slot: 1, pins: [18] }] } },
+      payload: {
+        cash: {},
+        prices: [{ slot: 1, priceMinor: 1500 }],
+        wiring: { version: 2, motor: { stepsPerVend: 6400 }, slots: [{ slot: 1, pins: [18] }] },
+      },
     });
     userFindMany.mockResolvedValue([]);
 
@@ -179,14 +184,43 @@ describe("listConfigurationsService — drift", () => {
     expect(result?.drift).toEqual({ wiring: false, prices: false });
   });
 
+  // A distinct stepsPerVend on the machine row vs. the stored payload, with
+  // otherwise identical wiring, proves drift is actually driven by the
+  // machine's own stepsPerVend rather than a value baked into the test fixtures.
+  it("reports a wiring difference when stepsPerVend has changed since the last version", async () => {
+    machineFindFirst.mockResolvedValue({
+      id: MACHINE,
+      stepsPerVend: 3200,
+      slots: [{ slotNumber: 1, price: "15.00", product: null, pins: [{ number: 18 }] }],
+    });
+    configFindMany.mockResolvedValue([{ version: 1, createdAt: new Date(), createdById: null }]);
+    configFindFirst.mockResolvedValue({
+      payload: {
+        cash: {},
+        prices: [{ slot: 1, priceMinor: 1500 }],
+        wiring: { version: 2, motor: { stepsPerVend: 6400 }, slots: [{ slot: 1, pins: [18] }] },
+      },
+    });
+    userFindMany.mockResolvedValue([]);
+
+    const [, result] = await listConfigurationsService(MACHINE);
+
+    expect(result?.drift).toEqual({ wiring: true, prices: false });
+  });
+
   it("reports a wiring difference when a pin has changed since the last version", async () => {
     machineFindFirst.mockResolvedValue({
       id: MACHINE,
+      stepsPerVend: 6400,
       slots: [{ slotNumber: 1, price: "15.00", product: null, pins: [{ number: 19 }] }],
     });
     configFindMany.mockResolvedValue([{ version: 1, createdAt: new Date(), createdById: null }]);
     configFindFirst.mockResolvedValue({
-      payload: { cash: {}, prices: [{ slot: 1, priceMinor: 1500 }], wiring: { version: 2, slots: [{ slot: 1, pins: [18] }] } },
+      payload: {
+        cash: {},
+        prices: [{ slot: 1, priceMinor: 1500 }],
+        wiring: { version: 2, motor: { stepsPerVend: 6400 }, slots: [{ slot: 1, pins: [18] }] },
+      },
     });
     userFindMany.mockResolvedValue([]);
 

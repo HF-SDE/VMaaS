@@ -51,6 +51,7 @@ export async function publishConfigurationService(
         id: true,
         tenantId: true,
         siteId: true,
+        stepsPerVend: true,
         slots: {
           orderBy: { slotNumber: "asc" },
           select: {
@@ -65,6 +66,7 @@ export async function publishConfigurationService(
       id: string;
       tenantId: string | null;
       siteId: string | null;
+      stepsPerVend: number;
       slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
     } | null;
 
@@ -96,7 +98,7 @@ export async function publishConfigurationService(
       let payload: unknown;
 
       if (fromVersion === undefined) {
-        payload = buildConfigurationPayload(slots, {});
+        payload = buildConfigurationPayload(slots, {}, { stepsPerVend: machine.stepsPerVend });
       } else {
         const previous = (await tx.machineConfiguration.findFirst({
           where: { machineId, version: fromVersion },
@@ -172,6 +174,7 @@ export async function listConfigurationsService(
       where: { id: machineId },
       select: {
         id: true,
+        stepsPerVend: true,
         slots: {
           select: {
             slotNumber: true,
@@ -183,6 +186,7 @@ export async function listConfigurationsService(
       },
     })) as {
       id: string;
+      stepsPerVend: number;
       slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
     } | null;
 
@@ -210,7 +214,10 @@ export async function listConfigurationsService(
     })) as { payload: unknown } | null;
 
     const drift = latest
-      ? comparePayloads(buildConfigurationPayload(toPayloadSlots(machine.slots), {}), latest.payload)
+      ? comparePayloads(
+          buildConfigurationPayload(toPayloadSlots(machine.slots), {}, { stepsPerVend: machine.stepsPerVend }),
+          latest.payload,
+        )
       : null;
 
     return ok({

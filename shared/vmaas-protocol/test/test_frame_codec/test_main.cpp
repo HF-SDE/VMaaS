@@ -102,6 +102,7 @@ static void assert_frames_equal(const Frame& a, const Frame& b)
 
 void test_parse_round_trip_every_command()
 {
+    const uint8_t two[] = {21, 22};
     const Frame inputs[] = {
         frames::run(3),
         frames::stop(),
@@ -111,6 +112,9 @@ void test_parse_round_trip_every_command()
         frames::nak(Cmd::CONFIG, ErrorCode::BAD_PARAM),
         frames::done(3),
         frames::status_reply(State::BUSY, 3),
+        frames::wiring_begin(),
+        frames::wiring_slot(3, two, 2),
+        frames::wiring_commit(4, 6400),
     };
     for (const Frame& in : inputs)
     {

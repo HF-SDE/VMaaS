@@ -14,9 +14,9 @@ interface History {
  * Holds the current layout, plus the steps before and after it for undo/redo.
  * Every change goes through `update`, which makes it a new undoable step.
  */
-export function useLayoutHistory(initialSlots: EditorSlot[]) {
+export function useLayoutHistory(initialSlots: EditorSlot[], initialStepsPerVend: number) {
   const [savedLayout, setSavedLayout] = useState(() =>
-    layoutFromSlots(initialSlots)
+    layoutFromSlots(initialSlots, initialStepsPerVend)
   )
   const [history, setHistory] = useState<History>({
     past: [],

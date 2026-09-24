@@ -32,6 +32,7 @@ function machine(slots: unknown[], overrides: Record<string, unknown> = {}) {
     id: MACHINE,
     tenantId: "11111111-1111-4111-8111-111111111111",
     siteId: "22222222-2222-4222-8222-222222222222",
+    stepsPerVend: 6400,
     slots,
     ...overrides,
   };
@@ -90,6 +91,19 @@ describe("publishConfigurationService", () => {
     const [, result] = await publishConfigurationService(MACHINE, USER);
 
     expect(result?.version).toBe(1);
+  });
+
+  // Every other fixture in this file uses 6400, which is also the default —
+  // a service that hard-coded 6400 or dropped stepsPerVend from its `select`
+  // would still pass those. A distinct value here proves the published value
+  // actually comes from the machine row.
+  it("publishes the machine's own stepsPerVend, not a hard-coded default", async () => {
+    machineFindFirst.mockResolvedValue(machine([wiredSlot], { stepsPerVend: 3200 }));
+
+    await publishConfigurationService(MACHINE, USER);
+
+    expect(machineFindFirst.mock.calls[0][0].select.stepsPerVend).toBe(true);
+    expect(configCreate.mock.calls[0][0].data.payload.wiring.motor).toEqual({ stepsPerVend: 3200 });
   });
 
   // The command carries only the version, never the payload: the device always

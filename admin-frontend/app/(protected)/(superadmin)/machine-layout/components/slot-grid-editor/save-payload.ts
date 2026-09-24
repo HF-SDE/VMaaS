@@ -11,6 +11,7 @@ export function createSavePayload(
     machineId,
     columns: layout.columns,
     rows: layout.rows,
+    stepsPerVend: layout.stepsPerVend,
     // Only the fields that describe the layout; editor-only fields like `key` stay out
     slots: layout.slots.map((slot) => ({
       id: slot.id,

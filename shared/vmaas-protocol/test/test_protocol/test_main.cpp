@@ -98,6 +98,56 @@ void test_config_error_code_and_error_state_match_spec()
     TEST_ASSERT_EQUAL_UINT8(0, s.payload[1]);
 }
 
+void test_wiring_command_ids_and_error_codes_match_spec()
+{
+    TEST_ASSERT_EQUAL_HEX8(0x14, static_cast<uint8_t>(Cmd::WIRING_BEGIN));
+    TEST_ASSERT_EQUAL_HEX8(0x15, static_cast<uint8_t>(Cmd::WIRING_SLOT));
+    TEST_ASSERT_EQUAL_HEX8(0x16, static_cast<uint8_t>(Cmd::WIRING_COMMIT));
+    TEST_ASSERT_EQUAL_UINT8(7, static_cast<uint8_t>(ErrorCode::WIRING_STATE));
+    TEST_ASSERT_EQUAL_UINT8(8, static_cast<uint8_t>(ErrorCode::WIRING_FULL));
+    TEST_ASSERT_EQUAL_UINT8(9, static_cast<uint8_t>(ErrorCode::WRITE_FAILED));
+    TEST_ASSERT_EQUAL_UINT8(6, WIRING_MAX_PINS);
+}
+
+void test_builder_wiring_begin_has_no_payload()
+{
+    const Frame f = frames::wiring_begin();
+    TEST_ASSERT_EQUAL(Cmd::WIRING_BEGIN, f.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0, f.len);
+}
+
+void test_builder_wiring_slot_lays_out_slot_count_pins()
+{
+    const uint8_t pins[] = {21, 22};
+    const Frame f = frames::wiring_slot(3, pins, 2);
+    TEST_ASSERT_EQUAL(Cmd::WIRING_SLOT, f.cmd);
+    TEST_ASSERT_EQUAL_UINT8(4, f.len);
+    TEST_ASSERT_EQUAL_UINT8(3, f.payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(2, f.payload[1]);
+    TEST_ASSERT_EQUAL_UINT8(21, f.payload[2]);
+    TEST_ASSERT_EQUAL_UINT8(22, f.payload[3]);
+}
+
+// Six pins fill the frame exactly; a seventh cannot be sent and is dropped.
+void test_builder_wiring_slot_clamps_to_six_pins()
+{
+    const uint8_t pins[] = {0, 2, 5, 12, 13, 14, 15};
+    const Frame f = frames::wiring_slot(1, pins, 7);
+    TEST_ASSERT_EQUAL_UINT8(8, f.len);
+    TEST_ASSERT_EQUAL_UINT8(6, f.payload[1]);
+    TEST_ASSERT_EQUAL_UINT8(14, f.payload[7]);
+}
+
+void test_builder_wiring_commit_is_count_then_u16_le_steps()
+{
+    const Frame f = frames::wiring_commit(4, 6400); // 0x1900
+    TEST_ASSERT_EQUAL(Cmd::WIRING_COMMIT, f.cmd);
+    TEST_ASSERT_EQUAL_UINT8(3, f.len);
+    TEST_ASSERT_EQUAL_UINT8(4, f.payload[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, f.payload[1]);
+    TEST_ASSERT_EQUAL_HEX8(0x19, f.payload[2]);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -109,5 +159,10 @@ int main(int, char**)
     RUN_TEST(test_builder_stop_and_status_have_no_payload);
     RUN_TEST(test_config_opcode_is_reserved_with_no_params);
     RUN_TEST(test_builder_replies);
+    RUN_TEST(test_wiring_command_ids_and_error_codes_match_spec);
+    RUN_TEST(test_builder_wiring_begin_has_no_payload);
+    RUN_TEST(test_builder_wiring_slot_lays_out_slot_count_pins);
+    RUN_TEST(test_builder_wiring_slot_clamps_to_six_pins);
+    RUN_TEST(test_builder_wiring_commit_is_count_then_u16_le_steps);
     return UNITY_END();
 }

@@ -155,7 +155,7 @@ export function PublishPanel({ machineId, layoutIsDirty, savedRevision }: Publis
           {drift.wiring && drift.prices
             ? `The wiring and the prices have changed since v${versions[0]?.version}.`
             : drift.wiring
-              ? `The wiring has changed since v${versions[0]?.version}.`
+              ? `The wiring or motor settings have changed since v${versions[0]?.version}.`
               : `The prices have changed since v${versions[0]?.version}.`}{" "}
           Publish to record a new version.
         </p>

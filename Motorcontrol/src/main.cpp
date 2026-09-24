@@ -14,7 +14,9 @@
 // before any pin is touched, and the table is logged only after the pins
 // are high. A step generator that fails to initialise is treated like a
 // missing config: the board enters the config-error state rather than
-// acknowledging vends it cannot perform.
+// acknowledging vends it cannot perform. A WIRING_* transfer from
+// Main-Controller rewrites config.json and, in the normal state, applies it
+// live; in the config-error state the board restarts into it.
 #include <cstdio>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -68,7 +70,8 @@ namespace
         while (true)
         {
             bus.poll(pdMS_TO_TICKS(10));
-            if (restart_armed && static_cast<TickType_t>(xTaskGetTickCount() - started) >= ERROR_RESTART_DELAY)
+            responder.tick();
+            if (restart_armed && !responder.wiring_active() && static_cast<TickType_t>(xTaskGetTickCount() - started) >= ERROR_RESTART_DELAY)
             {
                 ESP_LOGW(TAG, "restarting to retry config.json");
                 esp_restart();

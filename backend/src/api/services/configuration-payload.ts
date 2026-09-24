@@ -1,3 +1,5 @@
+import { STEPS_PER_VEND_MAX, STEPS_PER_VEND_MIN } from "@vmaas/shared/lib/gpio";
+
 /**
  * Builds the JSON a machine fetches from `GET /api/device/configuration`.
  *
@@ -9,6 +11,9 @@
  *
  * Pure on purpose: the payload is the contract with two firmwares, and a
  * function over plain rows can be tested exhaustively without a database.
+ *
+ * `wiring.motor` carries the machine's `stepsPerVend`, which the device's
+ * parser requires; a change to it is therefore wiring drift.
  */
 
 /** Motorcontrol's slot table schema version. v1's scalar `pin` is gone. */
@@ -23,10 +28,13 @@ export type PayloadSlot = {
 
 export type WiringSlot = { slot: number; pins: number[] };
 
+/** Motorcontrol's `motor` block: the STEP pulse count every vend on this machine emits. */
+export type WiringMotor = { stepsPerVend: number };
+
 export type ConfigurationPayload = {
   cash: Record<string, unknown>;
   prices: { slot: number; priceMinor: number }[];
-  wiring: { version: typeof WIRING_SCHEMA_VERSION; slots: WiringSlot[] };
+  wiring: { version: typeof WIRING_SCHEMA_VERSION; motor: WiringMotor; slots: WiringSlot[] };
 };
 
 /** Major units to minor, as the firmware counts coins in minor units. */
@@ -66,7 +74,21 @@ export function toPayloadSlots(rows: PayloadSlotRow[]): PayloadSlot[] {
   }));
 }
 
-export function buildConfigurationPayload(slots: PayloadSlot[], cash: Record<string, unknown>): ConfigurationPayload {
+export function buildConfigurationPayload(
+  slots: PayloadSlot[],
+  cash: Record<string, unknown>,
+  motor: WiringMotor,
+): ConfigurationPayload {
+  if (
+    !Number.isInteger(motor.stepsPerVend) ||
+    motor.stepsPerVend < STEPS_PER_VEND_MIN ||
+    motor.stepsPerVend > STEPS_PER_VEND_MAX
+  ) {
+    throw new Error(
+      `stepsPerVend must be an integer ${STEPS_PER_VEND_MIN}-${STEPS_PER_VEND_MAX}, got ${String(motor.stepsPerVend)}`,
+    );
+  }
+
   const ordered = [...slots].sort((a, b) => a.slotNumber - b.slotNumber);
 
   return {
@@ -76,14 +98,37 @@ export function buildConfigurationPayload(slots: PayloadSlot[], cash: Record<str
       if (major === null) return [];
       return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
     }),
+    // Key names are the contract with Motorcontrol's parser; key order is not
+    // (jsonb reorders them on the way back, and comparePayloads canonicalises).
     wiring: {
       version: WIRING_SCHEMA_VERSION,
+      motor: { stepsPerVend: motor.stepsPerVend },
       slots: ordered.map((slot) => ({
         slot: slot.slotNumber,
         pins: slot.pins.map((pin) => pin.number).sort((a, b) => a - b),
       })),
     },
   };
+}
+
+/**
+ * JSON with every object's keys sorted, recursively. Postgres jsonb stores keys
+ * by length then bytewise, so a payload read back from `machine_configurations`
+ * never has the builder's key order; comparing the raw JSON text would report
+ * drift on every load. Arrays keep their order: slot and pin order IS content.
+ */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+  }
+  if (value === undefined) return "undefined";
+  return JSON.stringify(value);
 }
 
 /**
@@ -94,9 +139,14 @@ export function buildConfigurationPayload(slots: PayloadSlot[], cash: Record<str
  * while `wiring` changes only in the layout editor. Reporting one boolean would
  * make a price edit look like an unpublished rewiring.
  *
- * Compared as JSON rather than field by field: both sides are produced by
- * `buildConfigurationPayload`, which orders slots and pins deterministically,
- * so equal content serialises identically.
+ * Compared on canonical JSON (keys sorted recursively), not the raw JSON text:
+ * jsonb does not preserve key order, so a payload read back from the database
+ * never matches the builder's key order byte for byte even when nothing
+ * changed. Array order is still significant — a slot's pins and the slot list
+ * itself are compared in the order they appear. `prices` never showed this bug
+ * only because jsonb's length-then-bytewise key order (`slot` before
+ * `priceMinor`) happens to already match the builder's, so nobody should "fix"
+ * prices separately from wiring.
  *
  * @returns `true` for a block that DIFFERS.
  */
@@ -111,7 +161,7 @@ export function comparePayloads(
   }
 
   return {
-    wiring: JSON.stringify(current.wiring) !== JSON.stringify(stored.wiring),
-    prices: JSON.stringify(current.prices) !== JSON.stringify(stored.prices),
+    wiring: stored.wiring === undefined || canonicalJson(current.wiring) !== canonicalJson(stored.wiring),
+    prices: stored.prices === undefined || canonicalJson(current.prices) !== canonicalJson(stored.prices),
   };
 }

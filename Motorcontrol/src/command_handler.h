@@ -13,6 +13,7 @@
 #include "step_generator.h"
 #include "uart_bus.h"
 #include "vend_sequencer.h"
+#include "wiring_stager.h"
 
 /**
  * @brief Executes RUN/STOP/STATUS/CONFIG requests against the slot table.
@@ -23,6 +24,10 @@
  * slot's drivers, start the pulse generator, disable them again and send
  * DONE; this class only executes those actions. Every request is answered
  * with ACK, NAK or STATUS_REPLY as specified in PROTOCOL.md.
+ *
+ * A `WIRING_*` transfer replaces the table at runtime: `COMMIT` is refused
+ * with `NAK BUSY` during a vend, otherwise the staged table is validated,
+ * written and applied, and the new pins are raised before they become live.
  */
 class CommandHandler
 {
@@ -58,6 +63,9 @@ private:
     void handle_stop(const vmaas::Frame& f);
     void handle_status(const vmaas::Frame& f);
     void handle_config(const vmaas::Frame& f);
+    void handle_wiring_begin(const vmaas::Frame& f);
+    void handle_wiring_slot(const vmaas::Frame& f);
+    void handle_wiring_commit(const vmaas::Frame& f);
 
     /** @brief Find a slot's table entry, or nullptr if the slot is unknown. */
     const vmaas::SlotEntry* entry_for(uint8_t slot) const;
@@ -65,10 +73,14 @@ private:
     void set_enabled(const vmaas::SlotEntry& e, bool enabled);
     /** @brief Execute what the sequencer asked for. */
     void act(const vmaas::VendActions& a);
+    /** @brief Raise every pin of the new table, then swap it in as cfg_. */
+    void apply_table(const vmaas::SlotConfig& next);
     vmaas::State state() const;
+    uint32_t now_ms() const;
 
     vmaas::UartBus& bus_;
-    const vmaas::SlotConfig& cfg_;
+    vmaas::SlotConfig cfg_;
     IStepGenerator& gen_;
     vmaas::VendSequencer seq_;
+    vmaas::WiringStager stager_;
 };

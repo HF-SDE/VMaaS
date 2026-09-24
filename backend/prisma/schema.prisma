@@ -419,6 +419,12 @@ model Machine {
   activatedAt           DateTime?
   disabledAt            DateTime?
   disabledReason        String?
+  /// STEP pulses Motorcontrol emits per vend, for every motor on this machine.
+  /// Published as wiring.motor.stepsPerVend (config.json v2). 6400 is one
+  /// revolution of a 200-step motor at 1/32 microstepping. 1-65535: it is a
+  /// u16 on the wire (WIRING_COMMIT). Bound held by a CHECK as well as by Zod,
+  /// like pin.number, because seeds bypass Zod.
+  stepsPerVend          Int                         @default(6400)
   siteId                String?                     @db.Uuid
   site                  Site?                       @relation(fields: [siteId], references: [id], onDelete: Restrict)
   slots                 Slot[]

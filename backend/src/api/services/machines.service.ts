@@ -265,6 +265,7 @@ export async function getMachineForLayoutService(
  * - slots with an id must be slots of this machine
  * - stored slots missing from the layout are deleted
  * - slots with an id are updated, slots without one are created
+ * - the machine's stepsPerVend is written
  *
  * `columns` and `rows` are validated but not stored yet: `Machine` has no columns for them.
  */
@@ -303,6 +304,11 @@ export async function saveSlotLayoutService(
     }
 
     const slots = await prisma.$transaction(async (tx) => {
+      // The pulse count belongs to the machine, not to a slot, and is saved in
+      // the same transaction so a publish never sees a layout from one save and
+      // a step count from another.
+      await tx.machine.update({ where: { id: machineId }, data: { stepsPerVend: data.stepsPerVend } });
+
       await tx.slot.deleteMany({ where: { machineId, id: { in: removedIds } } });
 
       // Slot numbers are unique per machine and checked on every write, so renumbering in

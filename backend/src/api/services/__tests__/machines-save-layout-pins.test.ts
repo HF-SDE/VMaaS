@@ -14,6 +14,7 @@ const { slotFindMany, slotUpdate, slotCreateMany, slotDeleteMany, pinDeleteMany,
 const tx = {
   slot: { findMany: slotFindMany, update: slotUpdate, createMany: slotCreateMany, deleteMany: slotDeleteMany },
   pin: { deleteMany: pinDeleteMany, createMany: pinCreateMany },
+  machine: { update: vi.fn() },
 };
 
 vi.mock("@/lib/prisma", () => ({

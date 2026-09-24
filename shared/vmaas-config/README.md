@@ -50,6 +50,12 @@ file is valid.
 The v1 `"pin"` scalar is not accepted. Issue field names use the zero-based
 index, e.g. `slots[2].pins[1]`.
 
+## Written by the device
+
+Motorcontrol rebuilds this file from a `WIRING_*` transfer with
+`write_slot_config_json()`, re-parses it with `parse_slot_config()` before
+writing, so a device-written file is always one the parser accepts.
+
 ## API
 
 ```cpp
@@ -83,8 +89,13 @@ allocates in its result; cJSON allocates while parsing and frees before
 
 Run from this directory: `pio test -e native`
 
-| Folder              | Covers                                                                  |
-|---------------------|-------------------------------------------------------------------------|
-| `test_config_issue` | `to_string`, `None == 0`, `ParseResult` zero-init, field buffer size    |
-| `test_parse`        | valid files, missing `slots`, invalid JSON + offset, nesting limit, unknown keys, version |
-| `test_validate`     | ranges, input-only pins, duplicates, `MAX_SLOTS`, issue saturation, whole-file rejection |
+| Folder                 | Covers                                                                  |
+|------------------------|-------------------------------------------------------------------------|
+| `test_config_issue`    | `to_string`, `None == 0`, `ParseResult` zero-init, field buffer size    |
+| `test_parse`           | valid files, missing `slots`, invalid JSON + offset, nesting limit, unknown keys, version |
+| `test_validate`        | ranges, input-only pins, duplicates, `MAX_SLOTS`, issue saturation, whole-file rejection |
+| `test_broker_endpoint` | which of activation vs. config.json wins for host/port, independent overrides, usable/unusable |
+| `test_device_parse`    | field extraction, defaults for absent sections, version tolerance, door code, broker override, dispense timeout |
+| `test_device_validate` | out-of-range/wrong-type rejection, malformed JSON, nesting-bomb guard, issue-list saturation |
+| `test_writer`          | v2 JSON shape, writer/parser round trip, largest table fits the file bound, buffer-too-small, table rejections the stager itself would allow |
+| `test_stager`          | begin/add/commit happy path, `NotBegun`, count mismatch keeps staging, `Full`, `BadSteps`, 10 s staging timeout, tick wraparound |

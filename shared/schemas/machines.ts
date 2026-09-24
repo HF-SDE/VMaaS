@@ -1,5 +1,14 @@
 import { z } from "zod/v4";
 
+import {
+  BOARD_GPIO_MESSAGE,
+  isBoardGpio,
+  isReservedGpio,
+  MAX_OUTPUT_GPIO,
+  RESERVED_GPIO_MESSAGE,
+  STEPS_PER_VEND_MAX,
+  STEPS_PER_VEND_MIN,
+} from "../lib/gpio";
 import { findFloatingSlots, hasOverlappingSlots } from "../lib/slot-layout";
 
 /** The wording a form shows when the site picker was left empty: a blank picker
@@ -129,8 +138,9 @@ const coordinate = z.number().int().min(0);
 /**
  * One motor GPIO on a slot.
  *
- * 0-33 because GPIO 34-39 are input-only on the ESP32 and cannot drive a motor;
- * the same bound is in `shared/vmaas-config/src/slot_config.h`, and a value the
+ * 0-33 because GPIO 34-39 are input-only on the ESP32, and never 1, 3 or 6-11
+ * (console and flash) nor 4, 16, 17 (the motor board's STEP and UART); the same
+ * bounds are in shared/lib/gpio.ts and in the firmware, and a value the
  * firmware refuses at boot must not be storable here.
  *
  * The description is a label for whoever traces the cabinet later ("row 2, left
@@ -142,7 +152,9 @@ const slotPinSchema = z.object({
     .number()
     .int()
     .min(0, { message: "a GPIO cannot be negative" })
-    .max(33, { message: "GPIO 34-39 are input-only and cannot drive a motor" }),
+    .max(MAX_OUTPUT_GPIO, { message: "GPIO 34-39 are input-only and cannot drive a motor" })
+    .refine((number) => !isReservedGpio(number), { message: RESERVED_GPIO_MESSAGE })
+    .refine((number: number) => !isBoardGpio(number), { message: BOARD_GPIO_MESSAGE }),
   description: z.string().trim().max(60).optional(),
 });
 
@@ -170,6 +182,10 @@ const slotLayoutSlotSchema = z
  *
  * Whether the slot ids belong to the machine can't be told from the body alone;
  * the service checks that.
+ *
+ * The body also carries the machine-level stepsPerVend, saved in the same
+ * transaction as the slots so layout, wiring and pulse count are always one
+ * consistent snapshot.
  */
 export const saveSlotLayoutSchema = z.object({
   body: z
@@ -177,6 +193,13 @@ export const saveSlotLayoutSchema = z.object({
       machineId: z.uuid({ message: "machineId must be a uuid" }),
       columns: z.number().int().min(1),
       rows: z.number().int().min(1),
+      /** STEP pulses per vend for every motor on this machine; Motorcontrol's
+       *  motor.stepsPerVend. Required: the device refuses a wiring without it. */
+      stepsPerVend: z
+        .number()
+        .int()
+        .min(STEPS_PER_VEND_MIN, { message: "stepsPerVend must be 1-65535" })
+        .max(STEPS_PER_VEND_MAX, { message: "stepsPerVend must be 1-65535" }),
       slots: z.array(slotLayoutSlotSchema),
     })
     .superRefine(({ columns, rows, slots }, ctx) => {

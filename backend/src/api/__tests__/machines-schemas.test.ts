@@ -78,8 +78,8 @@ function slot(overrides: Record<string, unknown> = {}) {
   return { slotNumber: 1, beginX: 0, endX: 0, beginY: 0, endY: 0, capacity: 10, ...overrides };
 }
 
-function layout(slots: unknown[], columns = 4, rows = 4) {
-  return saveSlotLayoutSchema.safeParse({ body: { machineId: MACHINE, columns, rows, slots } });
+function layout(slots: unknown[], columns = 4, rows = 4, stepsPerVend: unknown = 6400) {
+  return saveSlotLayoutSchema.safeParse({ body: { machineId: MACHINE, columns, rows, stepsPerVend, slots } });
 }
 
 describe("saveSlotLayoutSchema — slot numbering", () => {
@@ -127,6 +127,56 @@ describe("saveSlotLayoutSchema — pins", () => {
 
   it("rejects the same GPIO twice on one slot", () => {
     expect(layout([slot({ pins: [{ number: 18 }, { number: 18 }] })]).success).toBe(false);
+  });
+});
+
+describe("saveSlotLayoutSchema — stepsPerVend", () => {
+  // Motorcontrol's config.json v2 requires motor.stepsPerVend; a layout without
+  // it would publish a wiring the device refuses at boot.
+  // Not layout(..., undefined): a defaulted function parameter substitutes
+  // 6400 for an explicit `undefined` argument (JS semantics), so that call
+  // could never actually exercise a missing key. safeParse directly, instead.
+  it("requires stepsPerVend", () => {
+    const result = saveSlotLayoutSchema.safeParse({
+      body: { machineId: MACHINE, columns: 4, rows: 4, slots: [slot()] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts the bounds 1 and 65535", () => {
+    expect(layout([slot()], 4, 4, 1).success).toBe(true);
+    expect(layout([slot()], 4, 4, 65535).success).toBe(true);
+  });
+
+  // u16 on the wire (WIRING_COMMIT carries it as two bytes), and 0 pulses is not a vend.
+  it("rejects 0, 65536 and fractions", () => {
+    expect(layout([slot()], 4, 4, 0).success).toBe(false);
+    expect(layout([slot()], 4, 4, 65536).success).toBe(false);
+    expect(layout([slot()], 4, 4, 6400.5).success).toBe(false);
+  });
+});
+
+describe("saveSlotLayoutSchema — reserved GPIOs", () => {
+  // GPIO 6-11 are the SPI flash lines and 1/3 the console on the ESP32-WROOM.
+  // Motorcontrol refuses such a table at boot; a value the firmware refuses
+  // must not be storable here.
+  it("rejects the flash and console pins", () => {
+    for (const number of [1, 3, 6, 7, 8, 9, 10, 11]) {
+      expect(layout([slot({ pins: [{ number }] })]).success).toBe(false);
+    }
+  });
+
+  it("still accepts the neighbouring free pins", () => {
+    for (const number of [0, 2, 5, 12, 15, 18, 33]) {
+      expect(layout([slot({ pins: [{ number }] })]).success).toBe(true);
+    }
+  });
+
+  // Motorcontrol/src/pins.h: 4 is the shared STEP line, 16/17 the UART link.
+  it("rejects the motor board's own pins", () => {
+    for (const number of [4, 16, 17]) {
+      expect(layout([slot({ pins: [{ number }] })]).success).toBe(false);
+    }
   });
 });
 

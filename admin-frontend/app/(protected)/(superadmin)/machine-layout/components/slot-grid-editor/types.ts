@@ -30,6 +30,9 @@ export interface Layout {
   slots: EditorSlot[]
   columns: number
   rows: number
+  /** STEP pulses per vend for every motor on this machine, 1-65535. Machine-level,
+   *  but kept in the layout so it is saved, reset and undone with the grid. */
+  stepsPerVend: number
 }
 
 /** A side of a slot, as seen on screen */

@@ -26,6 +26,8 @@ namespace vmaas
     /// Largest possible encoded frame: START + LEN + CMD + CRC (4 fixed bytes) plus the payload.
     constexpr size_t MAX_FRAME_SIZE = 4 + MAX_PAYLOAD;
 
+    constexpr uint8_t WIRING_MAX_PINS = 6; ///< Pins per WIRING_SLOT: 8 payload bytes minus slot and pin_count.
+
     /**
      * @brief Command id carried in the CMD byte of a frame.
      *
@@ -44,6 +46,9 @@ namespace vmaas
         STOP = 0x11,
         STATUS = 0x12,
         CONFIG = 0x13,
+        WIRING_BEGIN = 0x14,  ///< Start a wiring transfer; clears the staging buffer. No payload.
+        WIRING_SLOT = 0x15,   ///< One slot: slot u8, pin_count u8, pins u8[pin_count] (pin_count <= WIRING_MAX_PINS).
+        WIRING_COMMIT = 0x16, ///< Finish: count u8 (slots sent), steps_per_vend u16 LE. Validates, writes config.json, applies.
 
         // Replies, Motorcontrol -> Main-Controller
         ACK = 0x80,
@@ -59,10 +64,13 @@ namespace vmaas
     {
         UNKNOWN_CMD = 1,  ///< CMD byte is not a known request.
         BAD_PAYLOAD = 2,  ///< LEN does not match what the CMD requires.
-        BUSY = 3,         ///< RUN received while a vend is already in progress.
+        BUSY = 3,         ///< RUN, or WIRING_COMMIT, received while a vend is in progress.
         UNKNOWN_SLOT = 4, ///< Slot is not present in Motorcontrol's slot map.
         BAD_PARAM = 5,    ///< CONFIG param id is not recognised (no params are defined).
         CONFIG_ERROR = 6, ///< Motorcontrol has no valid slot configuration (config.json) and refuses RUN/STOP/CONFIG.
+        WIRING_STATE = 7, ///< WIRING_SLOT or WIRING_COMMIT without a preceding WIRING_BEGIN, or after the 10 s staging timeout.
+        WIRING_FULL = 8,  ///< More than MAX_SLOTS slots staged.
+        WRITE_FAILED = 9, ///< The staged table did not validate, uses a reserved pin, or config.json could not be written.
     };
 
     /**
@@ -72,7 +80,7 @@ namespace vmaas
     {
         IDLE = 0,  ///< No motor running. STATUS_REPLY reports current_slot 0.
         BUSY = 1,  ///< A vend is in progress; current_slot names it.
-        ERROR = 2, ///< Motorcontrol has no valid slot configuration. current_slot is 0. Every RUN/STOP/CONFIG is answered NAK CONFIG_ERROR.
+        ERROR = 2, ///< Motorcontrol has no valid slot configuration. current_slot is 0. Every RUN/STOP/CONFIG is answered NAK CONFIG_ERROR; WIRING_* is accepted so the table can be repaired without a reflash.
     };
 
     /**
@@ -146,6 +154,49 @@ namespace vmaas
         {
             Frame f;
             f.cmd = Cmd::STATUS;
+            return f;
+        }
+
+        /// @brief Build a WIRING_BEGIN request. No payload.
+        inline Frame wiring_begin()
+        {
+            Frame f;
+            f.cmd = Cmd::WIRING_BEGIN;
+            return f;
+        }
+
+        /**
+         * @brief Build a WIRING_SLOT request.
+         * @param slot Slot number, 1-255.
+         * @param pins nENABLE GPIOs of the slot's drivers.
+         * @param pin_count Entries in @p pins; more than WIRING_MAX_PINS are dropped.
+         *        Callers must check pin_count <= WIRING_MAX_PINS first: extra pins are dropped silently.
+         */
+        inline Frame wiring_slot(uint8_t slot, const uint8_t* pins, uint8_t pin_count)
+        {
+            Frame f;
+            f.cmd = Cmd::WIRING_SLOT;
+            const uint8_t n = pin_count > WIRING_MAX_PINS ? WIRING_MAX_PINS : pin_count;
+            f.len = static_cast<uint8_t>(2 + n);
+            f.payload[0] = slot;
+            f.payload[1] = n;
+            for (uint8_t i = 0; i < n; ++i) f.payload[2 + i] = pins[i];
+            return f;
+        }
+
+        /**
+         * @brief Build a WIRING_COMMIT request.
+         * @param count Number of slots in the table, each sent once in a WIRING_SLOT.
+         * @param steps_per_vend STEP pulses per vend, 1-65535 (config.json motor.stepsPerVend).
+         */
+        inline Frame wiring_commit(uint8_t count, uint16_t steps_per_vend)
+        {
+            Frame f;
+            f.cmd = Cmd::WIRING_COMMIT;
+            f.len = 3;
+            f.payload[0] = count;
+            f.payload[1] = static_cast<uint8_t>(steps_per_vend & 0xFF);
+            f.payload[2] = static_cast<uint8_t>(steps_per_vend >> 8);
             return f;
         }
 

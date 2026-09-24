@@ -7,9 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 import type { EditorSlot } from "../types"
+import { BOARD_GPIO_MESSAGE, isBoardGpio, isReservedGpio, MAX_OUTPUT_GPIO, RESERVED_GPIO_MESSAGE } from "@vmaas/shared/lib/gpio"
 
-/** GPIO 34-39 are input-only on the ESP32 and cannot drive a motor. */
-const MAX_GPIO = 33
 /** One WIRING_SLOT UART frame holds slot + pin_count + six pin bytes. */
 const MAX_PINS = 6
 
@@ -42,8 +41,16 @@ export function SlotInspector({ slot, usedPins, onChange }: SlotInspectorProps) 
       setError("Enter a GPIO number")
       return
     }
-    if (number < 0 || number > MAX_GPIO) {
-      setError(`GPIO must be 0-${MAX_GPIO}; 34-39 are input-only`)
+    if (number < 0 || number > MAX_OUTPUT_GPIO) {
+      setError(`GPIO must be 0-${MAX_OUTPUT_GPIO}; 34-39 are input-only`)
+      return
+    }
+    if (isReservedGpio(number)) {
+      setError(RESERVED_GPIO_MESSAGE)
+      return
+    }
+    if (isBoardGpio(number)) {
+      setError(BOARD_GPIO_MESSAGE)
       return
     }
     if (slot.pins.some((pin) => pin.number === number)) {

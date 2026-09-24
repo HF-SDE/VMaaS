@@ -28,12 +28,15 @@ Example, `RUN slot 3`: `AA 01 10 03 35`.
 
 ## Requests (Main-Controller -> Motorcontrol)
 
-| CMD    | Name   | Payload                        |
-|--------|--------|--------------------------------|
-| `0x10` | RUN    | `slot` u8                      |
-| `0x11` | STOP   | none                           |
-| `0x12` | STATUS | none                           |
-| `0x13` | CONFIG | `param` u8, `value` u16 LE. Reserved: no params are defined, always `NAK BAD_PARAM`. |
+| CMD    | Name          | Payload                        |
+|--------|---------------|--------------------------------|
+| `0x10` | RUN           | `slot` u8                      |
+| `0x11` | STOP          | none                           |
+| `0x12` | STATUS        | none                           |
+| `0x13` | CONFIG        | `param` u8, `value` u16 LE. Reserved: no params are defined, always `NAK BAD_PARAM`. |
+| `0x14` | WIRING_BEGIN  | none                           |
+| `0x15` | WIRING_SLOT   | `slot` u8, `pin_count` u8, `pins` u8[pin_count] (≤6) |
+| `0x16` | WIRING_COMMIT | `count` u8, `steps_per_vend` u16 LE |
 
 ## Replies (Motorcontrol -> Main-Controller)
 
@@ -56,7 +59,7 @@ State: `0` IDLE, `1` BUSY, `2` ERROR.
 `current_slot` in STATUS_REPLY is 0 when the state is IDLE or ERROR. ERROR means
 Motorcontrol has no valid slot configuration (`/storage/config.json` missing or
 invalid, see `shared/vmaas-config/README.md`); it answers STATUS normally but
-refuses every RUN, STOP and CONFIG with `NAK CONFIG_ERROR`, and restarts every
+refuses every RUN, STOP and CONFIG with `NAK CONFIG_ERROR` (WIRING_* is accepted, see Wiring transfer), and restarts every
 30 s (at most 100 times per power-on) to pick up a corrected file.
 
 NAK error codes:
@@ -65,10 +68,13 @@ NAK error codes:
 |------|--------------|------|
 | 1    | UNKNOWN_CMD  | CMD is not in the table above |
 | 2    | BAD_PAYLOAD  | LEN does not match the CMD |
-| 3    | BUSY         | RUN while a motor is already running |
+| 3    | BUSY         | RUN while a vend is in progress, or WIRING_COMMIT during a vend |
 | 4    | UNKNOWN_SLOT | slot not present in Motorcontrol's slot map |
 | 5    | BAD_PARAM    | CONFIG param id not recognised |
 | 6    | CONFIG_ERROR | Motorcontrol has no valid slot configuration; RUN/STOP/CONFIG refused |
+| 7    | WIRING_STATE | WIRING_SLOT or WIRING_COMMIT without a preceding WIRING_BEGIN, or after the 10 s staging timeout |
+| 8    | WIRING_FULL  | More than 32 slots staged |
+| 9    | WRITE_FAILED | The staged table did not validate, uses a reserved pin, or config.json could not be written |
 
 CONFIG params: none. `RUN_TIME_MS` (id 1) was removed when the motors became
 steppers; the pulse count per vend is `motor.stepsPerVend` in Motorcontrol's
@@ -116,6 +122,50 @@ CONFIG:
 Main  -> Motor : CONFIG 1 200
 Motor -> Main  : NAK CONFIG BAD_PARAM     (no params are defined)
 ```
+
+## Wiring transfer
+
+The slot table is sent row by row and applied all at once:
+
+```
+Main  -> Motor : WIRING_BEGIN
+Motor -> Main  : ACK WIRING_BEGIN
+Main  -> Motor : WIRING_SLOT 1 [18]
+Motor -> Main  : ACK WIRING_SLOT
+Main  -> Motor : WIRING_SLOT 3 [21,22]
+Motor -> Main  : ACK WIRING_SLOT
+Main  -> Motor : WIRING_COMMIT count=2 steps=6400
+Motor -> Main  : ACK WIRING_COMMIT          (config.json rewritten and applied)
+```
+
+`COMMIT` carries `count` so a dropped `WIRING_SLOT` (which CRC cannot catch) is
+detected: a mismatch is `NAK WRITE_FAILED` and nothing is written. On `COMMIT`
+Motorcontrol serialises the staged table to config.json v2, validates it with
+the same parser it boots from, refuses reserved GPIOs (STEP, UART, console,
+flash), writes the file atomically and applies it without a reboot. Any
+failure leaves the old file and the running table untouched.
+
+`WIRING_SLOT`/`WIRING_COMMIT` without `WIRING_BEGIN`, or more than 10 s after
+the previous wiring frame, is `NAK WIRING_STATE`. More than 32 slots is
+`NAK WIRING_FULL`. A `WIRING_SLOT` whose LEN is not `2 + pin_count` (which
+includes any pin_count above 6, since 7 pins cannot fit a frame) is
+`NAK BAD_PAYLOAD`, and so is a `COMMIT` with `steps_per_vend == 0`.
+
+**Retry rule for the sender:** after any NAK other than `BUSY`, abort and
+start again from `WIRING_BEGIN` (the staging may or may not have been kept;
+do not rely on it). After `NAK BUSY` on `COMMIT` the staging is kept and
+`COMMIT` may be retried, as long as it is within 10 s of the last wiring
+frame. Send one frame at a time and wait for its reply; ACKs do not echo the
+slot number. `count` is the number of slots in the table, each sent once.
+
+After `ACK WIRING_COMMIT` from a board that reported `State::ERROR`, the
+board restarts about 50 ms later and is unreachable for roughly a second;
+poll `STATUS` until it answers `IDLE`. It does not restart for the 30 s
+config-error retry while a transfer is in progress.
+
+A board in the config-error state accepts the transfer too; after a
+successful `COMMIT` it restarts into the new table instead of applying it
+live.
 
 ## Receiver behaviour
 

@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { AxisLabels } from "./components/axis-labels"
 import { EditorToolbar } from "./components/editor-toolbar"
+import { MotorSettings } from "./components/motor-settings"
 import { SizeControl } from "./components/size-control"
 import { SlotGrid } from "./components/slot-grid"
 import { SlotInspector } from "./components/slot-inspector"
@@ -24,13 +25,15 @@ import { saveLayoutErrorMessage } from "../../messages"
 interface SlotGridEditorProps {
   machineId: string
   initialSlots: EditorSlot[]
+  initialStepsPerVend: number
 }
 
 export function SlotGridEditor({
   machineId,
   initialSlots,
+  initialStepsPerVend,
 }: SlotGridEditorProps) {
-  const history = useLayoutHistory(initialSlots)
+  const history = useLayoutHistory(initialSlots, initialStepsPerVend)
   const { layout } = history
   const { slots, columns, rows } = layout
 
@@ -262,12 +265,18 @@ export function SlotGridEditor({
           </div>
         </div>
 
-        <SlotInspector
-          key={selectedKey ?? "none"}
-          slot={selectedSlot}
-          usedPins={usedPins}
-          onChange={updateSelected}
-        />
+        <div className="space-y-3">
+          <SlotInspector
+            key={selectedKey ?? "none"}
+            slot={selectedSlot}
+            usedPins={usedPins}
+            onChange={updateSelected}
+          />
+          <MotorSettings
+            stepsPerVend={layout.stepsPerVend}
+            onChange={(stepsPerVend) => history.update({ stepsPerVend })}
+          />
+        </div>
       </div>
 
       <PublishPanel

@@ -39,6 +39,7 @@ beforeEach(() => {
     fn({
       slot: { deleteMany: slotDeleteMany, update: vi.fn(), createMany: vi.fn(), findMany: vi.fn(async () => []) },
       pin: { deleteMany: vi.fn(), createMany: vi.fn() },
+      machine: { update: vi.fn() },
     }),
   );
 });

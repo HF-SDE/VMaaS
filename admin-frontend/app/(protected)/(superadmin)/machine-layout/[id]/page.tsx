@@ -77,7 +77,11 @@ async function MachineLayoutLoader({
         </p>
       </div>
 
-      <SlotGridEditor machineId={machine.id} initialSlots={initialSlots} />
+      <SlotGridEditor
+        machineId={machine.id}
+        initialSlots={initialSlots}
+        initialStepsPerVend={machine.stepsPerVend}
+      />
     </>
   )
 }
