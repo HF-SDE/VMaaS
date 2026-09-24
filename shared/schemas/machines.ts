@@ -193,8 +193,6 @@ export const saveSlotLayoutSchema = z.object({
       machineId: z.uuid({ message: "machineId must be a uuid" }),
       columns: z.number().int().min(1),
       rows: z.number().int().min(1),
-      /** STEP pulses per vend for every motor on this machine; Motorcontrol's
-       *  motor.stepsPerVend. Required: the device refuses a wiring without it. */
       stepsPerVend: z
         .number()
         .int()

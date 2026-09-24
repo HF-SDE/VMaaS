@@ -84,10 +84,8 @@ export interface SaveSlotLayoutData {
   machineId: string;
   columns: number;
   rows: number;
-  /** STEP pulses per vend, 1-65535. One value for the whole machine. */
   stepsPerVend: number;
   slots: {
-    /** Missing for slots created in the editor */
     id?: string;
     slotNumber: number;
     beginX: number;

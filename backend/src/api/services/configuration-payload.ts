@@ -98,8 +98,6 @@ export function buildConfigurationPayload(
       if (major === null) return [];
       return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
     }),
-    // Key names are the contract with Motorcontrol's parser; key order is not
-    // (jsonb reorders them on the way back, and comparePayloads canonicalises).
     wiring: {
       version: WIRING_SCHEMA_VERSION,
       motor: { stepsPerVend: motor.stepsPerVend },

@@ -53,12 +53,12 @@ namespace wiring_commit
     {
         switch (r)
         {
-        case vmaas::WiringStager::Result::Ok:            return vmaas::ErrorCode::BAD_PAYLOAD; // unreachable: callers check Ok first
+        case vmaas::WiringStager::Result::Ok:            return vmaas::ErrorCode::BAD_PAYLOAD;
         case vmaas::WiringStager::Result::NotBegun:      return vmaas::ErrorCode::WIRING_STATE;
         case vmaas::WiringStager::Result::Full:          return vmaas::ErrorCode::WIRING_FULL;
         case vmaas::WiringStager::Result::CountMismatch: return vmaas::ErrorCode::WRITE_FAILED;
         case vmaas::WiringStager::Result::BadSteps:      return vmaas::ErrorCode::BAD_PAYLOAD;
         }
-        return vmaas::ErrorCode::WRITE_FAILED; // unreachable; keeps this well-defined without a default case
+        return vmaas::ErrorCode::WRITE_FAILED;
     }
 }
