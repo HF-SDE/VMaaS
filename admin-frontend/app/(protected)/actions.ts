@@ -6,6 +6,7 @@ import { Tenant } from "@prisma"
 import { fetchData } from "@/lib/data/data-fetch"
 import { err, ok, Result, HttpError } from "@vmaas/shared/lib/error-handling"
 import { refresh, updateTag } from "next/cache"
+import { redirect } from "next/navigation"
 
 /** `null` clears the active organization, which is how a user stuck on a locked
  *  organization gets back to the picker. */
@@ -39,6 +40,11 @@ export async function createTenant(data: CreateTenantFormData): Promise<void> {
   if (error) throw error
 
   await switchTenant(result.id) // also invalidates the tenant/session caches
+
+  // Navigate from the action itself. Leaving it to switchTenant's refresh()
+  // re-renders /onboarding into a render-time redirect, which in a production
+  // build loops between /onboarding and / instead of reaching /billing.
+  redirect("/")
 }
 
 export async function resolveAlert(

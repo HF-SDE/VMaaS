@@ -53,13 +53,13 @@ export function EditSlotForm({
 }: {
   id: string
   defaultValues: SlotFormValues
-  defaultProduct: Pick<SimpleProduct, "id" | "name">
+  defaultProduct: Pick<SimpleProduct, "id" | "name"> | null
   onSaved: () => void
   onCancel: () => void
 }) {
   const router = useRouter()
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
-    defaultProduct.id
+    defaultProduct?.id ?? null
   )
 
   const form = useForm({
@@ -110,7 +110,7 @@ export function EditSlotForm({
           <ProductPicker
             id="product"
             name="product"
-            defaultValue={defaultProduct.name}
+            defaultValue={defaultProduct?.name}
             onSelect={(product) => setSelectedProductId(product?.id ?? null)}
             disabled={form.state.isSubmitting}
           />

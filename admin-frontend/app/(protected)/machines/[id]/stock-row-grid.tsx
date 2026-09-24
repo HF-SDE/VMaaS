@@ -131,7 +131,9 @@ function SlotCell({
         <PopoverContent className="w-64">
           <PopoverHeader>
             <PopoverTitle>Slot {slot.slotNumber}</PopoverTitle>
-            <PopoverDescription>{slot.product.name}</PopoverDescription>
+            <PopoverDescription>
+              {slot.product?.name ?? "Empty"}
+            </PopoverDescription>
           </PopoverHeader>
 
           <dl className="grid grid-cols-2 gap-y-1">
@@ -159,13 +161,15 @@ function SlotCell({
           </dl>
 
           <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link href={`/products/${slot.product.id}`} />}
-            >
-              View product
-            </Button>
+            {slot.product && (
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href={`/products/${slot.product.id}`} />}
+              >
+                View product
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => {
@@ -184,8 +188,9 @@ function SlotCell({
           <DialogHeader>
             <DialogTitle>Edit slot {slot.slotNumber}</DialogTitle>
             <DialogDescription>
-              Change what slot {slot.slotNumber} holds of {slot.product.name},
-              how much fits, and what it costs.
+              {slot.product
+                ? `Change what slot ${slot.slotNumber} holds of ${slot.product.name}, how much fits, and what it costs.`
+                : `Slot ${slot.slotNumber} is empty. Set how much fits and what it costs.`}
             </DialogDescription>
           </DialogHeader>
           <EditSlotForm

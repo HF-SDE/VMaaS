@@ -41,7 +41,7 @@ export function SlotsTable({ slots }: { slots: SlotListItem[] }) {
 
     return slots.filter(
       (slot) =>
-        slot.product.name.toLowerCase().includes(query) ||
+        slot.product?.name.toLowerCase().includes(query) ||
         String(slot.slotNumber).includes(query)
     )
   }, [slots, search])
