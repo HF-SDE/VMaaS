@@ -30,6 +30,8 @@ import {
   startCheckout,
 } from "../actions"
 import { formatExpiry } from "../invitation-card"
+import { NotificationBadge } from "@/components/notification-badge"
+import { cn } from "@/lib/utils"
 
 /** Human wording per status. The paywall has to explain *why* it is showing,
  *  because "past due" and "never started" call for different actions. */
@@ -340,25 +342,34 @@ export function BillingClient({
               <Separator />
               <div className="space-y-2">
                 <p className="text-sm font-medium">Choose a plan</p>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {PLANS.map((plan) => (
-                    <Button
+                    <NotificationBadge
                       key={plan.id}
-                      variant={plan.id === "yearly" ? "default" : "outline"}
-                      className="h-auto flex-col items-start gap-0.5 py-3"
-                      onClick={() => checkout(plan.id)}
-                      disabled={pending}
+                      value={plan.id === "yearly" ? "Best value" : null}
                     >
-                      <span className="flex items-center gap-2 font-medium">
-                        {pending && activePlan === plan.id && (
-                          <Loader2 className="size-4 animate-spin" />
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          plan.id === "yearly"
+                            ? "border-primary dark:border-primary"
+                            : "",
+                          "h-auto w-full flex-col items-start gap-0.5 p-4"
                         )}
-                        {plan.label}
-                      </span>
-                      <span className="text-xs font-normal opacity-80">
-                        {plan.hint}
-                      </span>
-                    </Button>
+                        onClick={() => checkout(plan.id)}
+                        disabled={pending}
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          {pending && activePlan === plan.id && (
+                            <Loader2 className="size-4 animate-spin" />
+                          )}
+                          {plan.label}
+                        </span>
+                        <span className="text-xs font-normal opacity-80">
+                          {plan.hint}
+                        </span>
+                      </Button>
+                    </NotificationBadge>
                   ))}
                 </div>
                 {/* Deliberately does not promise a trial: whether this user
