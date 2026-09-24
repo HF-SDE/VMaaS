@@ -22,6 +22,7 @@ import helmet from "helmet";
 import http from "http";
 
 import { meRouter } from "./api/routes/me.route";
+import { testRouter } from "./api/routes/test.route";
 
 const app = express();
 
@@ -65,6 +66,7 @@ api.use("/sales", salesRouter);
 api.use("/device", deviceRouter);
 api.use("/internal", internalRouter);
 api.use("/me", meRouter);
+if (config.NODE_ENV !== "production") api.use("/test", testRouter);
 
 app.use("/api", api);
 

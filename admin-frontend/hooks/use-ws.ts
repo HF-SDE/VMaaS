@@ -4,7 +4,10 @@ import { useEffect, useRef } from "react"
 
 import { useSession } from "@/lib/session-provider"
 import { createWsClient } from "@/lib/ws/client"
-import type { WsServerMessage } from "@vmaas/shared/schemas"
+import type {
+  WsAlertCreatedMessage,
+  WsServerMessage,
+} from "@vmaas/shared/schemas"
 
 /**
  * Subscribes to the backend's push events for the session's active tenant.
@@ -34,4 +37,14 @@ export function useWs(onMessage: (message: WsServerMessage) => void) {
       onMessage: (message) => handler.current(message),
     })
   }, [activeTenantId])
+}
+
+export function useAlertsWs(
+  onMessage: (message: WsAlertCreatedMessage) => void
+) {
+  useWs((message) => {
+    if (message.type.startsWith("alert.")) {
+      onMessage(message as WsAlertCreatedMessage)
+    }
+  })
 }

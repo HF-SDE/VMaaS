@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { MachineAlertLogs } from "./components/machine-alert-logs"
+import { SessionProvider } from "@/lib/session-provider"
+import { getSession } from "@/lib/dal"
 
 /**
  * The gate here is UI only. `MachineAlertLogs` fetches from the browser, so
@@ -33,10 +35,22 @@ export default async function AlertLogsPage() {
         </Suspense>
       </div>
       <Suspense fallback={<Loader />}>
-        <RoleGate perms={[PERMISSIONS.ALERT_READ]}>
+        <ProvideSession>
           <MachineAlertLogs />
-        </RoleGate>
+        </ProvideSession>
       </Suspense>
     </div>
+  )
+}
+
+async function ProvideSession({ children }: { children: React.ReactNode }) {
+  const session = await getSession(true)
+
+  return (
+    <Suspense fallback={<Loader />}>
+      <RoleGate perms={[PERMISSIONS.ALERT_READ]}>
+        <SessionProvider session={session}>{children}</SessionProvider>
+      </RoleGate>
+    </Suspense>
   )
 }

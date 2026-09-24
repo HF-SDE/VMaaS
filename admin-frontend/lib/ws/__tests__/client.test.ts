@@ -6,6 +6,7 @@ const TENANT = "11111111-1111-4111-8111-111111111111"
 
 /** Enough of a WebSocket for the client: it only assigns handlers and calls close(). */
 class FakeSocket {
+  readyState = 1
   onopen: (() => void) | null = null
   onmessage: ((event: MessageEvent) => void) | null = null
   onclose: (() => void) | null = null
@@ -140,5 +141,22 @@ describe("createWsClient", () => {
     expect(h.sockets[0].close).toHaveBeenCalled()
     expect(h.pendingTimers()).toBe(0)
     expect(h.sockets).toHaveLength(1)
+  })
+
+  it("defers closing a still-connecting socket until it opens", () => {
+    const h = harness()
+    const onMessage = vi.fn()
+    const stop = createWsClient({ tenantId: TENANT, onMessage, ...h.options })
+    h.sockets[0].readyState = 0
+
+    stop()
+    expect(h.sockets[0].close).not.toHaveBeenCalled()
+
+    h.sockets[0].emit({ type: "connected", tenantId: TENANT })
+    h.sockets[0].onopen?.()
+
+    expect(h.sockets[0].close).toHaveBeenCalled()
+    expect(onMessage).not.toHaveBeenCalled()
+    expect(h.pendingTimers()).toBe(0)
   })
 })

@@ -8,6 +8,9 @@ import { config } from "../config"
 /** Reconnect delays in ms, then the last one repeats for as long as the socket stays down. */
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
 
+/** `WebSocket.CONNECTING`, spelled out so it does not depend on the global existing (tests, SSR). */
+const CONNECTING = 0
+
 export function backoffFor(attempt: number): number {
   return BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]
 }
@@ -85,7 +88,19 @@ export function createWsClient({
   return () => {
     stopped = true
     if (retry) clearTimer(retry)
-    socket?.close()
+
+    const current = socket
     socket = null
+    if (!current) return
+
+    // Closing a socket mid-handshake makes the browser log "closed before the
+    // connection is established" — which StrictMode's mount/unmount/mount does
+    // on every dev load. Let the handshake finish, then close it silently.
+    if (current.readyState === CONNECTING) {
+      current.onmessage = null
+      current.onopen = () => current.close()
+      return
+    }
+    current.close()
   }
 }

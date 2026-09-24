@@ -14,6 +14,7 @@ import type { MachineAlertRow } from "@vmaas/shared/types/machineAlert"
 import { AlertRow } from "./alert-row"
 import { EMPTY_FILTERS, type Filters, activeFilterCount } from "./alert-types"
 import { FilterPanel } from "./filter-panel"
+import { useAlertsWs } from "@/hooks/use-ws"
 
 const PAGE_SIZE = 50
 
@@ -26,6 +27,8 @@ export function MachineAlertLogs() {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [searchQuery, setSearchQuery] = useState("")
+
+  useAlertsWs(({ body }) => setAlerts((prev) => [body, ...prev]))
 
   const debouncedSearch = useDebounce(searchQuery, 300)
   const sentinelRef = useRef<HTMLDivElement>(null)
