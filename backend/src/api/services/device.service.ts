@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib";
-import { cashSalePayloadSchema } from "@vmaas/shared/schemas";
+import { DeviceEvent, cashSalePayloadSchema } from "@vmaas/shared/schemas";
 
 import type { MachineContext } from "@/api/middleware/require-machine";
 import { Prisma } from "@/generated/prisma/client";
@@ -165,9 +165,7 @@ export async function recordDeviceEventService(
   >
 > {
   const occurredAt =
-    input.occurredAt !== undefined
-      ? new Date(input.occurredAt)
-      : new Date(Date.now() - (input.uptimeMs ?? 0));
+    input.occurredAt !== undefined ? new Date(input.occurredAt) : new Date(Date.now() - (input.uptimeMs ?? 0));
   if (input.type === "cash_sale") {
     const parsed = cashSalePayloadSchema.safeParse(input.payload);
     if (!parsed.success) {
@@ -227,7 +225,7 @@ export async function recordDeviceEventService(
               completedAt: cash.status === "completed" ? occurredAt : null,
             },
           })) as { id: string };
-          
+
           if (cash.status === "completed" && slot) {
             await tx.slot.update({
               where: { id: slot.id },
@@ -299,13 +297,7 @@ export async function recordDeviceEventService(
 export async function recordDeviceEventsService(
   db: DeviceDb,
   machine: MachineContext,
-  events: {
-    type: string;
-    payload: Record<string, unknown>;
-    eventId?: string;
-    sequenceNumber?: number;
-    occurredAt: string;
-  }[],
+  events: DeviceEvent[],
 ): Promise<Result<UnknownDeviceError, { received: number; stored: number }>> {
   try {
     const { count } = await db.machineEvent.createMany({
@@ -316,7 +308,7 @@ export async function recordDeviceEventsService(
         payload: event.payload,
         eventId: event.eventId ? `${machine.id}:${event.eventId}` : undefined,
         sequenceNumber: event.sequenceNumber,
-        occurredAt: new Date(event.occurredAt),
+        occurredAt: new Date(event.occurredAt ?? Date.now() - (event.uptimeMs ?? 0)),
       })),
       skipDuplicates: true,
     });
