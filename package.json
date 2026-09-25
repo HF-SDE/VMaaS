@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "install": "cd backend && npm i && cd ../admin-frontend && npm i",
+    "install:all": "npx concurrently -n root,backend,frontend,shared -c gray,blue,magenta,green \"npm i\" \"npm i --prefix backend\" \"npm i --prefix admin-frontend\" \"npm i --prefix shared\"",
     "dev": "docker compose --env-file ./config/environment-variables/.env.backend.dev -f ./docker/docker-compose.yml up -d && docker image prune -f && npm run dev:watch",
     "dev-rebuild": "docker compose --env-file ./config/environment-variables/.env.backend.dev -f ./docker/docker-compose.yml up -d --build && docker image prune -f && npm run dev:watch",
     "dev:watch": "docker compose --env-file ./config/environment-variables/.env.backend.dev -f ./docker/docker-compose.yml watch --no-up admin-frontend",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "concurrently": "^10.0.5",
     "eslint-plugin-jsdoc": "^62.7.1",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.5"

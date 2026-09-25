@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/node";
+
 import { alertsRouter } from "@/api/routes/alerts.route";
 import { deviceRouter } from "@/api/routes/device.route";
 import { internalRouter } from "@/api/routes/internal.route";
@@ -14,7 +16,6 @@ import { prisma } from "@/lib/prisma";
 import { attachWebSocketServer } from "@/lib/ws/server";
 import { startMqttClient, stopMqttClient } from "@/mqtt/client";
 
-import * as Sentry from "@sentry/node";
 import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
 import express from "express";
