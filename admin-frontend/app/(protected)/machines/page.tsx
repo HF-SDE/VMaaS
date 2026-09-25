@@ -11,8 +11,6 @@ import { MachinesDataTable } from "./machines-table"
 
 const NO_READ_ACCESS = "You do not have access to machines."
 
-// TODO: this was edited on 21/03/2026 to add server-side data fetching for the initial table render.
-// I'm not sure if this even helps with performance so maybe we should remove it again?
 async function MachinesTableLoader({
   searchParams,
 }: {
