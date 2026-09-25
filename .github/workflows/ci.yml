@@ -129,6 +129,11 @@ jobs:
                 *) bad="$bad $service:$state" ;;
               esac
             done
+            # Container health says nothing about nginx reaching its upstreams,
+            # so also go through the proxy the way a browser does.
+            for url in https://localhost/ https://localhost/api/health; do
+              curl -skf -o /dev/null "$url" || bad="$bad $url"
+            done
             if [ -z "$bad" ]; then
               echo "All services healthy."
               exit 0
