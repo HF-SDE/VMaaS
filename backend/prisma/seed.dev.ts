@@ -21,6 +21,7 @@ if (config.NODE_ENV === "production") {
 }
 
 const DEV_PASSWORD = "password123!";
+const SUPERADMIN_EMAIL = "admin@mail.com";
 
 async function createTenantRoles(tenantId: string) {
   const roles = new Map<string, string>();
@@ -346,7 +347,13 @@ async function seedMachinesWithoutTenant(siteId: string) {
 async function main() {
   await seedPermissions();
 
-  const superadmin = await createDevUser("admin@mail.com", "Dev Superadmin");
+  // The dev data is created with plain inserts, so a second run would collide on the seeded emails
+  if (await prisma.user.findUnique({ where: { email: SUPERADMIN_EMAIL } })) {
+    console.log("Dev data already seeded; skipping. Run `npx prisma migrate reset` in backend/ to start over.");
+    return;
+  }
+
+  const superadmin = await createDevUser(SUPERADMIN_EMAIL, "Dev Superadmin");
   await prisma.user.update({ where: { id: superadmin.id }, data: { isSuperAdmin: true } });
 
   const tenants = await Promise.all(Array.from({ length: 2 }, (_, index) => seedTenant(index + 1)));
@@ -354,7 +361,7 @@ async function main() {
   const site = await prisma.site.findFirstOrThrow({ where: { tenantId: tenants[0]!.tenant.id } });
   await seedMachinesWithoutTenant(site.id);
 
-  console.log(`Seeded dev data: superadmin admin@mail.com (password: ${DEV_PASSWORD})`);
+  console.log(`Seeded dev data: superadmin ${SUPERADMIN_EMAIL} (password: ${DEV_PASSWORD})`);
   console.log("  2 machines without a tenant, for the slot layout editor");
   for (const { tenant, owner } of tenants) {
     console.log(`  Tenant "${tenant.name}" — owner ${owner.email} (password: ${DEV_PASSWORD})`);
