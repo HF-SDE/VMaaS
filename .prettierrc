@@ -7,6 +7,7 @@
   "useTabs": false,
   "plugins": ["@trivago/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
   "importOrder": [
+    "@sentry/node",
     "^(react|next).*",
     "^@/components/(.*)$",
     "^@/(services|features|utils|helpers|redux|hooks|helpers|data)/(.*)$",
