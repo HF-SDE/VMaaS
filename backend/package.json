@@ -26,6 +26,8 @@
     "@peculiar/x509": "^2.1.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@sentry/node": "^11.0.0",
+    "@sentry/profiling-node": "^11.0.0",
     "@vmaas/shared": "file:../shared",
     "better-auth": "^1.7.3",
     "body-parser": "^2.3.0",

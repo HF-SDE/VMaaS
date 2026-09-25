@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import {
   DEFAULT_SALES_MAP_DAYS,
@@ -91,7 +92,7 @@ export async function getSalesMapService(
       }),
     );
   } catch (error) {
-    // TODO: capture sentry error
+    Sentry.captureException(error, { tags: { service: "sales", action: "building the sales map" } });
     console.error("[sales.service] building the sales map failed", error);
 
     return err({
@@ -219,7 +220,7 @@ export async function getSalesSummaryService(
       ),
     );
   } catch (error) {
-    // TODO: capture sentry error
+    Sentry.captureException(error, { tags: { service: "sales", action: "summarising" } });
     console.error("[sales.service] summarising failed", error);
 
     return err({

@@ -57,6 +57,7 @@ const schema = z.object({
    *  a missing value must stop the process, not silently open the paywall.
    *  In development `stripe listen` prints the value to use. */
   STRIPE_WEBHOOK_SECRET: z.string().min(1, { message: "STRIPE_WEBHOOK_SECRET is required" }),
+  SENTRY_DSN: z.string().min(1, { message: "SENTRY_DSN is required" }),
 });
 
 export const config = (() => {

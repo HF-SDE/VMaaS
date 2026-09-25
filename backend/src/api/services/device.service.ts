@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib";
 import { cashSalePayloadSchema } from "@vmaas/shared/schemas";
 
@@ -81,6 +82,8 @@ export async function getDeviceConfigurationService(
 
     return ok(configuration);
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "reading the configuration" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while reading the configuration.",
@@ -135,6 +138,8 @@ export async function recordCommandResultService(
 
     return ok({ applied: true });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "recording the result" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while recording the result.",
@@ -246,6 +251,7 @@ export async function recordDeviceEventService(
         }),
       );
     } catch (cause) {
+      Sentry.captureException(cause, { tags: { service: "device", action: "recording the cash sale" } });
       console.error("[device.service] recording the cash sale failed", cause);
       return err({
         reason: "UNKNOWN_ERROR",
@@ -272,6 +278,8 @@ export async function recordDeviceEventService(
     if (typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002") {
       return ok({ stored: false });
     }
+
+    Sentry.captureException(error, { tags: { service: "device", action: "storing the event" } });
 
     return err({
       reason: "UNKNOWN_ERROR",
@@ -315,6 +323,8 @@ export async function recordDeviceEventsService(
 
     return ok({ received: events.length, stored: count });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "storing the events" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while storing the events.",
@@ -362,6 +372,8 @@ export async function renewCertificateService(
       });
     });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "rotating the certificate" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while rotating the certificate.",

@@ -4,6 +4,7 @@ import { type Machine, type Pin, Prisma, type Slot } from "@/generated/prisma/cl
 import { kickMqttClient } from "@/lib/emqx";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import {
@@ -125,6 +126,7 @@ async function tenantOwnsSite(tenantId: string, siteId: string): Promise<boolean
 }
 
 function unknownError(action: string, cause: unknown): Result<UnknownMachineError, never> {
+  Sentry.captureException(cause, { tags: { service: "machines", action } });
   console.error(`[machines.service] ${action} failed`, cause);
 
   return err({

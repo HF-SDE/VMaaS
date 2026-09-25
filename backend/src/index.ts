@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { attachWebSocketServer } from "@/lib/ws/server";
 import { startMqttClient, stopMqttClient } from "@/mqtt/client";
 
+import * as Sentry from "@sentry/node";
 import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
 import express from "express";
@@ -23,6 +24,7 @@ import http from "http";
 
 import { meRouter } from "./api/routes/me.route";
 import { testRouter } from "./api/routes/test.route";
+import "./lib/instrument";
 
 const app = express();
 
@@ -72,6 +74,8 @@ app.use("/api", api);
 
 const server = http.createServer(app);
 attachWebSocketServer(server);
+
+Sentry.setupExpressErrorHandler(app);
 
 server.listen(config.PORT, () => {
   console.log(`Server listening on port ${config.PORT}`);

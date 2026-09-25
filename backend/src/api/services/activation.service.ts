@@ -1,4 +1,5 @@
 import { hash, verify } from "@node-rs/argon2";
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib";
 import { webcrypto } from "node:crypto";
 
@@ -161,6 +162,8 @@ export async function claimMachineService(
 
     return ok({ machineId: machine.id, oneTimeCode, expiresAt });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "activation", action: "claiming the machine" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while claiming the machine.",
@@ -326,6 +329,8 @@ export async function activateMachineService(
       mqtt: { host: config.MQTT_PUBLIC_HOST, port: config.MQTT_PUBLIC_PORT },
     });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "activation", action: "activating the machine" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while activating the machine.",

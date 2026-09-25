@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import {
@@ -37,7 +38,7 @@ const ALERT_SELECT = {
 type AlertWithMachine = Prisma.SecurityAlertGetPayload<{ select: typeof ALERT_SELECT }>;
 
 function unknownError(action: string, cause: unknown): Result<UnknownAlertError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "alerts", action } });
   console.error(`[alerts.service] ${action} failed`, cause);
 
   return err({
