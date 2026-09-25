@@ -1,0 +1,38 @@
+#pragma once
+/**
+ * @file config_parser.h
+ * @brief Parse and validate a Motorcontrol config.json text.
+ */
+#include "slot_config.h"
+
+namespace vmaas
+{
+    /**
+     * @brief Parse @p json_text into a validated slot table.
+     *
+     * - "motor" is required: an object with integer "stepsPerVend"
+     *   (1-65535). Absent gives MissingField "motor" / "motor.stepsPerVend".
+     * - "slots" is required: an array of objects, each with integer "slot"
+     *   (1-255) and "pins", a non-empty array of at most MAX_PINS_PER_SLOT
+     *   integers (0-33). Absent, empty or not an array gives MissingField.
+     * - Slot numbers must be unique across the table (DuplicateSlot on the
+     *   later entry). Pins must be unique across the whole file, within one
+     *   slot as well as between slots (DuplicatePin on the later pin).
+     * - At most MAX_SLOTS entries (TooManySlots). The first MAX_SLOTS are
+     *   still validated so the log can name every problem it can see.
+     * - Unknown keys are ignored. "version" higher than
+     *   SLOT_SCHEMA_VERSION gives NewerVersion and parsing continues.
+     * - Invalid JSON, a nullptr, a non-object root, or nesting deeper than 8
+     *   levels (checked before the recursive parser runs, so a hostile file
+     *   cannot exhaust the stack) gives json_valid == false and one
+     *   InvalidJson issue with json_error_offset set.
+     *
+     * The result is usable (ok == true, slot_count > 0) only when the text is
+     * valid JSON and no issue other than NewerVersion was found. Otherwise
+     * slot_count is 0. Allocation happens only inside cJSON while parsing.
+     *
+     * @param json_text NUL-terminated JSON text, or nullptr.
+     * @return Slot table plus issues. Never fails.
+     */
+    SlotParseResult parse_slot_config(const char* json_text);
+}

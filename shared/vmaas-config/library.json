@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-config",
+  "version": "0.1.0",
+  "description": "Device configuration schema and JSON parser for VMaaS controllers (config.json on LittleFS)",
+  "keywords": ["config", "json", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["slot_config.h", "slot_config_parser.h", "slot_config_writer.h", "wiring_stager.h", "device_config.h", "device_config_parser.h", "config_issue.h", "json_depth.h"]
+}

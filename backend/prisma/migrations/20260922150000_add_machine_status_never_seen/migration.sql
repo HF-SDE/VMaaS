@@ -1,0 +1,13 @@
+-- Adds the `never_seen` member of `machine_status`.
+--
+-- Split from the backfill that follows it on purpose, and not for tidiness:
+-- PostgreSQL forbids USING a newly added enum value in the same transaction
+-- that added it, and Prisma runs each migration file in one transaction. An
+-- `UPDATE ... SET status = 'never_seen'` here would fail with
+-- "unsafe use of new value of enum type machine_status".
+--
+-- BEFORE 'online' because a Postgres enum's definition order IS its sort
+-- order, and `status` is a sortable column in the admin UI
+-- (shared/types/machine.ts, MACHINE_SORT_FIELDS). Appending would have sorted
+-- never_seen last in the database while the schema file declares it first.
+ALTER TYPE "public"."machine_status" ADD VALUE 'never_seen' BEFORE 'online';

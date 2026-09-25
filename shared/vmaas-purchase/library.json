@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-purchase",
+  "version": "0.1.0",
+  "description": "Hardware-free cash purchase state machine for VMaaS",
+  "keywords": ["purchase", "payment", "cash", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["purchase.h", "sale_line.h"]
+}

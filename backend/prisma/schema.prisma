@@ -1,0 +1,636 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "rbac", "public"]
+}
+
+// #Der skal være en tabel til auditlog
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  name          String
+  emailVerified Boolean  @default(false)
+  image         String?
+  isSuperAdmin  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userRoles       UserRole[]
+  sessions        Session[]
+  accounts        Account[]
+  sentInvites     TenantInvite[] @relation("TenantInviteSender")
+  receivedInvites TenantInvite[] @relation("TenantInviteRecipient")
+  trialGrant      TrialGrant?
+
+  inventoryMovements InventoryMovement[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activeTenantId String? @db.Uuid
+  activeTenant   Tenant? @relation(fields: [activeTenantId], references: [id], onDelete: SetNull)
+
+  @@unique([token])
+  @@index([userId])
+  @@index([activeTenantId])
+  @@map("sessions")
+  @@schema("auth")
+}
+
+model Account {
+  id                    String    @id @default(uuid()) @db.Uuid
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+  @@schema("auth")
+}
+
+model Verification {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+  @@schema("auth")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+  tenantInvites   TenantInvite[]
+
+  @@map("roles")
+  @@schema("rbac")
+}
+
+// A single grantable capability, e.g. "machine:read", "machine:write",
+// "sale:refund", "user:manage". Namespaced by convention as "resource:action".
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+  @@schema("rbac")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+  @@schema("rbac")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String   @db.Uuid
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenantId  String?  @db.Uuid
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("user_roles")
+  @@schema("rbac")
+}
+
+enum invitation_status {
+  pending
+  accepted
+  expired
+  revoked
+  rejected
+
+  @@schema("rbac")
+}
+
+/// An invitation to join a tenant. Keyed on `email`, not on a user id, so
+/// someone without an account yet can be invited: they sign up from the
+/// invitation link and the email is what binds the invite to their new user
+/// row. `userId` is kept as a convenience back-reference and is only set once a
+/// matching account exists — never rely on it to decide who an invite is for.
+model TenantInvite {
+  id          String            @id @default(uuid()) @db.Uuid
+  email       String
+  userId      String?           @db.Uuid
+  user        User?             @relation("TenantInviteRecipient", fields: [userId], references: [id], onDelete: SetNull)
+  tenantId    String            @db.Uuid
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleId      String            @db.Uuid
+  role        Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  invitedById String            @db.Uuid
+  invitedBy   User              @relation("TenantInviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  status      invitation_status @default(pending)
+  token       String            @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([email, tenantId, status])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([email])
+  @@map("tenant_invites")
+  @@schema("rbac")
+}
+
+/// Billing state for one tenant. Stripe is not wired up yet; these columns are
+/// the shape its webhook will eventually write, so adding it later changes only
+/// `subscriptions.service.ts` and nothing that reads through it.
+enum subscription_status {
+  /// Tenant created, billing not yet started. Not an access-granting state.
+  pending
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  unpaid
+
+  @@schema("public")
+}
+
+/// The plans the application sells. The names, not the prices: a price id is
+/// Stripe's and differs between the sandbox and production, so it is mapped
+/// back onto one of these in `billing.service.ts` before it is stored.
+enum subscription_plan {
+  monthly
+  yearly
+
+  @@schema("public")
+}
+
+model Subscription {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Null until the tenant has been through Stripe checkout. Unique so a webhook
+  /// replay that arrives twice cannot create a second row for the same Stripe
+  /// object.
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+
+  status           subscription_status @default(pending)
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+
+  /// Which plan the tenant is being billed for, read off the price on Stripe's
+  /// own subscription. Null means "not known": before checkout, or when Stripe
+  /// reports a price this application does not sell — never a default plan,
+  /// which would name a plan nobody chose.
+  plan subscription_plan?
+
+  /// Set when the owner cancels: Stripe keeps the subscription `active` until
+  /// `currentPeriodEnd`, so the status alone cannot say "canceled but still
+  /// paid up". Without this the UI would either revoke access the customer has
+  /// paid for or show no sign that anything was canceled.
+  cancelAtPeriodEnd Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+  @@schema("public")
+}
+
+/// One row per free trial ever handed out. Its only job is the two unique
+/// constraints: a user gets one trial however many organizations they create,
+/// and an organization gets one however many owners it passes through.
+///
+/// The row is written when checkout opens, not when Stripe confirms the trial,
+/// so two checkouts started at once collide on the constraint instead of both
+/// reading "no trial yet". `checkout.session.expired` deletes it again, so
+/// abandoning checkout does not spend the trial.
+model TrialGrant {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenantId String @unique @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("trial_grants")
+  @@schema("public")
+}
+
+enum machine_status {
+  never_seen
+  online
+  offline
+  error
+
+  @@schema("public")
+}
+
+enum sale_status {
+  pending
+  completed
+  failed
+  refunded
+
+  @@schema("public")
+}
+
+enum alert_type {
+  tamper
+  offline
+  error
+
+  @@schema("public")
+}
+
+/// Registration is the only machine-level lifecycle. `permanent_locked` is
+/// terminal: a machine binds to one tenant until it is physically reset (§6).
+enum machine_registration_status {
+  unregistered
+  claimed
+  permanent_locked
+
+  @@schema("public")
+}
+
+enum machine_command_status {
+  pending
+  sent
+  completed
+  failed
+  expired
+
+  @@schema("public")
+}
+
+// Why a slot's stock changed. There is deliberately no "missing" member: shrinkage
+// is never observed directly, it is inferred from a physical recount, which lands
+// here as a `correction` with a note.
+enum inventory_movement_type {
+  restock
+  sale
+  correction // manual recount adjustment
+  dispense_failure // motor ran, nothing dropped
+
+  @@schema("public")
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+
+  userRoles      UserRole[]
+  products       Product[]
+  machines       Machine[]
+  sales          Sale[]
+  activeSessions Session[]
+  roles          Role[]
+  invites        TenantInvite[]
+  sites          Site[]
+  subscription   Subscription?
+  trialGrant     TrialGrant?
+
+  inventoryMovements InventoryMovement[]
+
+  @@map("tenants")
+  @@schema("public")
+}
+
+model Site {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenantId String @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name String
+
+  addressLine1 String?
+  postalCode   String?
+  city         String?
+  countryCode  String? // "DK"
+
+  latitude  Decimal?
+  longitude Decimal?
+
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+
+  machines Machine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("sites")
+  @@schema("public")
+}
+
+model Product {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  price      Decimal
+  createdAt  DateTime  @default(now())
+  // Null means active. A timestamp rather than a flag, so the list can say when
+  // a product was taken out of use without a second column.
+  archivedAt DateTime?
+
+  slots Slot[]
+  sales Sale[]
+
+  @@index([tenantId])
+  @@map("products")
+  @@schema("public")
+}
+
+model Machine {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  serialNumber          String                      @unique
+  tenantId              String?                     @db.Uuid
+  tenant                Tenant?                     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  name                  String
+  description           String?
+  status                machine_status              @default(never_seen)
+  /// The broker connection event (`$events/client_connected`/`client_disconnected`)
+  /// that most recently moved `status`, used as the ordering clock for
+  /// out-of-order events — see connection.service.ts. Null until the first
+  /// event this machine's certificate ever produces.
+  lastConnectionEventAt DateTime?
+  registrationStatus    machine_registration_status @default(unregistered)
+  createdAt             DateTime                    @default(now())
+  claimedAt             DateTime?
+  activatedAt           DateTime?
+  disabledAt            DateTime?
+  disabledReason        String?
+  stepsPerVend          Int                         @default(6400)
+  siteId                String?                     @db.Uuid
+  site                  Site?                       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  slots                 Slot[]
+  sales                 Sale[]
+  securityAlerts        SecurityAlert[]
+
+  activations    MachineActivation[]
+  certificates   MachineCertificate[]
+  configurations MachineConfiguration[]
+  commands       MachineCommand[]
+  events         MachineEvent[]
+
+  @@index([tenantId])
+  @@index([siteId])
+  @@map("machines")
+  @@schema("public")
+}
+
+model Pin {
+  id          String  @id @default(uuid()) @db.Uuid
+  machineId   String  @db.Uuid
+  slotId      String  @db.Uuid
+  slot        Slot    @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  number      Int
+  description String?
+
+  @@unique([machineId, number])
+  @@index([slotId])
+  @@map("pin")
+  @@schema("public")
+}
+
+model Slot {
+  id         String   @id @default(uuid()) @db.Uuid
+  machineId  String   @db.Uuid
+  machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  productId  String?  @db.Uuid
+  product    Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  slotNumber Int
+  beginX     Int
+  endX       Int
+  beginY     Int
+  endY       Int
+  quantity   Int      @default(0)
+  capacity   Int
+  price      Decimal?
+
+  pins Pin[]
+
+  inventoryMovements InventoryMovement[]
+
+  @@unique([machineId, slotNumber])
+  @@index([productId])
+  @@map("slots")
+  @@schema("public")
+}
+
+/// One claim's one-time code. The code itself is never stored — only its
+/// argon2id hash, which is salted and therefore cannot be a query key; the
+/// service loads by machineId and verifies (spec §10).
+model MachineActivation {
+  id          String    @id @default(uuid()) @db.Uuid
+  machineId   String    @db.Uuid
+  machine     Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  tenantId    String    @db.Uuid
+  siteId      String    @db.Uuid
+  codeHash    String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  attempts    Int       @default(0)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  @@index([machineId])
+  @@map("machine_activations")
+  @@schema("public")
+}
+
+/// The machine's identity on both channels. `serial` is the lookup key: nginx
+/// reports it as $ssl_client_serial, EMQX carries it in the peer DN's OU.
+model MachineCertificate {
+  id            String    @id @default(uuid()) @db.Uuid
+  machineId     String    @db.Uuid
+  machine       Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  serial        String    @unique
+  fingerprint   String    @unique
+  subject       String
+  notBefore     DateTime
+  notAfter      DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  createdAt     DateTime  @default(now())
+
+  @@index([machineId])
+  @@map("machine_certificates")
+  @@schema("public")
+}
+
+model MachineConfiguration {
+  id          String   @id @default(uuid()) @db.Uuid
+  machineId   String   @db.Uuid
+  machine     Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  version     Int
+  payload     Json
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@unique([machineId, version])
+  @@map("machine_configurations")
+  @@schema("public")
+}
+
+model MachineCommand {
+  id          String                 @id @default(uuid()) @db.Uuid
+  tenantId    String                 @db.Uuid
+  machineId   String                 @db.Uuid
+  machine     Machine                @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  /// The id carried on the wire, e.g. "cmd-9281". Unique so a replayed result
+  /// is recognised rather than applied twice (§13).
+  commandId   String                 @unique
+  type        String
+  payload     Json
+  status      machine_command_status @default(pending)
+  issuedAt    DateTime               @default(now())
+  expiresAt   DateTime
+  completedAt DateTime?
+  result      Json?
+
+  @@index([machineId, status])
+  @@map("machine_commands")
+  @@schema("public")
+}
+
+model MachineEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String?  @db.Uuid
+  machineId      String   @db.Uuid
+  machine        Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  type           String
+  payload        Json
+  /// Device-supplied, for deduplicating a replayed offline queue (§10).
+  eventId        String?  @unique
+  sequenceNumber BigInt?
+  occurredAt     DateTime
+  receivedAt     DateTime @default(now())
+
+  @@index([machineId, occurredAt])
+  @@map("machine_events")
+  @@schema("public")
+}
+
+// # Der skal være en tabel til sales events.
+model Sale {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @db.Uuid
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  machineId   String      @db.Uuid
+  machine     Machine     @relation(fields: [machineId], references: [id], onDelete: NoAction)
+  productId   String?     @db.Uuid // SetNull, so a hard delete doesn't erase the sale
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  status      sale_status @default(pending)
+  price       Decimal
+  createdAt   DateTime    @default(now())
+  completedAt DateTime?
+
+  inventoryMovements InventoryMovement[]
+
+  @@index([tenantId])
+  @@index([machineId])
+  @@index([productId])
+  @@map("sales")
+  @@schema("public")
+}
+
+model InventoryMovement {
+  id       String                  @id @default(uuid()) @db.Uuid
+  tenantId String                  @db.Uuid
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slotId   String?                 @db.Uuid
+  slot     Slot?                   @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  type     inventory_movement_type
+  // Signed: +5 for a restock, -1 for a sale. The sum over a slot is its balance.
+  quantity Int
+
+  saleId String? @db.Uuid // set when type = sale
+  sale   Sale?   @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  note       String?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([slotId, occurredAt])
+  @@index([saleId])
+  @@map("inventory_movements")
+  @@schema("public")
+}
+
+model SecurityAlert {
+  id         String     @id @default(uuid()) @db.Uuid
+  machineId  String     @db.Uuid
+  machine    Machine    @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  type       alert_type
+  message    String
+  createdAt  DateTime   @default(now())
+  occurredAt DateTime   @default(now())
+  resolvedAt DateTime?
+
+  @@index([machineId])
+  @@map("security_alerts")
+  @@schema("public")
+}

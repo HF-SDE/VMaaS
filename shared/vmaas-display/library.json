@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-display",
+  "version": "0.1.0",
+  "description": "Grove-LCD RGB Backlight (16x2 I2C LCD + RGB backlight) driver for VMaaS Main-Controller",
+  "keywords": ["lcd", "i2c", "grove", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["grove_lcd_rgb.h", "lcd_port.h", "lcd_error.h", "esp_i2c_port.h"]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@vmaas/shared",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./types": "./types/index.ts",
+    "./types/*": "./types/*.ts",
+    "./schemas": "./schemas/index.ts",
+    "./schemas/*": "./schemas/*.ts",
+    "./lib": "./lib/index.ts",
+    "./lib/*": "./lib/*.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.2"
+  }
+}

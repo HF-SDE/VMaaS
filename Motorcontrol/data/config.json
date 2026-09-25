@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "motor": { "stepsPerVend": 6400 },
+  "slots": [
+    { "slot": 1, "pins": [18] },
+    { "slot": 2, "pins": [19] },
+    { "slot": 3, "pins": [21] },
+    { "slot": 4, "pins": [22] }
+  ]
+}

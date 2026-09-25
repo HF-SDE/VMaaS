@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules
 /.pnp
 .pnp.js
 
@@ -14,10 +15,12 @@
 
 # production
 /build
+*/dist
 
 # misc
 .DS_Store
 *.pem
+.vs
 
 # debug
 npm-debug.log*
@@ -27,6 +30,8 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+*/.env
+*/.env.local
 
 # vercel
 .vercel
@@ -34,3 +39,38 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/generated/prisma
+.agents/**/*
+.claude/**/*
+skills-lock.json
+docs/superpowers/**/*
+CLAUDE.md
+
+config/environment-variables/.env.*.dev*
+config/environment-variables/.env.*.prod*
+!config/environment-variables/.env.*.prod.example
+
+# Production EMQX config rendered from .env.backend.prod (npm run prod:emqx-config)
+config/emqx/prod/
+# Production TLS certificate and ACME webroot
+config/nginx/certs/
+config/nginx/acme/
+
+# doxygen output
+/docs/api/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/
+
+# Local CA material exported for the fake-machine smoke test
+backend/ca.crt
+
+# Per-deployment trust anchor for the device API. A bench or on-premise
+# stack serves its API from a private CA; a production unit must not ship
+# trusting one, so this is never committed.
+Main-Controller/data/api_ca.pem
+
+# local repo stats
+.VSCodeCounter/**
+    

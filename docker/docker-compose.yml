@@ -1,0 +1,241 @@
+name: VMaaS
+
+# Entry point for local development is http://localhost (nginx). It serves the
+# admin frontend on / and proxies /api to the backend, so browser, cookies and
+# CORS all see one origin.
+
+services:
+  backend:
+    container_name: backend
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: base
+    expose:
+      - "5000"
+    ports:
+      - 5000:5000
+    command: ["npm", "run", "dev"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      pki-init:
+        condition: service_completed_successfully
+    env_file:
+      - ../config/environment-variables/.env.backend.dev
+    environment:
+      # Overrides the env_file value — `environment:` wins in Compose. Both
+      # origins are allowed for CORS; the FIRST is canonical, i.e. what every
+      # backend-built link points at (Stripe redirects, invitation emails).
+      # `next dev` on the host is first because that is how the frontend is run
+      # today; put http://localhost first if you serve it through nginx instead.
+      FRONTEND_URL: http://localhost:3000,http://localhost
+      BETTER_AUTH_URL: http://localhost:5000
+      MQTT_URL: mqtts://emqx:8884
+      MQTT_PUBLIC_HOST: localhost
+      MQTT_PUBLIC_PORT: 8883
+      CA_CERT_PATH: /pki/ca.crt
+      CA_KEY_PATH: /pki/ca.key
+      PKI_EXTRA_HOSTS: localhost:18083
+    volumes:
+      - ../backend/src:/usr/src/app/src
+      - ../backend/prisma:/usr/src/app/prisma
+      - ../shared:/usr/src/shared
+      - shared_node_modules:/usr/src/shared/node_modules
+      - pki:/pki:ro
+    networks:
+      - internal
+      - public
+
+  stripe-cli:
+    container_name: stripe-cli
+    image: stripe/stripe-cli:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # The CLI authenticates with the same secret key the backend uses, so no
+      # `stripe login` and no browser flow inside the container. Comes from
+      # .env.backend.dev via --env-file (see the root package.json dev scripts).
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in config/environment-variables/.env.backend.dev}
+      # Names this listener in the Stripe dashboard's CLI list.
+      STRIPE_DEVICE_NAME: vmaas-dev
+    # Forwards straight to the backend container, not through nginx: the webhook
+    # has no session and no CORS to satisfy, so the extra hop buys nothing.
+    command:
+      - listen
+      - --forward-to
+      - http://backend:5000/api/subscriptions/webhook
+      - --all-snapshot
+    restart: unless-stopped
+    networks:
+      # internal reaches the backend, public reaches Stripe.
+      - internal
+      - public
+
+  db:
+    container_name: postgres
+    image: bitnami/postgresql:latest
+    expose:
+      - "5432"
+    ports:
+      - 5432:5432
+    env_file:
+      - ../config/environment-variables/.env.db.dev
+    volumes:
+      - postgres_data:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root", "-d", "vmaas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - public
+      - internal
+
+  pki-init:
+    container_name: pki-init
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: base
+    # Bypasses the backend entrypoint, which would run prisma migrate first.
+    entrypoint: ["npx", "tsx", "tools/pki-init.ts"]
+    environment:
+      PKI_DIR: /pki
+      EMQX_UID: "1000"
+      PKI_EXTRA_HOSTS: ${PKI_EXTRA_HOSTS:-}
+    volumes:
+      - pki:/pki
+      - ../backend/tools:/usr/src/app/tools
+      - ../backend/src:/usr/src/app/src
+      - ../shared:/usr/src/shared
+      - shared_node_modules:/usr/src/shared/node_modules
+    networks:
+      - internal
+
+  emqx:
+    container_name: emqx
+    image: emqx/emqx:5.8
+    ports:
+      - 8883:8883
+      - 18083:18083
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    environment:
+      EMQX_NODE__COOKIE: vmaas-dev-cookie
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD__DEFAULT_PASSWORD:?set EMQX_DASHBOARD__DEFAULT_PASSWORD in config/environment-variables/.env.backend.dev}
+      EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/api_key_bootstrap.txt
+    volumes:
+      - pki:/pki:ro
+      - ../config/emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ../config/emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ../config/emqx/api_key_bootstrap.txt:/opt/emqx/etc/api_key_bootstrap.txt:ro
+      - ../config/emqx/auth-built-in-db-bootstrap.csv:/opt/emqx/etc/auth-built-in-db-bootstrap.csv:ro
+      - emqx_data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+      - public
+
+  admin-frontend:
+    container_name: admin-frontend
+    build:
+      context: ..
+      dockerfile: admin-frontend/Dockerfile
+      target: dev
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - ../config/environment-variables/.env.admin-frontend.dev
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost
+      BACKEND_INTERNAL_URL: http://backend:5000
+      NEXT_TELEMETRY_DISABLED: 1
+      NODE_OPTIONS: --max-old-space-size=1536
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    volumes:
+      - ../admin-frontend:/usr/src/app-src:ro
+      - ../shared:/usr/src/shared-src:ro
+      - admin-frontend_next:/usr/src/app/.next
+      - shared_node_modules:/usr/src/shared/node_modules
+      - ../backend/src:/usr/src/backend/src:ro
+    develop:
+      watch:
+        - action: sync
+          path: ../admin-frontend
+          target: /usr/src/app
+          ignore:
+            - node_modules/
+            - .next/
+        - action: sync
+          path: ../shared
+          target: /usr/src/shared
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ../admin-frontend/package.json
+        - action: rebuild
+          path: ../admin-frontend/package-lock.json
+    networks:
+      - internal
+      - public
+
+  reverse-proxy:
+    container_name: reverse-proxy
+    image: nginx:1.27-alpine
+    ports:
+      - 80:80
+      - 8443:8443
+    depends_on:
+      - backend
+      - admin-frontend
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    volumes:
+      - pki:/pki:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+      - public
+
+networks:
+  public:
+    driver: bridge
+  internal:
+    name: internal
+    internal: true
+
+volumes:
+  postgres_data: {}
+  admin-frontend_next: {}
+  shared_node_modules: {}
+  pki: {}
+  emqx_data: {}
+
+configs:
+  nginx_config:
+    file: ../config/nginx.conf

@@ -1,0 +1,24 @@
+{
+  "version": 4,
+  "device": {
+    "name": "",
+    "machine_id": "6d54cd03-92d5-4932-91fa-97ad622cfe00"
+  },
+  "backend": {
+    "api_base_url": "https://192.168.78.225:8443/api"
+  },
+  "door": {
+    "code": ""
+  },
+  "timings": {
+    "keypad_debounce_ms": 20,
+    "slot_entry_timeout_ms": 10000,
+    "slot_entry_result_hold_ms": 2000,
+    "door_unlock_ms": 500,
+    "dispense_timeout_ms": 30000
+  },
+  "broker": {
+    "host": "192.168.78.225",
+    "port": 8883
+  }
+}
