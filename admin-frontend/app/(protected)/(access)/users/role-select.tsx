@@ -48,7 +48,10 @@ export function RoleSelect({ tenant_roles, member }: RoleSelectProps) {
       defaultValue={member.role.id}
       onValueChange={(value) => value && handleRoleChange(value)}
     >
-      <SelectTrigger className="w-45">
+      <SelectTrigger
+        className="w-45"
+        aria-label={`Role for ${member.user.name}`}
+      >
         <SelectValue placeholder="Role" />
       </SelectTrigger>
       <SelectContent>
