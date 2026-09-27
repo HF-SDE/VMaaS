@@ -64,7 +64,10 @@ export default function RolesPage() {
         </div>
         {/* Hiding one button must not redirect the whole page away. */}
         <Suspense>
-          <RoleGate perms={[PERMISSIONS.ROLE_MANAGE]} performRedirect={false}>
+          <RoleGate
+            perms={[PERMISSIONS.ROLE_MANAGE, PERMISSIONS.ROLE_VIEW]}
+            performRedirect={false}
+          >
             <NewRole />
           </RoleGate>
         </Suspense>
