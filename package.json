@@ -13,7 +13,7 @@
     "build:dev": "docker compose --env-file ./config/environment-variables/.env.backend.dev -f ./docker/docker-compose.yml build",
     "prod:emqx-config": "node config/emqx/render-prod-config.mjs",
     "prod:build": "docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml build",
-    "prod:up": "npm run prod:emqx-config && docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml up -d --build --remove-orphans",
+    "prod:up": "npm run prod:emqx-config && docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml up -d --build --remove-orphans && docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml restart reverse-proxy",
     "prod:down": "docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml down",
     "prod:logs": "docker compose --env-file ./config/environment-variables/.env.backend.prod -f ./docker/docker-compose.prod.yml logs -f --tail=200",
     "seed": "cd backend && npx prisma migrate deploy && npx prisma db seed",

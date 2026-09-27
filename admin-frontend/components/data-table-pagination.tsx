@@ -54,13 +54,13 @@ export function DataTablePagination<TData extends RowData>({
       <div className="min-h-5 flex-1 text-sm text-muted-foreground">
         {selectedRows > 0 && (
           <>
-            {selectedRows} af {filteredRows} række(r) valgt.
+            {selectedRows} of {filteredRows} row(s) selected.
           </>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-4 lg:gap-8">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium">Rækker pr. side</p>
+          <p className="text-sm font-medium">Rows per page</p>
           <Select
             value={`${pageSize}`}
             onValueChange={(value) => {
@@ -71,7 +71,11 @@ export function DataTablePagination<TData extends RowData>({
               value: `${option}`,
             }))}
           >
-            <SelectTrigger size="sm" className="w-17.5">
+            <SelectTrigger
+              size="sm"
+              className="w-17.5"
+              aria-label="Rows per page"
+            >
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
@@ -84,7 +88,7 @@ export function DataTablePagination<TData extends RowData>({
           </Select>
         </div>
         <div className="flex items-center justify-center text-sm font-medium sm:w-25">
-          Side {pageIndex + 1} af {table.getPageCount()}
+          Page {pageIndex + 1} of {table.getPageCount()}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -94,7 +98,7 @@ export function DataTablePagination<TData extends RowData>({
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className="sr-only">Gå til første side</span>
+            <span className="sr-only">Go to first page</span>
             <ChevronsLeft />
           </Button>
           <Button
@@ -103,7 +107,7 @@ export function DataTablePagination<TData extends RowData>({
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
-            <span className="sr-only">Gå til forrige side</span>
+            <span className="sr-only">Go to previous page</span>
             <ChevronLeft />
           </Button>
           <Button
@@ -112,7 +116,7 @@ export function DataTablePagination<TData extends RowData>({
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
-            <span className="sr-only">Gå til næste side</span>
+            <span className="sr-only">Go to next page</span>
             <ChevronRight />
           </Button>
           <Button
@@ -122,7 +126,7 @@ export function DataTablePagination<TData extends RowData>({
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >
-            <span className="sr-only">Gå til sidste side</span>
+            <span className="sr-only">Go to last page</span>
             <ChevronsRight />
           </Button>
         </div>

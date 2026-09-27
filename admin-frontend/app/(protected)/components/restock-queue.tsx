@@ -54,6 +54,7 @@ export async function RestockQueueSection() {
                 </div>
                 <Progress
                   className="mt-2"
+                  aria-label={`Slot ${slot.slotNumber} fill level`}
                   value={(slot.quantity / slot.capacity) * 100}
                 />
               </Link>

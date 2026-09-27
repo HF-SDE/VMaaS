@@ -1,4 +1,4 @@
-import { Suspense } from "react"
+import { cache, Suspense } from "react"
 import Loader from "@/components/loader/loader"
 import { RoleGate } from "@/components/role-gate"
 import { requirePermission } from "@/lib/dal"
@@ -13,8 +13,6 @@ import { UsersDataTable } from "./user-table"
 
 const NO_READ_ACCESS = "You do not have access to members."
 
-export const instant = false
-
 export type TenantRole = {
   id: string
   name: string
@@ -23,11 +21,11 @@ export type TenantRole = {
 
 /** Both the table's Role column and the invite form need the tenant's roles, so
  *  each fetches them behind its own gate — `role:view` can be denied on its own
- *  without taking the member list away. */
-async function fetchTenantRoles() {
+ *  without taking the member list away. `cache` makes it one request. */
+const fetchTenantRoles = cache(async () => {
   const [error, roles] = await fetchData<TenantRole[]>("/api/tenants/roles")
   return error ? undefined : roles
-}
+})
 
 async function InviteMember() {
   const roles = await fetchTenantRoles()

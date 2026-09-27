@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  web:
+  check:
     runs-on: ubuntu-latest
     concurrency:
       group: ci-${{ github.ref }}
@@ -74,7 +74,7 @@ jobs:
   #
   # Set the repository variable DEPLOY_DIR if that clone is not at /srv/vmaas.
   deploy:
-    needs: web
+    needs: check
     runs-on: self-hosted
     # Never cancel a deploy halfway through; queue instead.
     concurrency:
@@ -129,6 +129,10 @@ jobs:
                 *) bad="$bad $service:$state" ;;
               esac
             done
+            # Container health says nothing about nginx reaching its upstreams,
+            # so also go through the proxy the way a browser does. /health
+            # covers nginx -> frontend -> backend in one request.
+            curl -skf -o /dev/null https://localhost/health || bad="$bad https://localhost/health"
             if [ -z "$bad" ]; then
               echo "All services healthy."
               exit 0
