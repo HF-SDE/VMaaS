@@ -5,6 +5,7 @@ import {
   type SaleMapPoint,
 } from "@vmaas/shared/types/sale"
 
+import { Skeleton } from "@/components/ui/skeleton"
 import { requireAccess } from "@/lib/dal"
 import { hasPermission } from "@/lib/permissions"
 import { fetchData } from "@/lib/data/data-fetch"
@@ -15,9 +16,7 @@ import { SalesMapCluster } from "./components/sales-map-cluster"
 import { SalesSummarySection } from "./components/sales-summary"
 import { SectionError } from "./components/section-error"
 
-// The tenant gate below reads the session, which cannot be prerendered into the
-// static shell. Same opt-out the other session-gated pages use.
-export const instant = false
+export const metadata = { title: "Overview" }
 
 /**
  * Problems first, money second: the sections are ordered by how urgent acting on
@@ -26,10 +25,11 @@ export const instant = false
  *
  * Each section sits in its own <Suspense> and reports its own failure inline, so
  * one dead endpoint costs one card rather than the page.
+ *
+ * No page-level gate: every section runs `requireAccess()` inside its own
+ * boundary, so the heading and fallbacks prerender into the static shell.
  */
-export default async function DashboardPage() {
-  await requireAccess()
-
+export default function DashboardPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold">Overview</h1>
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
       {/* The figures first: the whole state of the tenant in one row, before
           any of the queues below ask for a click. */}
       <div className="mt-8">
-        <Suspense fallback={<p>Loading key figures…</p>}>
+        <Suspense fallback={<KpiCardsSkeleton />}>
           <KpiCards />
         </Suspense>
       </div>
@@ -45,11 +45,11 @@ export default async function DashboardPage() {
       {/* Two queues of things to act on — side by side from md up, stacked on
           a phone. */}
       <div className="mt-8 grid items-start gap-8 md:grid-cols-2">
-        <Suspense fallback={<p>Loading alerts…</p>}>
+        <Suspense fallback={<QueueSkeleton />}>
           <NeedsAttentionSection />
         </Suspense>
 
-        <Suspense fallback={<p>Loading the restock queue…</p>}>
+        <Suspense fallback={<QueueSkeleton />}>
           <RestockQueueSection />
         </Suspense>
       </div>
@@ -61,6 +61,32 @@ export default async function DashboardPage() {
       <Suspense fallback={<p>Loading the sales map…</p>}>
         <SalesMapSection />
       </Suspense>
+    </div>
+  )
+}
+
+/*
+ * The skeletons roughly match the size of the content that replaces them. A
+ * one-line "Loading…" collapses the row, and everything below it jumps when the
+ * section streams in, which is what Lighthouse scores as layout shift.
+ */
+function KpiCardsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
+      {Array.from({ length: 4 }, (_, i) => (
+        <Skeleton key={i} className="h-34" />
+      ))}
+      <Skeleton className="col-span-2 h-43" />
+      <Skeleton className="col-span-2 h-43" />
+    </div>
+  )
+}
+
+function QueueSkeleton() {
+  return (
+    <div>
+      <Skeleton className="h-7 w-40" />
+      <Skeleton className="mt-4 h-120" />
     </div>
   )
 }

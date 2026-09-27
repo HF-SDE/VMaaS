@@ -97,11 +97,13 @@ function uniqueOptions(entries: { value: string; label: string }[]) {
 // ---------------------------------------------------------------------------
 
 function FilterSelect({
+  label,
   placeholder,
   value,
   options,
   onChange,
 }: {
+  label: string
   placeholder: string
   value: string
   options: { value: string; label: string }[]
@@ -115,7 +117,7 @@ function FilterSelect({
       value={value}
       onValueChange={(next) => onChange(next ?? ALL)}
     >
-      <SelectTrigger size="sm" className="min-w-36">
+      <SelectTrigger size="sm" className="min-w-36" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -270,12 +272,14 @@ export function SalesDataTable({ sales }: { sales: SalesResponse[] }) {
       </div>
 
       <FilterSelect
+        label="Filter by status"
         placeholder="All statuses"
         value={status}
         options={statusOptions}
         onChange={setStatus}
       />
       <FilterSelect
+        label="Filter by site"
         placeholder="All sites"
         value={siteId}
         options={siteOptions}
@@ -286,6 +290,7 @@ export function SalesDataTable({ sales }: { sales: SalesResponse[] }) {
         }}
       />
       <FilterSelect
+        label="Filter by machine"
         placeholder="All machines"
         value={machineId}
         options={machineOptions}
