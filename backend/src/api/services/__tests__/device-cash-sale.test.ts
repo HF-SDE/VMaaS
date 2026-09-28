@@ -146,6 +146,48 @@ describe("recordDeviceEventService, cash_sale", () => {
     expect(tx.sale.create).not.toHaveBeenCalled();
   });
 
+  // The shape Prisma 7 actually throws through @prisma/adapter-pg: no
+  // meta.target, the constraint sits under meta.driverAdapterError instead
+  // (adapter-pg maps Postgres 23505 to { index: error.constraint }). Found on
+  // the bench: one sale whose 201 the device never saw was answered 500 on
+  // every retry, and every later sale queued behind it.
+  it("answers a replayed eventId as a duplicate when the error comes from the pg driver adapter", async () => {
+    const { tx, db } = fakeDb();
+    const duplicate = Object.assign(new Error("Unique constraint failed on the constraint: `machine_events_eventId_key`"), {
+      code: "P2002",
+      meta: {
+        modelName: "MachineEvent",
+        driverAdapterError: {
+          cause: { kind: "UniqueConstraintViolation", constraint: { index: "machine_events_eventId_key" } },
+        },
+      },
+    });
+    tx.machineEvent.create.mockRejectedValueOnce(duplicate);
+
+    const [error, result] = await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(error).toBeNull();
+    expect(result).toMatchObject({ duplicate: true });
+    expect(tx.sale.create).not.toHaveBeenCalled();
+  });
+
+  it("still fails on a unique violation of some other index", async () => {
+    const { tx, db } = fakeDb();
+    const other = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002",
+      meta: {
+        driverAdapterError: {
+          cause: { kind: "UniqueConstraintViolation", constraint: { index: "machine_events_other_key" } },
+        },
+      },
+    });
+    tx.machineEvent.create.mockRejectedValueOnce(other);
+
+    const [error] = await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(error?.reason).toBe("UNKNOWN_ERROR");
+  });
+
   it("rejects a payload that is not a cash sale shape", async () => {
     const { tx, db } = fakeDb();
     const bad = completedEvent() as unknown as { payload: Record<string, unknown> };
