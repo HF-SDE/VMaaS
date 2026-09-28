@@ -55,7 +55,7 @@ export async function NeedsAttentionSection() {
           {summary.recent.map((alert) => (
             <AlertRow key={alert.id}>
               <Link
-                href={`/history?machineIds=${alert.machineId}`}
+                href={`/machines/alerts`}
                 className="min-w-0 flex-1 hover:underline"
               >
                 <span className="font-medium">{TYPE_LABELS[alert.type]}</span> ·{" "}

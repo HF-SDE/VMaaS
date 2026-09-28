@@ -1,5 +1,6 @@
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib";
-import { cashSalePayloadSchema } from "@vmaas/shared/schemas";
+import { DeviceEvent, cashSalePayloadSchema } from "@vmaas/shared/schemas";
 
 import type { MachineContext } from "@/api/middleware/require-machine";
 import { Prisma } from "@/generated/prisma/client";
@@ -81,6 +82,8 @@ export async function getDeviceConfigurationService(
 
     return ok(configuration);
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "reading the configuration" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while reading the configuration.",
@@ -135,6 +138,8 @@ export async function recordCommandResultService(
 
     return ok({ applied: true });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "recording the result" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while recording the result.",
@@ -160,9 +165,7 @@ export async function recordDeviceEventService(
   >
 > {
   const occurredAt =
-    input.occurredAt !== undefined
-      ? new Date(input.occurredAt)
-      : new Date(Date.now() - (input.uptimeMs ?? 0));
+    input.occurredAt !== undefined ? new Date(input.occurredAt) : new Date(Date.now() - (input.uptimeMs ?? 0));
   if (input.type === "cash_sale") {
     const parsed = cashSalePayloadSchema.safeParse(input.payload);
     if (!parsed.success) {
@@ -222,7 +225,7 @@ export async function recordDeviceEventService(
               completedAt: cash.status === "completed" ? occurredAt : null,
             },
           })) as { id: string };
-          
+
           if (cash.status === "completed" && slot) {
             await tx.slot.update({
               where: { id: slot.id },
@@ -246,6 +249,7 @@ export async function recordDeviceEventService(
         }),
       );
     } catch (cause) {
+      Sentry.captureException(cause, { tags: { service: "device", action: "recording the cash sale" } });
       console.error("[device.service] recording the cash sale failed", cause);
       return err({
         reason: "UNKNOWN_ERROR",
@@ -273,6 +277,8 @@ export async function recordDeviceEventService(
       return ok({ stored: false });
     }
 
+    Sentry.captureException(error, { tags: { service: "device", action: "storing the event" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while storing the event.",
@@ -291,13 +297,7 @@ export async function recordDeviceEventService(
 export async function recordDeviceEventsService(
   db: DeviceDb,
   machine: MachineContext,
-  events: {
-    type: string;
-    payload: Record<string, unknown>;
-    eventId?: string;
-    sequenceNumber?: number;
-    occurredAt: string;
-  }[],
+  events: DeviceEvent[],
 ): Promise<Result<UnknownDeviceError, { received: number; stored: number }>> {
   try {
     const { count } = await db.machineEvent.createMany({
@@ -308,13 +308,15 @@ export async function recordDeviceEventsService(
         payload: event.payload,
         eventId: event.eventId ? `${machine.id}:${event.eventId}` : undefined,
         sequenceNumber: event.sequenceNumber,
-        occurredAt: new Date(event.occurredAt),
+        occurredAt: new Date(event.occurredAt ?? Date.now() - (event.uptimeMs ?? 0)),
       })),
       skipDuplicates: true,
     });
 
     return ok({ received: events.length, stored: count });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "storing the events" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while storing the events.",
@@ -362,6 +364,8 @@ export async function renewCertificateService(
       });
     });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "device", action: "rotating the certificate" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while rotating the certificate.",

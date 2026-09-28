@@ -34,7 +34,10 @@ export function AlertRow({ alert }: { alert: MachineAlertRow }) {
 
   return (
     <AccordionItem value={alert.id} className="border-b last:border-b-0">
-      <AccordionTrigger className="px-3 py-3 hover:bg-muted/50 hover:no-underline sm:px-4">
+      <AccordionTrigger
+        headerRender={<h2 />}
+        className="px-3 py-3 hover:bg-muted/50 hover:no-underline sm:px-4"
+      >
         {/* Mobile: stacked. The grid below takes over at md. */}
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 md:hidden">
           <div className="flex items-start justify-between gap-3">

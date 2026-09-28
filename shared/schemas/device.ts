@@ -47,6 +47,8 @@ const deviceEventBody = z
 
 export const deviceEventSchema = z.object({ body: deviceEventBody });
 
+export type DeviceEvent = z.infer<typeof deviceEventSchema>["body"];
+
 /**
  * A machine draining its offline journal. Capped at 50 because the batch is
  * stored in one statement and `express.json()` takes 100 KB by default; a

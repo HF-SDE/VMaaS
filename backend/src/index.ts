@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/node";
+
 import { alertsRouter } from "@/api/routes/alerts.route";
 import { deviceRouter } from "@/api/routes/device.route";
 import { internalRouter } from "@/api/routes/internal.route";
@@ -23,6 +25,7 @@ import http from "http";
 
 import { meRouter } from "./api/routes/me.route";
 import { testRouter } from "./api/routes/test.route";
+import "./lib/instrument";
 
 const app = express();
 
@@ -72,6 +75,8 @@ app.use("/api", api);
 
 const server = http.createServer(app);
 attachWebSocketServer(server);
+
+Sentry.setupExpressErrorHandler(app);
 
 server.listen(config.PORT, () => {
   console.log(`Server listening on port ${config.PORT}`);

@@ -7,12 +7,12 @@ import { PERMISSIONS } from "@vmaas/shared/types/permissions"
 
 import { MachineAlertLogs } from "./components/machine-alert-logs"
 import { SessionProvider } from "@/lib/session-provider"
-import { getSession } from "@/lib/dal"
+import { requirePermission } from "@/lib/dal"
 
 /**
- * The gate here is UI only. `MachineAlertLogs` fetches from the browser, so
- * there is no server data loader to guard with `requirePermission` — the
- * endpoint re-checks `alert:read` and tenant membership on every request.
+ * `MachineAlertLogs` fetches from the browser, so `ProvideSession` is the
+ * page's gate — the endpoint still re-checks `alert:read`, tenant membership
+ * and the subscription on every request.
  */
 export default async function AlertLogsPage() {
   return (
@@ -44,13 +44,9 @@ export default async function AlertLogsPage() {
 }
 
 async function ProvideSession({ children }: { children: React.ReactNode }) {
-  const session = await getSession(true)
+  // requirePermission, not getSession: it also enforces the onboarding and
+  // billing gates, so a locked organization is sent to /billing/locked.
+  const session = await requirePermission(PERMISSIONS.ALERT_READ)
 
-  return (
-    <Suspense fallback={<Loader />}>
-      <RoleGate perms={[PERMISSIONS.ALERT_READ]}>
-        <SessionProvider session={session}>{children}</SessionProvider>
-      </RoleGate>
-    </Suspense>
-  )
+  return <SessionProvider session={session}>{children}</SessionProvider>
 }

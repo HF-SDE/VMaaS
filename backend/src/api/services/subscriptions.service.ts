@@ -1,6 +1,7 @@
 import { type Subscription, type subscription_plan, type subscription_status } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 
 /**
@@ -32,7 +33,7 @@ export function grantsAccess(status: subscription_status): boolean {
 export const TRIAL_PERIOD_DAYS = 30;
 
 function unknownError(action: string, cause: unknown): Result<UnknownSubscriptionError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "subscriptions", action } });
   console.error(`[subscriptions.service] ${action} failed`, cause);
 
   return err({

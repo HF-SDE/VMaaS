@@ -1,6 +1,7 @@
 import { Prisma, type Site } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import {
@@ -63,7 +64,7 @@ const SITE_NOT_FOUND: SiteNotFoundError = {
  * is logged here so the caller only has to render one generic failure.
  */
 function unknownError(action: string, cause: unknown): Result<UnknownSiteError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "sites", action } });
   console.error(`[sites.service] ${action} failed`, cause);
 
   return err({

@@ -92,7 +92,13 @@ export async function KpiCards() {
   const lowStock = lowStockResult?.[1] ?? null
   const sales = salesResult?.[1] ?? null
 
-  const { online, offline, error: errored, neverSeen, needsService } = machineCounts(machines)
+  const {
+    online,
+    offline,
+    error: errored,
+    neverSeen,
+    needsService,
+  } = machineCounts(machines)
   const empty = lowStock?.filter((s) => s.quantity === 0).length ?? 0
 
   return (
@@ -109,7 +115,7 @@ export async function KpiCards() {
               ? `${alerts.openByType.tamper} tamper · ${alerts.openByType.offline} offline · ${alerts.openByType.error} error`
               : "Couldn't load alerts."
           }
-          href="/history"
+          href="/machines/alerts"
         />
       )}
 

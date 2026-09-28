@@ -3,6 +3,7 @@ import { config } from "@/lib/config";
 import { prisma } from "@/lib/prisma";
 import { STRIPE_PRICE_IDS, stripe } from "@/lib/stripe";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { SubscriptionPlan } from "@vmaas/shared/schemas";
 import type { TenantInvoice, TenantInvoicePage } from "@vmaas/shared/types/invoice";
@@ -42,7 +43,7 @@ export type UnknownTenantError = { reason: "UNKNOWN_TENANT"; message: string };
 const INTEGRATION_IDENTIFIER = "vmaas-tenant-billing-qwrtkzpm";
 
 function unknownError(action: string, cause: unknown): Result<UnknownBillingError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "billing", action } });
   console.error(`[billing.service] ${action} failed`, cause);
 
   return err({ reason: "UNKNOWN_ERROR", message: `An unknown error occurred while ${action}.` });

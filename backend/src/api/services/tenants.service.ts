@@ -3,6 +3,7 @@ import { invitationUrl, sendInvitationEmail } from "@/lib/emails";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_TENANT_ROLES, createRolesWithPermissions, listTenantsForUser } from "@/lib/rbac";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import { type GetMembersParams, MEMBER_SORT_FIELDS, type MemberSortField } from "@vmaas/shared/types/member";
@@ -65,7 +66,7 @@ function isSortField(value: string): value is MemberSortField {
  *  reaches the response; it is logged here so the caller only has to render one
  *  generic failure. */
 function unknownError(action: string, cause: unknown): Result<UnknownMemberError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "tenants", action } });
   console.error(`[tenants.service] ${action} failed`, cause);
 
   return err({
@@ -266,8 +267,7 @@ export async function inviteMemberService(
     return ok(invite);
   } catch (error) {
     if (error instanceof InviteEmailFailure) {
-      // TODO: capture sentry error
-      console.error(`[tenants.service] inviting ${normalisedEmail} failed to send`, error);
+      Sentry.captureException(error, { tags: { service: "tenants", action: "inviting the member" } });
 
       return err({
         reason: "INVITE_EMAIL_FAILED",

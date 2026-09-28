@@ -1,6 +1,7 @@
 import { type Prisma, type Slot, inventory_movement_type } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import {
   LOW_STOCK_LIMIT,
@@ -56,6 +57,7 @@ class SlotWriteRejected extends Error {
 }
 
 function unknownError(action: string, cause: unknown): Result<UnknownSlotError, never> {
+  Sentry.captureException(cause, { tags: { service: "slots", action } });
   console.error(`[slots.service] ${action} failed`, cause);
 
   return err({
@@ -210,7 +212,7 @@ export async function getLowStockSlotsService(tenantId: string): Promise<Result<
 
     return ok(selectLowStockSlots(rows));
   } catch (error) {
-    // TODO: capture sentry error
+    Sentry.captureException(error, { tags: { service: "slots", action: "listing low stock" } });
     console.error("[slots.service] listing low stock failed", error);
 
     return err({

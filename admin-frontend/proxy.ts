@@ -24,6 +24,6 @@ export const config = {
     // extension; routes don't). next/image refetches the source image from this
     // same server, so redirecting it to /login hands the optimizer an HTML page
     // and it answers 400 "not a valid image".
-    "/((?!api|_next/static|_next/image|favicon.ico|login|sign-up|invite|welcome|verify-email|forgot-password|reset-password|.*\\..*).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|login|sign-up|invite|welcome|verify-email|forgot-password|reset-password|health|.*\\..*).*)",
   ],
 }

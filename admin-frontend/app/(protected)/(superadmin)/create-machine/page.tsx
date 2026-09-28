@@ -80,25 +80,27 @@ async function MachinesList() {
   return (
     <ItemGroup className="max-w-2xl gap-2">
       {machines.map((machine) => (
-        <Item
-          key={machine.id}
-          variant="outline"
-          render={<Link href={`/machine-layout/${machine.id}`} />}
-        >
-          <ItemMedia variant="icon">
-            <Blocks />
-          </ItemMedia>
-          <ItemContent>
-            <ItemTitle>{machine.name}</ItemTitle>
-            <ItemDescription>
-              {machine.site?.name ?? "—"} ·{" "}
-              {slotCountLabel(machine.slots.length)}
-            </ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </ItemActions>
-        </Item>
+        // ItemGroup is role="list", so the link needs a listitem wrapper.
+        <div key={machine.id} role="listitem">
+          <Item
+            variant="outline"
+            render={<Link href={`/machine-layout/${machine.id}`} />}
+          >
+            <ItemMedia variant="icon">
+              <Blocks />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>{machine.name}</ItemTitle>
+              <ItemDescription>
+                {machine.site?.name ?? "—"} ·{" "}
+                {slotCountLabel(machine.slots.length)}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </ItemActions>
+          </Item>
+        </div>
       ))}
     </ItemGroup>
   )

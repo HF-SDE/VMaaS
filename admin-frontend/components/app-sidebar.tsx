@@ -339,13 +339,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Link href="/" className="h-max items-center">
             <h1 className="text-lg font-bold">VMaaS</h1>
           </Link>
-          <Link href="/account" className="flex h-max items-center gap-2">
-            {subscriptionStatus === "trialing" && (
+          {subscriptionStatus === "trialing" && (
+            <Link href="/account" className="flex h-max items-center gap-2">
               <Badge variant="outline" className="text-xs outline-1">
                 Trial
               </Badge>
-            )}
-          </Link>
+            </Link>
+          )}
         </div>
         <TeamSwitcher />
         {process.env["NEXT_PUBLIC_APP_VERSION"] && (

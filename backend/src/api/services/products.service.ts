@@ -1,6 +1,7 @@
 import { Prisma, type Product } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import {
@@ -48,7 +49,7 @@ const PRODUCT_NOT_FOUND: ProductNotFoundError = {
  * is logged here so the caller only has to render one generic failure.
  */
 function unknownError(action: string, cause: unknown): Result<UnknownProductError, never> {
-  // TODO: capture sentry error
+  Sentry.captureException(cause, { tags: { service: "products", action } });
   console.error(`[products.service] ${action} failed`, cause);
 
   return err({

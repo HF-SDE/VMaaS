@@ -1,0 +1,38 @@
+{
+  // Open this file (File > Open Workspace from File) instead of the repo folder.
+  // The PlatformIO extension only recognises a project whose platformio.ini
+  // sits at the root of a workspace folder, so each firmware project and each
+  // shared library with host tests is listed as a folder of its own. Switch
+  // between them with the project picker in the PlatformIO status bar.
+  "folders": [
+    { "name": "VMaaS (repo root)", "path": "." },
+    { "name": "fw: Main-Controller", "path": "Main-Controller" },
+    { "name": "fw: Motorcontrol", "path": "Motorcontrol" },
+    { "name": "tool: i2c-scan", "path": "tools/i2c-scan" },
+    { "name": "tool: keypad-discover", "path": "tools/keypad-discover" },
+    { "name": "tool: motor-test", "path": "tools/motor-test" },
+    { "name": "lib: vmaas-coin", "path": "shared/vmaas-coin" },
+    { "name": "lib: vmaas-config", "path": "shared/vmaas-config" },
+    { "name": "lib: vmaas-display", "path": "shared/vmaas-display" },
+    { "name": "lib: vmaas-entry", "path": "shared/vmaas-entry" },
+    { "name": "lib: vmaas-events", "path": "shared/vmaas-events" },
+    { "name": "lib: vmaas-keypad", "path": "shared/vmaas-keypad" },
+    { "name": "lib: vmaas-motor", "path": "shared/vmaas-motor" },
+    { "name": "lib: vmaas-protocol", "path": "shared/vmaas-protocol" },
+    { "name": "lib: vmaas-purchase", "path": "shared/vmaas-purchase" }
+  ],
+  "settings": {
+    // Keep build output and downloaded ESP-IDF components out of the explorer
+    // and out of search results.
+    "files.exclude": {
+      "**/.pio": true
+    },
+    "search.exclude": {
+      "Main-Controller/managed_components": true,
+      "Motorcontrol/managed_components": true
+    }
+  },
+  "extensions": {
+    "recommendations": ["platformio.platformio-ide"]
+  }
+}

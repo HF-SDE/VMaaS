@@ -47,7 +47,12 @@ export function MachineAlertLogs() {
           dateFrom: f.dateFrom ?? undefined,
           dateTo: f.dateTo ?? undefined,
         })
-        if (error) return
+        // Stop paging: with `hasMore` still true the visible sentinel would
+        // refire the request every time `loading` settles, forever.
+        if (error) {
+          setHasMore(false)
+          return
+        }
 
         setAlerts((prev) => (append ? [...prev, ...value.data] : value.data))
         // The endpoint answers `pageCount`, not `hasMore` — a page past the last

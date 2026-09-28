@@ -1,0 +1,2658 @@
+openapi: 3.0.3
+info:
+  title: VMaaS Backend API
+  version: 1.0.0
+  description: |
+    Endpoint-reference for `backend/`, genereret ud fra [docs/api-endpoints.md](./api-endpoints.md).
+    Hvis denne fil og koden er uenige, er det koden der gælder – opdatér begge filer.
+
+    **Format**
+    - Request- og response-bodies er JSON. Undtagelser: Stripe-webhooken (rå body) og
+      `DELETE /tenants/members/{userId}` (tomt `204`-svar).
+    - Datoer er ISO 8601-strenge. Prisma `Decimal`-felter (`price`, `latitude`, `longitude`)
+      serialiseres som **strenge**, fx `"12.5"` – undtagen i `/sales/map` og `/sales/summary`.
+    - Fejl har formen `{ "error": "<besked>" }`, medmindre andet står ved endpointet.
+
+    **Autentificering**
+    - Log ind via `POST /auth/sign-in/email`. Better Auth sætter session-cookien
+      `better-auth.session_token`, som Postman/browseren sender med automatisk.
+    - Tenant vælges med headeren `X-Tenant-Id`, ellers bruges sessionens `activeTenantId`.
+    - Device-routes (`/device/*` undtagen `/device/activate`) kræver klientcertifikat via
+      nginx på `:8443` (mTLS). Konfigurér certifikatet i Postman under *Settings → Certificates*.
+    - Internal-routes kræver headeren `X-Internal-Secret`.
+
+    **Middleware-fejl** (gælder alle endpoints med den pågældende middleware)
+    | Middleware | Fejl |
+    | --- | --- |
+    | `requireAuth` | `401 { "error": "Unauthorized" }` |
+    | `requireTenant` | `400 { "error": "No tenant selected" }`, `403 { "error": "Not a member of this tenant" }` |
+    | `requirePermission(p)` | `403 { "error": "Missing permission: <p>" }` |
+    | `requireSuperAdmin` | `403 { "error": "Not a super admin" }` |
+    | `requireSubscription` | `402 { "error": "This organization does not have an active subscription." }`, `503 { "error": "Could not verify the subscription for this organization." }` |
+    | `requireMachine` | `401 { "error": "Client certificate required" }` |
+    | `requireInternalSecret` | `401 { "result": "deny" }` |
+
+    **Uhåndterede fejl.** Der er ingen global error handler. Fejler en controller, svarer
+    Express med `500` og en **HTML-body**, ikke JSON.
+
+    **Rate limiting.** `RATE_LIMIT_COUNT` (default 1000) requests pr. `RATE_LIMIT_RESET_MINUTES`
+    (default 5) pr. IP. `POST /device/activate`: yderligere 20 pr. 15 minutter. Overskredet: `429`.
+servers:
+  - url: http://localhost:5000/api
+    description: Lokal backend (direkte)
+  - url: https://localhost:8443/api
+    description: nginx mTLS (device-routes)
+  - url: "{baseUrl}/api"
+    description: Valgfri server
+    variables:
+      baseUrl:
+        default: http://localhost:5000
+
+tags:
+  - name: Health
+  - name: Auth
+    description: Better Auth + vores multi-tenant-plugin
+  - name: Me
+  - name: Tenants
+  - name: Machines (superadmin)
+  - name: Machines
+  - name: Products
+  - name: Sites
+  - name: Slots
+  - name: Sales
+  - name: Alerts
+  - name: Subscriptions
+  - name: Device
+    description: Kaldes af maskinernes firmware. Maskinen udledes af klientcertifikatet.
+  - name: Internal
+    description: Kaldes kun af MQTT-brokeren (EMQX) på det interne netværk.
+  - name: WebSocket
+
+security:
+  - sessionCookie: []
+
+paths:
+  # ───────────────────────────── Health ─────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  # ───────────────────────────── Auth ─────────────────────────────
+  /auth/sign-up/email:
+    post:
+      tags: [Auth]
+      summary: Opret bruger (Better Auth)
+      description: Håndteres af Better Auth – se https://www.better-auth.com/docs. Fejl har formen `{ "code", "message" }`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                name: { type: string }
+      responses:
+        "200": { description: "Bruger oprettet, session-cookie sat" }
+        default: { $ref: "#/components/responses/BetterAuthError" }
+  /auth/sign-in/email:
+    post:
+      tags: [Auth]
+      summary: Log ind (Better Auth)
+      description: Sætter session-cookien `better-auth.session_token`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                rememberMe: { type: boolean }
+      responses:
+        "200": { description: "Logget ind, session-cookie sat" }
+        default: { $ref: "#/components/responses/BetterAuthError" }
+  /auth/sign-out:
+    post:
+      tags: [Auth]
+      summary: Log ud (Better Auth)
+      responses:
+        "200": { description: Logget ud }
+        default: { $ref: "#/components/responses/BetterAuthError" }
+  /auth/get-session:
+    get:
+      tags: [Auth]
+      summary: Hent nuværende session (Better Auth)
+      responses:
+        "200": { description: "Sessionen og brugeren, eller `null`" }
+  /auth/tenant/switch:
+    post:
+      tags: [Auth]
+      summary: Skift aktiv tenant
+      description: Skifter sessionens aktive tenant. `null` fjerner den aktive tenant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId]
+              properties:
+                tenantId: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Opdateret – og en ny session-cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activeTenantId: { type: string, nullable: true }
+        "401": { description: Ingen session }
+        "403":
+          description: Ikke medlem af tenanten
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BetterAuthError" }
+              example: { message: You are not a member of this tenant. }
+        "500":
+          description: Sessionen kunne ikke opdateres
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BetterAuthError" }
+              example: { message: Failed to update session }
+  /auth/tenant/mine:
+    get:
+      tags: [Auth]
+      summary: Mine tenants
+      description: Superadmins får alle tenants.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items: { $ref: "#/components/schemas/Tenant" }
+        "401": { description: Ingen session }
+
+  # ───────────────────────────── Me ─────────────────────────────
+  /me:
+    put:
+      tags: [Me]
+      summary: Opdatér eget navn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100, description: Trimmes }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────────── Tenants ─────────────────────────────
+  /tenants:
+    get:
+      tags: [Tenants]
+      summary: Tenants brugeren er medlem af
+      description: "**Auth.** Superadmins får alle tenants, sorteret efter navn."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tenant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Tenants]
+      summary: Opret tenant
+      description: |
+        **Auth.** Brugeren bliver ejer (`owner`-rollen), standardrollerne oprettes, og tenanten
+        får et abonnement med status `pending`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, description: Trimmes }
+      responses:
+        "201":
+          description: Oprettet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+        "400":
+          description: Manglende navn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: name is required }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500":
+          description: Owner-rollen er ikke seedet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Owner role is not seeded }
+
+  /tenants/members:
+    get:
+      tags: [Tenants]
+      summary: Alle medlemskaber i tenanten
+      description: "**Auth · Tenant · `user:view`.** Én række pr. `UserRole`, så en bruger med to roller giver to rækker."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Member" }
+        "400": { $ref: "#/components/responses/NoTenant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Tenants]
+      summary: Invitér medlem via email
+      description: |
+        **Auth · Tenant · `user:manage`.** Invitationen og mailen skrives i samme transaktion –
+        fejler mailen, oprettes der ingen invitation.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, description: Navnet på en rolle i tenanten }
+      responses:
+        "201":
+          description: Invitation oprettet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantInvite" }
+        "400": { description: Rollen findes ikke, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Allerede medlem, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: Mailen kunne ikke sendes – sikkert at prøve igen, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "500": { description: "`An unknown error occurred while inviting the member`, eller uhåndteret ved ugyldig body (HTML)" }
+
+  /tenants/members/paginated:
+    get:
+      tags: [Tenants]
+      summary: Medlemmer (pagineret)
+      description: "**Auth · Tenant · `user:view`.** `search` matcher navn og email."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: sortBy
+          in: query
+          schema: { type: string, enum: [name, email, role, createdAt], default: name }
+        - name: sortOrder
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedMeta"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Member" }
+        "400":
+          description: "Valideringsfejl – **andet format**: `{ error: <Zod treeifyError-objekt> }`"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /tenants/roles:
+    get:
+      tags: [Tenants]
+      summary: Tenantens roller
+      description: "**Auth · Tenant · `role:view`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Tenants]
+      summary: Opret rolle
+      description: "**Auth · Tenant · `role:manage`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, description: Trimmes og lowercases }
+                permissions:
+                  type: array
+                  default: []
+                  items: { $ref: "#/components/schemas/Permission" }
+      responses:
+        "201":
+          description: Den oprettede rolle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { description: Uhåndteret ved ugyldig body (HTML) }
+
+  /tenants/roles/{roleId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: roleId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Tenants]
+      summary: Opdatér rolle
+      description: "**Auth · Tenant · `role:manage`.**"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1 }
+                permissions:
+                  type: array
+                  items: { $ref: "#/components/schemas/Permission" }
+      responses:
+        "200": { $ref: "#/components/responses/Message" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { description: Uhåndteret ved ugyldig body (HTML) }
+    delete:
+      tags: [Tenants]
+      summary: Slet rolle
+      description: "**Auth · Tenant · `role:manage`.**"
+      responses:
+        "200": { $ref: "#/components/responses/Message" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Rollen er tildelt medlemmer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: This role is assigned to members and cannot be deleted }
+
+  /tenants/members/{userId}/role:
+    put:
+      tags: [Tenants]
+      summary: Skift et medlems rolle
+      description: |
+        **Auth · Tenant · `user:manage`.** Svarer `200` også hvis brugeren ikke er medlem.
+        Ukendt rolle kastes som Better Auth `APIError` og ender i Express' default handler (ikke JSON).
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roleName]
+              properties:
+                roleName: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Message" }
+        "400": { description: Ukendt rolle (ikke JSON) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/members/{userId}:
+    delete:
+      tags: [Tenants]
+      summary: Fjern medlem
+      description: "**Auth · Tenant · `user:manage`.** Fjerner alle brugerens roller i tenanten."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "204": { description: Fjernet (tom body) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Sidste ejer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Cannot remove the last owner of a tenant }
+
+  /tenants/invites/{inviteId}:
+    get:
+      tags: [Tenants]
+      summary: Læs invitation
+      description: |
+        **Auth.** Kræver kun login – ikke medlemskab. En invitation til en anden email giver
+        stadig `200`, med `matchesViewer: false`.
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InviteDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { description: "`An unknown error occurred while loading the invitation`, eller uhåndteret ved ugyldigt uuid (HTML)" }
+
+  /tenants/invites/{inviteId}/respond:
+    post:
+      tags: [Tenants]
+      summary: Acceptér eller afvis invitation
+      description: "**Auth.**"
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [accepted, rejected] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenantId: { type: string }
+                  message: { type: string, enum: [Invitation accepted, Invitation declined] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Logget ind som en anden email end den inviterede, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Udløbet eller allerede besvaret, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "500": { description: "`An unknown error occurred while responding to the invitation`, eller uhåndteret ved ugyldig input (HTML)" }
+
+  # ───────────────────────────── Machines (superadmin) ─────────────────────────────
+  /machines/without-tenant:
+    get:
+      tags: [Machines (superadmin)]
+      summary: Maskiner uden tenant
+      description: "**Auth · SuperAdmin.**"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MachineWithoutTenant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /machines/without-tenant/{id}:
+    get:
+      tags: [Machines (superadmin)]
+      summary: Maskine uden tenant
+      description: "**Auth · SuperAdmin.** Slots sorteret efter `slotNumber`."
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MachineWithoutTenant" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/save-slot-layout:
+    post:
+      tags: [Machines (superadmin)]
+      summary: Gem slot-layout
+      description: |
+        **Auth · SuperAdmin.** Slots uden `id` oprettes, slots med `id` opdateres, og gemte slots der
+        ikke er med, slettes. Valideringen afviser layouts hvor slots ligger uden for gitteret, har
+        duplikerede `slotNumber`/`id`, overlapper, eller har tom plads under sig.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineId, columns, rows, slots]
+              properties:
+                machineId: { type: string, format: uuid }
+                columns: { type: integer, minimum: 1 }
+                rows: { type: integer, minimum: 1 }
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    required: [slotNumber, beginX, endX, beginY, endY, capacity]
+                    properties:
+                      id: { type: string, format: uuid, description: Udelades for nye slots }
+                      slotNumber: { type: integer }
+                      beginX: { type: integer, minimum: 0 }
+                      endX: { type: integer, minimum: 0, description: "≥ beginX" }
+                      beginY: { type: integer, minimum: 0 }
+                      endY: { type: integer, minimum: 0, description: "≥ beginY" }
+                      capacity: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Slot" }
+        "400": { description: "Valideringsfejl, eller `One or more slots do not belong to this machine`", content: { application/json: { schema: { $ref: "#/components/schemas/ValidationError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Machines ─────────────────────────────
+  /machines:
+    get:
+      tags: [Machines]
+      summary: Alle maskiner
+      description: "**Auth · Tenant · Subscription · `machine:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MachineListItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Machines (superadmin)]
+      summary: Opret maskine
+      description: "**Auth · SuperAdmin.** Opretter en maskine uden tenant og site. Serienummeret genereres (`VM-…`)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, description: Trimmes }
+      responses:
+        "201":
+          description: Oprettet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Machine" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/paginated:
+    get:
+      tags: [Machines]
+      summary: Maskiner (pagineret)
+      description: "**Auth · Tenant · Subscription · `machine:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: sortBy
+          in: query
+          schema: { type: string, enum: [name, site, status, createdAt], default: createdAt }
+        - $ref: "#/components/parameters/SortOrderDesc"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedMeta"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MachineListItem" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/simple-search:
+    get:
+      tags: [Machines]
+      summary: Søg maskiner (picker)
+      description: "**Auth · Tenant · Subscription · `machine:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SearchRequired"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    site: { $ref: "#/components/schemas/SimpleSite" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/claim:
+    post:
+      tags: [Machines]
+      summary: Claim maskine
+      description: |
+        **Auth · Tenant · Subscription · `machine:write`.** Administratorens del af aktiveringen:
+        binder maskinen til tenant og site og returnerer en engangskode, der tastes ind på maskinen.
+        Koden vises kun her og udløber efter `ACTIVATION_CODE_TTL_MINUTES` (default 60).
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serialNumber, siteId]
+              properties:
+                serialNumber: { type: string, minLength: 1, description: Trimmes }
+                siteId: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Claimet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  machineId: { type: string, format: uuid }
+                  oneTimeCode: { type: string, description: 8 cifre, example: "12345678" }
+                  expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "`No machine has that serial number` eller `The site does not exist for this tenant`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409":
+          description: Allerede claimet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: The machine is already claimed }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Machines]
+      summary: Hent maskine
+      description: "**Auth · Tenant · Subscription · `machine:read`.**"
+      parameters:
+        - name: days
+          in: query
+          description: KPI-vindue, clampes til 1–365
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MachineDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    patch:
+      tags: [Machines]
+      summary: Opdatér maskine
+      description: "**Auth · Tenant · Subscription · `machine:write`.** Mindst ét felt."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 1, description: Trimmes }
+                siteId: { type: string, format: uuid, description: Kan ikke være null }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MachineDetail" }
+        "400": { description: "Valideringsfejl, eller `The selected site does not exist`", content: { application/json: { schema: { $ref: "#/components/schemas/ValidationError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Machines]
+      summary: Slet maskine
+      description: "**Auth · Tenant · Subscription · `machine:write`.**"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: I brug
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Machine is used by one or more slots or sales }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /machines/{id}/disable:
+    post:
+      tags: [Machines]
+      summary: Deaktivér maskine
+      description: |
+        **Auth · Tenant · Subscription · `machine:write`.** Tager en maskine ud af drift: HTTP og nye
+        MQTT-forbindelser afvises med det samme, og en åben MQTT-session bliver kicket.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, description: Trimmes }
+                revokeCertificate: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  machineId: { type: string, format: uuid }
+                  kicked: { type: boolean }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Products ─────────────────────────────
+  /products:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Products]
+      summary: Alle produkter
+      description: "**Auth · Tenant · Subscription · `product:read`.**"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Products]
+      summary: Opret produkt
+      description: "**Auth · Tenant · Subscription · `product:write`.**"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name: { type: string, minLength: 1 }
+                price: { type: number, exclusiveMinimum: true, minimum: 0, description: "JSON-tal, ikke streng" }
+      responses:
+        "201":
+          description: Oprettet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /products/paginated:
+    get:
+      tags: [Products]
+      summary: Produkter (pagineret)
+      description: "**Auth · Tenant · Subscription · `product:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: sortBy
+          in: query
+          schema: { type: string, enum: [name, price, createdAt], default: createdAt }
+        - $ref: "#/components/parameters/SortOrderDesc"
+        - $ref: "#/components/parameters/Search"
+        - name: includeArchived
+          in: query
+          description: Default skjules arkiverede
+          schema: { type: string, enum: ["true", "false"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedMeta"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /products/simple-search:
+    get:
+      tags: [Products]
+      summary: Søg produkter (picker)
+      description: "**Auth · Tenant · Subscription · `product:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SearchRequired"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    price: { $ref: "#/components/schemas/Decimal" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /products/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Products]
+      summary: Hent produkt
+      description: "**Auth · Tenant · Subscription · `product:read`.**"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    patch:
+      tags: [Products]
+      summary: Opdatér produkt
+      description: "**Auth · Tenant · Subscription · `product:write`.** Mindst ét felt."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 1 }
+                price: { type: number, exclusiveMinimum: true, minimum: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Products]
+      summary: Slet produkt
+      description: "**Auth · Tenant · Subscription · `product:write`.**"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "`Product is used by one or more slots` eller `Product is referenced by other data`", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /products/{id}/archive:
+    post:
+      tags: [Products]
+      summary: Arkivér produkt
+      description: "**Auth · Tenant · Subscription · `product:write`.** Sætter `archivedAt`. Ingen body."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /products/{id}/unarchive:
+    post:
+      tags: [Products]
+      summary: Genaktivér produkt
+      description: "**Auth · Tenant · Subscription · `product:write`.** Rydder `archivedAt`. Ingen body."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProductDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Sites ─────────────────────────────
+  /sites:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Sites]
+      summary: Alle sites
+      description: "**Auth · Tenant · Subscription · `site:read`.** Sorteret efter navn."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Site" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Sites]
+      summary: Opret site
+      description: "**Auth · Tenant · Subscription · `site:write`.** `latitude` og `longitude` skal sendes sammen eller slet ikke."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  required: [name]
+                - $ref: "#/components/schemas/SiteInput"
+      responses:
+        "201":
+          description: Oprettet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /sites/paginated:
+    get:
+      tags: [Sites]
+      summary: Sites (pagineret)
+      description: "**Auth · Tenant · Subscription · `site:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: sortBy
+          in: query
+          schema: { type: string, enum: [name, city, createdAt], default: createdAt }
+        - $ref: "#/components/parameters/SortOrderDesc"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedMeta"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Site" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /sites/simple-search:
+    get:
+      tags: [Sites]
+      summary: Søg sites (picker)
+      description: "**Auth · Tenant · Subscription · `site:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SearchRequired"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SimpleSite" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /sites/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Sites]
+      summary: Hent site
+      description: "**Auth · Tenant · Subscription · `site:read`.**"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    patch:
+      tags: [Sites]
+      summary: Opdatér site
+      description: |
+        **Auth · Tenant · Subscription · `site:write`.** Samme felter som `POST`, alle valgfri, mindst
+        ét påkrævet. Et udeladt felt betyder "rør ikke", mens `""` eller `null` **rydder** feltet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  minProperties: 1
+                - $ref: "#/components/schemas/SiteInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteDetail" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Sites]
+      summary: Slet site
+      description: "**Auth · Tenant · Subscription · `site:write`.** Kan kun slettes uden maskiner."
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Har maskiner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Site still has one or more machines }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Slots ─────────────────────────────
+  /slots:
+    get:
+      tags: [Slots]
+      summary: En maskines slots
+      description: "**Auth · Tenant · Subscription · `machine:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: machineId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SlotListItem" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /slots/low-stock:
+    get:
+      tags: [Slots]
+      summary: Slots med lavt lager
+      description: "**Auth · Tenant · Subscription · `machine:read`.** Højst 20 % af kapaciteten tilbage, tomeste først, max 50."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LowStockSlot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /slots/{id}:
+    patch:
+      tags: [Slots]
+      summary: Opdatér slot
+      description: "**Auth · Tenant · Subscription · `slot:manage`.** Ændres `quantity`, logges en lagerbevægelse på den indloggede bruger. Mindst ét felt."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                productId: { type: string, format: uuid }
+                quantity: { type: integer, minimum: 0 }
+                capacity: { type: integer, minimum: 1 }
+                price: { type: number, minimum: 0, nullable: true, description: "`null` = brug produktets pris" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlotListItem" }
+        "400": { description: "Valideringsfejl, eller `The selected product does not exist`", content: { application/json: { schema: { $ref: "#/components/schemas/ValidationError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Mængden passer ikke til kapaciteten
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "The quantity does not fit the slot's capacity" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Sales ─────────────────────────────
+  /sales:
+    get:
+      tags: [Sales]
+      summary: Alle salg
+      description: "**Auth · Tenant · Subscription · `sale:read`.** Nyeste først."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SaleListItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { description: Uhåndteret ved databasefejl (HTML) }
+
+  /sales/map:
+    get:
+      tags: [Sales]
+      summary: Salg på kort
+      description: "**Auth · Tenant · Subscription · `sale:read`.** Gennemførte salg placeret på deres sites koordinater (ét punkt pr. salg)."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: days
+          in: query
+          description: Clampes til 1–365
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SaleMapPoint" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /sales/summary:
+    get:
+      tags: [Sales]
+      summary: Salgsnøgletal
+      description: "**Auth · Tenant · Subscription · `sale:read`.** Tæller kun `completed`-salg."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: days
+          in: query
+          description: Clampes til 1–90
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesSummary" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Alerts ─────────────────────────────
+  /alerts/paginated:
+    get:
+      tags: [Alerts]
+      summary: Alerts (pagineret)
+      description: "**Auth · Tenant · Subscription · `alert:read`.** Sorteres efter `occurredAt`."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Page"
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+        - $ref: "#/components/parameters/SortOrderDesc"
+        - $ref: "#/components/parameters/Search"
+        - name: machineIds
+          in: query
+          description: Gentaget eller kommasepareret
+          style: form
+          explode: true
+          schema: { type: array, items: { type: string, format: uuid } }
+        - name: siteIds
+          in: query
+          description: Gentaget eller kommasepareret
+          style: form
+          explode: true
+          schema: { type: array, items: { type: string, format: uuid } }
+        - name: alertTypes
+          in: query
+          description: Gentaget eller kommasepareret
+          style: form
+          explode: true
+          schema: { type: array, items: { $ref: "#/components/schemas/AlertType" } }
+        - name: dateFrom
+          in: query
+          description: Inklusiv
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          description: Inklusiv
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedMeta"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MachineAlertRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /alerts/summary:
+    get:
+      tags: [Alerts]
+      summary: Alert-overblik
+      description: "**Auth · Tenant · Subscription · `alert:read`.**"
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  openByType:
+                    type: object
+                    properties:
+                      tamper: { type: integer }
+                      offline: { type: integer }
+                      error: { type: integer }
+                  openTotal: { type: integer }
+                  recent:
+                    type: array
+                    description: Max 50, nyeste først
+                    items: { $ref: "#/components/schemas/MachineAlertRow" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /alerts/{id}/resolve:
+    patch:
+      tags: [Alerts]
+      summary: Løs alert
+      description: "**Auth · Tenant · Subscription · `alert:resolve`.** Ingen body."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MachineAlertRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/SubscriptionRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Allerede løst
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: That alert has already been resolved }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Subscriptions ─────────────────────────────
+  /subscriptions/current:
+    get:
+      tags: [Subscriptions]
+      summary: Abonnementsstatus
+      description: "**Auth · Tenant.** Alle medlemmer må læse den. Kræver ikke aktivt abonnement."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /subscriptions/invoices:
+    get:
+      tags: [Subscriptions]
+      summary: Betalte fakturaer
+      description: "**Auth · Tenant · Ejer.** Hentet direkte fra Stripe (cursor-paging)."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: startingAfter
+          in: query
+          description: "`nextCursor` fra forrige side"
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoicePage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOwner" }
+        "502": { $ref: "#/components/responses/StripeUnreachable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /subscriptions/checkout:
+    post:
+      tags: [Subscriptions]
+      summary: Start Stripe Checkout
+      description: "**Auth · Tenant · Ejer.** Abonnementet aktiveres først, når Stripes webhook melder det aktivt."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              properties:
+                plan: { type: string, enum: [monthly, yearly] }
+      responses:
+        "200": { $ref: "#/components/responses/RedirectUrl" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOwner" }
+        "409":
+          description: Har allerede aktivt abonnement
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: This organization already has an active subscription. }
+        "502": { $ref: "#/components/responses/StripeUnreachable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /subscriptions/cancel:
+    post:
+      tags: [Subscriptions]
+      summary: Opsig abonnement
+      description: "**Auth · Tenant · Ejer.** Opsiger ved udgangen af den betalte periode. Ingen body."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelAtPeriodEnd: { type: boolean, enum: [true] }
+                  currentPeriodEnd: { type: string, format: date-time, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOwner" }
+        "404":
+          description: Intet abonnement
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: No subscription was found for this organization. }
+        "409":
+          description: Intet at opsige
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: This organization has no subscription to cancel. }
+        "502": { $ref: "#/components/responses/StripeUnreachable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /subscriptions/portal:
+    post:
+      tags: [Subscriptions]
+      summary: Åbn Stripe Customer Portal
+      description: "**Auth · Tenant · Ejer.** Ingen body."
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200": { $ref: "#/components/responses/RedirectUrl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/NotOwner" }
+        "409":
+          description: Ingen betalingsoplysninger endnu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: This organization has no billing details to manage yet. }
+        "502": { $ref: "#/components/responses/StripeUnreachable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /subscriptions/webhook:
+    post:
+      tags: [Subscriptions]
+      summary: Stripe-webhook
+      description: Kaldes af Stripe, ikke af frontend. Ingen session – Stripe-signaturen er autentificeringen. Bodyen læses som rå bytes.
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Stripes rå event-JSON }
+      responses:
+        "200":
+          description: Modtaget
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean, enum: [true] }
+        "400": { description: "Ugyldig signatur, eller eventet kunne ikke anvendes (Stripe prøver igen)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  # ───────────────────────────── Device ─────────────────────────────
+  /device/activate:
+    post:
+      tags: [Device]
+      summary: Aktivér maskine
+      description: |
+        Maskinens del af aktiveringen: bytter engangskoden fra `POST /machines/claim` og en CSR til et
+        certifikat. Ingen auth – koden *er* credentialet. Ekstra rate limit: 20 pr. 15 min pr. IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineId, code, csr]
+              properties:
+                machineId: { type: string, format: uuid }
+                code: { type: string, minLength: 1, maxLength: 64, description: Trimmes }
+                csr: { $ref: "#/components/schemas/Csr" }
+      responses:
+        "200":
+          description: Aktiveret
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificate: { type: string, description: PEM }
+                  caCertificate: { type: string, description: PEM }
+                  machineId: { type: string, format: uuid }
+                  tenantId: { type: string }
+                  siteId: { type: string, format: uuid }
+                  topicPrefix: { type: string, description: MQTT topic-prefix for maskinen }
+                  mqtt:
+                    type: object
+                    properties:
+                      host: { type: string }
+                      port: { type: integer }
+        "400":
+          description: |
+            Valideringsfejl, eller `Activation rejected` – samme svar for forkert kode, udløbet kode,
+            for mange forsøg, afvist CSR, allerede brugt aktivering og deaktiveret maskine.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+        "429": { description: Rate limit }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /device/configuration:
+    get:
+      tags: [Device]
+      summary: Hent konfiguration
+      description: "**Machine (mTLS).** Nyeste publicerede konfiguration for maskinen."
+      security: [{ clientCertificate: [] }]
+      servers:
+        - url: https://localhost:8443/api
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: integer }
+                  payload: { type: object }
+        "401": { $ref: "#/components/responses/ClientCertRequired" }
+        "404":
+          description: Ingen konfiguration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: No configuration published }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /device/command-results:
+    post:
+      tags: [Device]
+      summary: Rapportér kommando-resultat
+      description: "**Machine (mTLS).**"
+      security: [{ clientCertificate: [] }]
+      servers:
+        - url: https://localhost:8443/api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commandId, status]
+              properties:
+                commandId: { type: string, minLength: 1, description: Trimmes }
+                status: { type: string, enum: [completed, failed] }
+                detail: { type: string, maxLength: 2000 }
+                completedAt: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applied: { type: boolean, description: "`false` hvis kommandoen allerede var afsluttet" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/ClientCertRequired" }
+        "404":
+          description: Ukendt kommando
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: Unknown command }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /device/events:
+    post:
+      tags: [Device]
+      summary: Send ét event
+      description: |
+        **Machine (mTLS).** Mindst én af `occurredAt` og `uptimeMs` skal med.
+        For `type: "cash_sale"` valideres `payload` som `CashSalePayload`.
+      security: [{ clientCertificate: [] }]
+      servers:
+        - url: https://localhost:8443/api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceEvent" }
+            example:
+              type: cash_sale
+              eventId: evt-0001
+              sequenceNumber: 1
+              occurredAt: "2026-09-23T10:00:00.000Z"
+              payload: { slot: 3, price_minor: 1500, received_minor: 2000, status: completed, currency: DKK }
+      responses:
+        "201":
+          description: Modtaget
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stored: { type: boolean, description: "`false` hvis eventet er en dublet" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/ClientCertRequired" }
+        "422":
+          description: cash_sale-payload afvist
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "cash_sale payload rejected: ..." }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /device/events/batch:
+    post:
+      tags: [Device]
+      summary: Send batch af events
+      description: "**Machine (mTLS).** Maskinen tømmer sin offline-kø."
+      security: [{ clientCertificate: [] }]
+      servers:
+        - url: https://localhost:8443/api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { $ref: "#/components/schemas/DeviceEvent" }
+      responses:
+        "201":
+          description: Modtaget
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: integer }
+                  stored: { type: integer, description: Kan være lavere pga. dubletter }
+        "400":
+          description: Detaljeret valideringsfejl med fuld sti
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetailedValidationError" }
+        "401": { $ref: "#/components/responses/ClientCertRequired" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /device/certificate/renew:
+    post:
+      tags: [Device]
+      summary: Forny certifikat
+      description: "**Machine (mTLS).** Det nuværende certifikat autoriserer det nye."
+      security: [{ clientCertificate: [] }]
+      servers:
+        - url: https://localhost:8443/api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csr]
+              properties:
+                csr: { $ref: "#/components/schemas/Csr" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificate: { type: string, description: PEM }
+                  caCertificate: { type: string, description: PEM }
+        "400":
+          description: 'Valideringsfejl, eller `{ "error": "Activation rejected", "reason": "CSR_REJECTED" }`'
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+        "401": { $ref: "#/components/responses/ClientCertRequired" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  # ───────────────────────────── Internal ─────────────────────────────
+  /internal/mqtt/authn:
+    post:
+      tags: [Internal]
+      summary: EMQX authn
+      description: Må klienten forbinde? `clientid` skal være lig certifikatets CN (maskinens id).
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientid, cert_subject]
+              properties:
+                clientid: { type: string }
+                cert_subject: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/MqttResult" }
+        "401": { $ref: "#/components/responses/MqttDeny" }
+
+  /internal/mqtt/authz:
+    post:
+      tags: [Internal]
+      summary: EMQX authz
+      description: Må klienten publish/subscribe på et topic?
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientid, cert_subject, action, topic]
+              properties:
+                clientid: { type: string }
+                cert_subject: { type: string }
+                action: { type: string, enum: [publish, subscribe] }
+                topic: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/MqttResult" }
+        "401": { $ref: "#/components/responses/MqttDeny" }
+
+  /internal/mqtt/connection:
+    post:
+      tags: [Internal]
+      summary: EMQX connection-hook
+      description: Rule-engine-hook for `client.connected` / `client.disconnected`. Opdaterer maskinens online/offline-status.
+      security: [{ internalSecret: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientid, event, occurredAt]
+              properties:
+                clientid: { type: string }
+                event: { type: string, enum: [client.connected, client.disconnected] }
+                occurredAt: { type: integer, description: Unix-tid i ms }
+                reason: { type: string }
+      responses:
+        "200":
+          description: "`{}` – altid, også ved ukendte events, ugyldig body eller databasefejl (logges)"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/MqttDeny" }
+
+  # ───────────────────────────── WebSocket ─────────────────────────────
+  /ws:
+    get:
+      tags: [WebSocket]
+      summary: WebSocket (upgrade)
+      description: |
+        Live-opdateringer til admin-frontenden. **Ikke en almindelig HTTP-route** – brug en
+        WebSocket-klient (fx Postmans *New → WebSocket*) mod `ws://localhost:5000/api/ws`.
+
+        - Kræver session-cookie og en `Origin`-header, der matcher `FRONTEND_URL`.
+        - Tenant tages fra `?tenantId=…`, ellers sessionens `activeTenantId`, og brugeren skal være medlem.
+        - Afvises forbindelsen, lukkes socketten uden svar.
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string }
+      responses:
+        "101": { description: Switching Protocols }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: Better Auth session-cookie. Sættes automatisk ved `POST /auth/sign-in/email`.
+    internalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+      description: Skal være lig `MQTT_INTERNAL_SECRET`.
+    clientCertificate:
+      type: apiKey
+      in: header
+      name: X-Client-Serial
+      description: |
+        mTLS via nginx på `:8443`. I praksis sættes `X-Client-Verify` og `X-Client-Serial` af nginx
+        ud fra klientcertifikatet – konfigurér certifikatet i din klient i stedet for at sætte headeren.
+
+  parameters:
+    TenantId:
+      name: X-Tenant-Id
+      in: header
+      required: false
+      description: Tenant at arbejde i. Udelades den, bruges sessionens `activeTenantId`.
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+    InviteId:
+      name: inviteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      description: 0-baseret
+      schema: { type: integer, minimum: 0, default: 0 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+    SortOrderDesc:
+      name: sortOrder
+      in: query
+      schema: { type: string, enum: [asc, desc], default: desc }
+    Search:
+      name: search
+      in: query
+      description: Fritekst-søgning
+      schema: { type: string }
+    SearchRequired:
+      name: search
+      in: query
+      required: true
+      schema: { type: string, minLength: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, default: 10, maximum: 25 }
+
+  responses:
+    ValidationError:
+      description: Valideringsfejl
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationError" }
+    Unauthorized:
+      description: Ingen gyldig session
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: Unauthorized }
+    NoTenant:
+      description: Ingen tenant valgt
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: No tenant selected }
+    Forbidden:
+      description: "Ikke medlem af tenanten, mangler permission, eller ikke superadmin"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            notMember: { value: { error: Not a member of this tenant } }
+            missingPermission: { value: { error: "Missing permission: machine:read" } }
+            notSuperAdmin: { value: { error: Not a super admin } }
+    SubscriptionRequired:
+      description: Intet aktivt abonnement (superadmins slipper igennem). Kan også give `503` hvis abonnementet ikke kunne verificeres.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: This organization does not have an active subscription. }
+    NotOwner:
+      description: Kun ejeren må ændre/se fakturering
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: Only an owner can change billing for this organization. }
+    NotFound:
+      description: Findes ikke
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Konflikt
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: A role with that name already exists }
+    ServerError:
+      description: Ukendt fejl (`An unknown error occurred while …`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    StripeUnreachable:
+      description: Stripe svarede ikke
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: Could not reach Stripe. Please try again. }
+    ClientCertRequired:
+      description: Mangler gyldigt klientcertifikat
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: Client certificate required }
+    Success:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, enum: [true] }
+    Message:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+    RedirectUrl:
+      description: Send browseren til `url`
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              url: { type: string, format: uri }
+    MqttResult:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              result: { type: string, enum: [allow, deny] }
+    MqttDeny:
+      description: Forkert eller manglende `X-Internal-Secret`
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              result: { type: string, enum: [deny] }
+    BetterAuthError:
+      description: Fejl fra Better Auth
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BetterAuthError" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    BetterAuthError:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+    ValidationError:
+      type: object
+      description: "`fieldErrors` er nøglet på første segment af stien (`body`, `query`, `params`)."
+      properties:
+        error: { type: string, example: Invalid request }
+        details:
+          type: object
+          properties:
+            formErrors: { type: array, items: { type: string } }
+            fieldErrors:
+              type: object
+              properties:
+                body: { type: array, items: { type: string } }
+                query: { type: array, items: { type: string } }
+                params: { type: array, items: { type: string } }
+    DetailedValidationError:
+      type: object
+      properties:
+        error: { type: string, example: Invalid request }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: array
+                items: { oneOf: [{ type: string }, { type: integer }] }
+                example: [body, events, 3, type]
+              message: { type: string, example: type is required }
+    Decimal:
+      type: string
+      description: Prisma Decimal serialiseret som streng
+      example: "12.5"
+    Permission:
+      type: string
+      enum:
+        - tenant:manage
+        - tenant:view
+        - user:manage
+        - user:view
+        - role:manage
+        - role:view
+        - machine:read
+        - machine:write
+        - site:read
+        - site:write
+        - product:read
+        - product:write
+        - slot:manage
+        - sale:read
+        - sale:refund
+        - alert:read
+        - alert:resolve
+    PaginatedMeta:
+      type: object
+      properties:
+        page: { type: integer, description: 0-baseret }
+        pageSize: { type: integer }
+        pageCount: { type: integer }
+        totalCount: { type: integer }
+    Tenant:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        emailVerified: { type: boolean }
+        image: { type: string, nullable: true }
+        isSuperAdmin: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Role:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+    Member:
+      type: object
+      description: Én `UserRole`-række med relationer.
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        roleId: { type: string }
+        tenantId: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            email: { type: string, format: email }
+        role:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+            tenantId: { type: string }
+    InviteStatus:
+      type: string
+      enum: [pending, accepted, expired, revoked, rejected]
+    TenantInvite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        userId: { type: string, nullable: true }
+        tenantId: { type: string }
+        roleId: { type: string }
+        invitedById: { type: string }
+        status: { $ref: "#/components/schemas/InviteStatus" }
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        acceptedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InviteDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        tenantId: { type: string }
+        tenantName: { type: string }
+        roleName: { type: string }
+        invitedBy: { type: string }
+        status: { $ref: "#/components/schemas/InviteStatus" }
+        expiresAt: { type: string, format: date-time }
+        matchesViewer: { type: boolean, description: Matcher den indloggede brugers email }
+        alreadyMember: { type: boolean }
+    SimpleSite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        city: { type: string, nullable: true }
+    Machine:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string, example: VM-XXXX }
+        tenantId: { type: string, nullable: true }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [never_seen, online, offline, error] }
+        lastConnectionEventAt: { type: string, format: date-time, nullable: true }
+        registrationStatus: { type: string, enum: [unregistered, claimed, permanent_locked] }
+        createdAt: { type: string, format: date-time }
+        claimedAt: { type: string, format: date-time, nullable: true }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        disabledAt: { type: string, format: date-time, nullable: true }
+        disabledReason: { type: string, nullable: true }
+        siteId: { type: string, format: uuid, nullable: true }
+    MachineListItem:
+      allOf:
+        - $ref: "#/components/schemas/Machine"
+        - type: object
+          properties:
+            site: { $ref: "#/components/schemas/SimpleSite" }
+    CurrentPrevious:
+      type: object
+      properties:
+        current: { type: number }
+        previous: { type: number }
+    MachineDetail:
+      allOf:
+        - $ref: "#/components/schemas/MachineListItem"
+        - type: object
+          properties:
+            canDelete: { type: boolean, description: Ingen slots og ingen salg }
+            kpi:
+              type: object
+              properties:
+                days: { type: integer, description: Vinduet efter clamping }
+                since: { type: string, format: date-time }
+                sales:
+                  type: object
+                  properties:
+                    revenue: { $ref: "#/components/schemas/CurrentPrevious" }
+                    count: { $ref: "#/components/schemas/CurrentPrevious" }
+                stock:
+                  type: object
+                  properties:
+                    slots: { type: integer }
+                    quantity: { type: integer }
+                    capacity: { type: integer }
+                    emptySlots: { type: integer }
+                alerts:
+                  type: object
+                  properties:
+                    open: { type: integer }
+                    logged: { $ref: "#/components/schemas/CurrentPrevious" }
+                lastSaleAt: { type: string, format: date-time, nullable: true }
+    MachineWithoutTenant:
+      allOf:
+        - $ref: "#/components/schemas/Machine"
+        - type: object
+          properties:
+            site:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+                city: { type: string, nullable: true }
+            slots:
+              type: array
+              items: { $ref: "#/components/schemas/Slot" }
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string }
+        name: { type: string }
+        price: { $ref: "#/components/schemas/Decimal" }
+        createdAt: { type: string, format: date-time }
+        archivedAt: { type: string, format: date-time, nullable: true }
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - type: object
+          properties:
+            canDelete: { type: boolean, description: Ingen slots og ingen salg }
+    Site:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string }
+        name: { type: string }
+        addressLine1: { type: string, nullable: true }
+        postalCode: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        countryCode: { type: string, nullable: true, example: DK }
+        latitude: { type: string, nullable: true, description: Decimal-streng, example: "55.6761" }
+        longitude: { type: string, nullable: true, description: Decimal-streng, example: "12.5683" }
+        contactName: { type: string, nullable: true }
+        contactPhone: { type: string, nullable: true }
+        contactEmail: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SiteInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, description: Trimmes }
+        addressLine1: { type: string, description: '`""` behandles som udeladt (POST) / rydder feltet (PATCH)' }
+        postalCode: { type: string }
+        city: { type: string }
+        countryCode: { type: string, minLength: 2, maxLength: 2, description: Uppercases, example: DK }
+        contactName: { type: string }
+        contactPhone: { type: string }
+        contactEmail: { type: string, format: email }
+        latitude: { type: number, minimum: -90, maximum: 90, nullable: true }
+        longitude: { type: number, minimum: -180, maximum: 180, nullable: true }
+    SiteDetail:
+      allOf:
+        - $ref: "#/components/schemas/Site"
+        - type: object
+          properties:
+            machineCount: { type: integer }
+            canDelete: { type: boolean, description: Kun uden maskiner }
+    Slot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        machineId: { type: string, format: uuid }
+        productId: { type: string, format: uuid, nullable: true }
+        slotNumber: { type: integer }
+        beginX: { type: integer }
+        endX: { type: integer }
+        beginY: { type: integer }
+        endY: { type: integer }
+        quantity: { type: integer }
+        capacity: { type: integer }
+        price: { type: string, nullable: true, description: "Decimal-streng, `null` = brug produktets pris", example: "12.5" }
+    SlotListItem:
+      allOf:
+        - $ref: "#/components/schemas/Slot"
+        - type: object
+          properties:
+            product:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+    LowStockSlot:
+      type: object
+      properties:
+        slotId: { type: string, format: uuid }
+        slotNumber: { type: integer }
+        quantity: { type: integer }
+        capacity: { type: integer }
+        productName: { type: string, nullable: true }
+        machineId: { type: string, format: uuid }
+        machineName: { type: string }
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+    Sale:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string }
+        machineId: { type: string, format: uuid }
+        productId: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [pending, completed, failed, refunded] }
+        price: { $ref: "#/components/schemas/Decimal" }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+    SaleListItem:
+      allOf:
+        - $ref: "#/components/schemas/Sale"
+        - type: object
+          properties:
+            machine:
+              allOf:
+                - $ref: "#/components/schemas/Machine"
+                - type: object
+                  properties:
+                    site:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+            product:
+              type: object
+              nullable: true
+              description: Product (se `Product`-skemaet)
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+                price: { $ref: "#/components/schemas/Decimal" }
+                archivedAt: { type: string, format: date-time, nullable: true }
+    SaleMapPoint:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        price: { type: number }
+        createdAt: { type: string, format: date-time }
+        productName: { type: string, nullable: true }
+        machineId: { type: string, format: uuid }
+        machineName: { type: string }
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+    RevenueCount:
+      type: object
+      properties:
+        revenue: { type: number }
+        count: { type: integer }
+    SalesSummary:
+      type: object
+      properties:
+        today: { $ref: "#/components/schemas/RevenueCount" }
+        last7Days: { $ref: "#/components/schemas/RevenueCount" }
+        last30Days: { $ref: "#/components/schemas/RevenueCount" }
+        daily:
+          type: array
+          description: Én pr. dag, ældste først
+          items:
+            allOf:
+              - $ref: "#/components/schemas/RevenueCount"
+              - type: object
+                properties:
+                  date: { type: string, format: date, description: "YYYY-MM-DD, UTC" }
+        topProducts:
+          type: array
+          description: Max 5
+          items:
+            type: object
+            properties:
+              productId: { type: string, format: uuid }
+              name: { type: string }
+              count: { type: integer }
+              revenue: { type: number }
+    AlertType:
+      type: string
+      enum: [tamper, offline, error]
+    MachineAlertRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/AlertType" }
+        machineId: { type: string, format: uuid }
+        machineName: { type: string }
+        createdAt: { type: string, format: date-time }
+        occurredAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true, description: "`null` = åben" }
+        message: { type: string }
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        contactPhone: { type: string, nullable: true }
+        contactEmail: { type: string, nullable: true }
+    SubscriptionStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [pending, trialing, active, past_due, canceled, incomplete, unpaid] }
+        plan: { type: string, enum: [monthly, yearly], nullable: true }
+        trialEndsAt: { type: string, format: date-time, nullable: true }
+        currentPeriodEnd: { type: string, format: date-time, nullable: true }
+        cancelAtPeriodEnd: { type: boolean }
+        hasAccess: { type: boolean, description: Om requireSubscription ville lukke igennem }
+        isOwner: { type: boolean }
+    InvoicePage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              number: { type: string, nullable: true }
+              created: { type: integer, description: Unix-sekunder (ikke ms) }
+              amountPaid: { type: integer, description: "Minor units: 29900 = 299,00 kr." }
+              currency: { type: string }
+              pdfUrl: { type: string, nullable: true }
+              hostedUrl: { type: string, nullable: true }
+        hasMore: { type: boolean }
+        nextCursor: { type: string, nullable: true }
+    Csr:
+      type: string
+      maxLength: 8192
+      description: PEM, starter med `-----BEGIN CERTIFICATE REQUEST-----`
+    DeviceEvent:
+      type: object
+      required: [type]
+      description: Mindst én af `occurredAt` og `uptimeMs` skal med (en maskine uden ur sender `uptimeMs`).
+      properties:
+        type: { type: string, minLength: 1, maxLength: 64, example: cash_sale }
+        payload:
+          description: For `type = cash_sale` valideres den som `CashSalePayload`. Default `{}`.
+          anyOf:
+            - $ref: "#/components/schemas/CashSalePayload"
+            - type: object
+        eventId: { type: string, minLength: 1, maxLength: 128, description: Bruges til deduplikering }
+        sequenceNumber: { type: integer, minimum: 0 }
+        occurredAt: { type: string, format: date-time }
+        uptimeMs: { type: integer, minimum: 0, description: "ms siden eventet skete, målt ved afsendelse" }
+    CashSalePayload:
+      type: object
+      required: [slot, price_minor, received_minor, status]
+      properties:
+        slot: { type: integer, minimum: 1, maximum: 32 }
+        price_minor: { type: integer, minimum: 0, description: Øre }
+        received_minor: { type: integer, minimum: 0, description: Øre }
+        status: { type: string, enum: [completed, failed] }
+        reason: { type: string, maxLength: 64 }
+        currency: { type: string, minLength: 3, maxLength: 3, default: DKK }

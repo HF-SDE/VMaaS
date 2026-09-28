@@ -73,6 +73,7 @@ export function RoleCard({
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label={`Edit ${role.name} role`}
                 onClick={() => setEditOpen(true)}
               >
                 <Pencil className="h-4 w-4" />
@@ -84,6 +85,7 @@ export function RoleCard({
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Delete ${role.name} role`}
                         className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />

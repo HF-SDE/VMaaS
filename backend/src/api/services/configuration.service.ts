@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { publishCommand } from "@/mqtt/commands";
 
+import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 
 import { buildConfigurationPayload, comparePayloads, findUnwiredSlots, toPayloadSlots } from "./configuration-payload";
@@ -149,6 +150,8 @@ export async function publishConfigurationService(
       return err({ reason: "VERSION_NOT_FOUND", message: error.message });
     }
 
+    Sentry.captureException(error, { tags: { service: "configuration", action: "publishing the configuration" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while publishing the configuration.",
@@ -229,6 +232,8 @@ export async function listConfigurationsService(
       drift,
     });
   } catch (error) {
+    Sentry.captureException(error, { tags: { service: "configuration", action: "listing configurations" } });
+
     return err({
       reason: "UNKNOWN_ERROR",
       message: error instanceof Error ? error.message : "Unknown error while listing configurations.",
