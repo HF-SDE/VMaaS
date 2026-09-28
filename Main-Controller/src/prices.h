@@ -73,6 +73,18 @@ namespace prices
      */
     bool merge_store(const char *json);
 
+    /**
+     * @brief Copy the cached payload's `wiring` block out as JSON text.
+     *
+     * The block has config.json v2's shape ({version, motor, slots}), so the
+     * text goes straight into vmaas::parse_slot_config().
+     *
+     * @return False when there is no file, it does not parse, or it has no
+     *         non-empty `wiring` object (a machine never published with
+     *         wiring), or @p out is too small. @p out is then empty.
+     */
+    bool read_wiring(char *out, size_t out_len);
+
     /// Largest payload the device will accept, in bytes. The response buffer
     /// the fetch reads into has to be at least this big for a configuration
     /// that fits on flash to also fit through the wire.

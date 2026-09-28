@@ -127,6 +127,26 @@ namespace prices
         return ok;
     }
 
+    bool read_wiring(char *out, size_t out_len)
+    {
+        if (out_len == 0) return false;
+        out[0] = '\0';
+
+        static char buf[MAX_PAYLOAD];
+        if (vmaas::fs::read_text_file(PATH, buf, sizeof(buf)) <= 0) return false;
+
+        cJSON *root = cJSON_Parse(buf);
+        cJSON *wiring = cJSON_GetObjectItemCaseSensitive(root, "wiring");
+        bool ok = cJSON_IsObject(wiring) && wiring->child != nullptr;
+        if (ok)
+        {
+            ok = cJSON_PrintPreallocated(wiring, out, static_cast<int>(out_len), false) != 0;
+            if (!ok) out[0] = '\0';
+        }
+        cJSON_Delete(root);
+        return ok;
+    }
+
     bool parse(const char *json, vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table)
     {
         if (json == nullptr) return false;

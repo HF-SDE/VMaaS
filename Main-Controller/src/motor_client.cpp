@@ -34,6 +34,11 @@ bool MotorClient::request_status()
     return bus_.send(frames::status());
 }
 
+bool MotorClient::send(const Frame& f)
+{
+    return bus_.send(f);
+}
+
 void MotorClient::handle(const Frame& f)
 {
     if (!is_reply(f.cmd))

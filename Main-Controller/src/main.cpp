@@ -24,6 +24,7 @@
 #include "door_lock.h"
 #include "config_sync.h"
 #include "event_reporter.h"
+#include "wiring_sync.h"
 
 namespace
 {
@@ -264,6 +265,10 @@ extern "C" void app_main()
 
     bus.begin();
     motor.begin();
+    wiring_sync::begin(motor);
+    // No command to ask Motorcontrol which table it runs, so send ours once
+    // per boot: this is what repairs a board flashed with another config.json.
+    wiring_sync::request(wiring_sync::Source::Boot);
 
     i2c.begin();
     const vmaas::LcdError lcd_err = lcd.begin();
@@ -326,10 +331,18 @@ extern "C" void app_main()
     show_prompt();
 
     motor.on_ack([](vmaas::Cmd cmd) {
+        if (wiring_sync::handles(cmd)) {
+            wiring_sync::on_ack(cmd, now_ms());
+            return;
+        }
         ESP_LOGI(TAG, "ACK for cmd 0x%02X", (unsigned)cmd);
         clear_motor_error();
     });
     motor.on_nak([](vmaas::Cmd cmd, vmaas::ErrorCode err) {
+        if (wiring_sync::handles(cmd)) {
+            wiring_sync::on_nak(cmd, err, now_ms());
+            return;
+        }
         ESP_LOGW(TAG, "NAK for cmd 0x%02X, error %u", (unsigned)cmd, (unsigned)err);
         if (err == vmaas::ErrorCode::CONFIG_ERROR) {
             show_motor_error();
@@ -346,6 +359,7 @@ extern "C" void app_main()
     motor.on_status([](vmaas::State state, uint8_t slot) {
         ESP_LOGI(TAG, "status: state=%u current_slot=%u", (unsigned)state, slot);
         if (state == vmaas::State::ERROR) {
+            wiring_sync::request(wiring_sync::Source::MotorError);
             show_motor_error();
         }
         else {
@@ -413,6 +427,7 @@ extern "C" void app_main()
         // A running purchase owns the LCD (see purchase_task::active), so it
         // gets the last word on the display each pass.
         purchase_task::tick(now_ms());
+        wiring_sync::tick(now_ms());
             
 
         if (display_ok) {

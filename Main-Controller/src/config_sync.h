@@ -10,7 +10,9 @@
  * fetches the *latest*, a QoS-1 message redelivered an hour late cannot apply
  * a stale configuration, and the broker never has to carry a payload.
  *
- * Only prices and the currency go live. See purchase_task::set_prices() for
+ * Prices and the currency go live immediately; the wiring is forwarded to
+ * Motorcontrol by wiring_sync, and the command is reported applied only once
+ * Motorcontrol has taken it. See purchase_task::set_prices() for
  * why the cash calibration in the same payload waits for a reboot.
  */
 #include "esp_err.h"

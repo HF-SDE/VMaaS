@@ -55,6 +55,11 @@ namespace purchase_task
     /// True while a purchase owns the display, so the caller leaves it alone.
     bool active();
 
+    /// True when no purchase is under way: nothing chosen, nothing paid,
+    /// nothing dispensing. Always true with cash disabled, since no RUN is
+    /// sent then. Gates the wiring transfer (wiring_sync).
+    bool idle();
+
     /**
      * @brief Tell purchase_task whether main.cpp's persistent motor-fault
      *        banner (show_motor_error()/clear_motor_error()) is on screen.

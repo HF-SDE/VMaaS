@@ -5,5 +5,5 @@
   "keywords": ["uart", "protocol", "vmaas"],
   "frameworks": "*",
   "platforms": "*",
-  "headers": ["protocol.h", "frame_codec.h", "crc8.h", "uart_bus.h"]
+  "headers": ["protocol.h", "frame_codec.h", "crc8.h", "uart_bus.h", "wiring_sender.h"]
 }

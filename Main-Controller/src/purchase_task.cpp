@@ -508,6 +508,8 @@ namespace purchase_task
 
     bool active() { return cash_enabled; }
 
+    bool idle() { return !cash_enabled || prev_state_ == vmaas::PurchaseState::Idle; }
+
     void set_motor_fault(bool fault_on)
     {
         if (fault_on == motor_fault_active_) return;
