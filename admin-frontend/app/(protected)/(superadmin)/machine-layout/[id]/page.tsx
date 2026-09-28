@@ -70,6 +70,9 @@ async function MachineLayoutLoader({
 
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">{machine.name}</h1>
+        <p className="font-mono text-sm text-muted-foreground">
+          {machine.serialNumber}
+        </p>
         <p className="text-muted-foreground">
           {machine.site
             ? `Placed at ${machine.site.name}. Set up the slot layout of the machine.`

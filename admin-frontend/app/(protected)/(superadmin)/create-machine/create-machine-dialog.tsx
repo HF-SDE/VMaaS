@@ -66,7 +66,7 @@ function CreateMachineForm({ onCancel }: { onCancel: () => void }) {
       onSubmit: createMachineSchema.shape.body,
     },
     onSubmit: async ({ value }) => {
-      const [error, machine] = await fetchData<{ id: string }>(
+      const [error, machine] = await fetchData<{ id: string; serialNumber: string }>(
         "/api/machines",
         { method: "POST", body: { name: value.name } }
       )
@@ -81,7 +81,9 @@ function CreateMachineForm({ onCancel }: { onCancel: () => void }) {
         return
       }
 
-      toast.success("Machine created.")
+      toast.success("Machine created.", {
+        description: `Serial number: ${machine.serialNumber}`,
+      })
 
       router.push(`/machine-layout/${machine.id}`)
     },
