@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/mqtt/commands", () => ({ publishCommand }));
 
-import { publishConfigurationService } from "@/api/services/configuration.service";
+import { publishConfigurationService, publishInitialConfigurationService } from "@/api/services/configuration.service";
 
 const MACHINE = "33333333-3333-4333-8333-333333333333";
 const USER = "44444444-4444-4444-8444-444444444444";
@@ -198,5 +198,46 @@ describe("publishConfigurationService — rollback", () => {
     expect(configCreate).toHaveBeenCalledTimes(1);
     expect(commandCreate).not.toHaveBeenCalled();
     expect(publishCommand).not.toHaveBeenCalled();
+  });
+});
+
+// A machine is set up through activation, and the pins given in the admin
+// layout must reach it then, without anyone pressing publish. Later changes
+// still need a deliberate publish (the review step), so this only ever writes
+// the first version.
+describe("publishInitialConfigurationService", () => {
+  it("publishes v1 from the saved layout when the machine has no configuration", async () => {
+    machineFindFirst.mockResolvedValue(machine([wiredSlot]));
+    configFindFirst.mockResolvedValue(null);
+
+    const [error, result] = await publishInitialConfigurationService(MACHINE);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ published: true, version: 1 });
+    const data = configCreate.mock.calls[0][0].data;
+    expect(data.createdById).toBeNull();
+    expect(data.payload.wiring.slots).toEqual([{ slot: 1, pins: [18] }]);
+  });
+
+  it("leaves a machine that already has a configuration alone", async () => {
+    machineFindFirst.mockResolvedValue(machine([wiredSlot]));
+    configFindFirst.mockResolvedValue({ version: 3 });
+
+    const [error, result] = await publishInitialConfigurationService(MACHINE);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ published: false });
+    expect(configCreate).not.toHaveBeenCalled();
+    expect(publishCommand).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a layout with an unwired slot", async () => {
+    machineFindFirst.mockResolvedValue(machine([wiredSlot, { ...wiredSlot, slotNumber: 2, pins: [] }]));
+    configFindFirst.mockResolvedValue(null);
+
+    const [error] = await publishInitialConfigurationService(MACHINE);
+
+    expect(error?.reason).toBe("SLOTS_NOT_WIRED");
+    expect(configCreate).not.toHaveBeenCalled();
   });
 });

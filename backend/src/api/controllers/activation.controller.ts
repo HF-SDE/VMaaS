@@ -5,6 +5,7 @@ import { getCertificateAuthority } from "@/lib/ca";
 import { prisma } from "@/lib/prisma";
 
 import { activateMachineService, claimMachineService } from "../services/activation.service";
+import { publishInitialConfigurationService } from "../services/configuration.service";
 
 /**
  * Params and bodies reach the services through a schema parse of the request
@@ -70,6 +71,13 @@ export async function activateMachineController(req: Request, res: Response) {
       default:
         throw new Error(`Unhandled error reason ${reason satisfies never}`);
     }
+  }
+
+  const [publishError, published] = await publishInitialConfigurationService(data.machineId);
+  if (publishError) {
+    console.warn(`activation: machine ${data.machineId} activated without a configuration: ${publishError.reason}: ${publishError.message}`);
+  } else if (published.published) {
+    console.info(`activation: published configuration v${published.version} for machine ${data.machineId}`);
   }
 
   return res.status(200).json(data).end();

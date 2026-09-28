@@ -45,6 +45,29 @@ export async function publishConfigurationService(
   userId: string,
   fromVersion?: number,
 ): Promise<Result<PublishError, PublishConfigurationResult>> {
+  const [error, result] = await publish(machineId, userId, fromVersion, false);
+  if (error) return err(error);
+  return ok(result!);
+}
+
+export type InitialPublishResult = { published: true; version: number } | { published: false };
+
+/**
+ * Publishes version 1 from the saved layout, but only for a machine that has
+ * no configuration yet. Called when the machine is activated, so the pins set
+ * when it was created in the admin UI reach it the moment it is set up, with
+ * no publish press needed. Every later change still goes through
+ * publishConfigurationService() and its review step: once any version
+ * exists, this does nothing.
+ */
+export async function publishInitialConfigurationService(machineId: string): Promise<Result<PublishError, InitialPublishResult>> {
+  const [error, result] = await publish(machineId, null, undefined, true);
+  if (error) return err(error);
+  return ok(result ? { published: true, version: result.version } : { published: false });
+}
+
+/** @param onlyIfNone Write nothing (and answer null) when any version already exists. */
+async function publish(machineId: string, userId: string | null, fromVersion: number | undefined, onlyIfNone: boolean): Promise<Result<PublishError, PublishConfigurationResult | null>> {
   try {
     const machine = (await prisma.machine.findFirst({
       where: { id: machineId },
@@ -118,6 +141,8 @@ export async function publishConfigurationService(
         select: { version: true },
       })) as { version: number } | null;
 
+      if (onlyIfNone && latest) return null;
+
       const next = (latest?.version ?? 0) + 1;
 
       await tx.machineConfiguration.create({
@@ -139,6 +164,8 @@ export async function publishConfigurationService(
 
       return next;
     });
+
+    if (version === null) return ok(null);
 
     if (tenantId !== null && siteId !== null && commandId) {
       await publishCommand({ id: machineId, tenantId, siteId }, { type: "apply_configuration", version }, commandId);
