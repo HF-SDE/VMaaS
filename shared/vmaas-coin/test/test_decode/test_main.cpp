@@ -106,6 +106,25 @@ void test_two_coins_separated_by_more_than_the_gap()
     TEST_ASSERT_EQUAL_UINT32(1000, ev.value_minor);
 }
 
+// tick() must never close a train on a "now" earlier than the last edge. On
+// the device the edges are stamped by esp_timer in the ISR while the main loop
+// ran on FreeRTOS ticks, which start later and so lag behind; the unsigned
+// difference wrapped to ~4e9 and closed the train after its first pulse, so a
+// 20 kr coin could be counted as 5 kr.
+void test_now_before_the_last_edge_does_not_close_the_train()
+{
+    CoinAcceptor c(danish_coins());
+    CoinEvent ev{};
+
+    pulse(c, 1000, 100);                 // last edge at 1100
+    TEST_ASSERT_FALSE(c.tick(1050, ev)); // a lagging clock: before that edge
+
+    pulse(c, 1200, 100);
+    TEST_ASSERT_TRUE(c.tick(1600, ev));
+    TEST_ASSERT_EQUAL_UINT8(2, ev.pulses);
+    TEST_ASSERT_EQUAL_UINT32(1000, ev.value_minor);
+}
+
 // A fresh acceptor has nothing to report and no anomalies.
 void test_idle_acceptor_reports_nothing()
 {
@@ -127,6 +146,7 @@ int main()
     RUN_TEST(test_three_pulses_are_twenty_kroner);
     RUN_TEST(test_a_train_is_reported_once);
     RUN_TEST(test_two_coins_separated_by_more_than_the_gap);
+    RUN_TEST(test_now_before_the_last_edge_does_not_close_the_train);
     RUN_TEST(test_idle_acceptor_reports_nothing);
     return UNITY_END();
 }

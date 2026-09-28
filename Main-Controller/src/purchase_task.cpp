@@ -475,8 +475,12 @@ namespace purchase_task
             acceptor->on_edge(edge.at_ms, edge.level);
         }
 
+        // The decoder's "now" must be on the edges' clock: esp_coin_port
+        // stamps them with esp_timer in the ISR, while now_ms is FreeRTOS
+        // ticks, which start later and run behind it.
+        const uint32_t edge_clock_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
         vmaas::CoinEvent ev;
-        while (acceptor->tick(now_ms, ev))
+        while (acceptor->tick(edge_clock_ms, ev))
         {
             ESP_LOGI(TAG, "coin: %u pulses = %lu minor", static_cast<unsigned>(ev.pulses), static_cast<unsigned long>(ev.value_minor));
             apply(machine->coin(ev.value_minor, now_ms), nullptr);
