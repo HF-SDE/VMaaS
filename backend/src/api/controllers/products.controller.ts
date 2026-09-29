@@ -20,7 +20,7 @@ import {
   simpleProductSearchService,
   updateProductService,
 } from "../services/products.service";
-import { publishPricesForProductService } from "../services/configuration.service";
+import { publishSlotStateForProductService } from "../services/configuration.service";
 import { watchSentPriceCommands } from "../services/configuration-sync.service";
 
 /**
@@ -163,7 +163,7 @@ export async function updateProductController(req: Request, res: Response) {
   // `publish` tells the admin which ones did.
   const publish =
     body.price !== undefined
-      ? await publishPricesForProductService(tenantId!, params.id, req.session?.user.id ?? null)
+      ? await publishSlotStateForProductService(tenantId!, params.id, req.session?.user.id ?? null)
       : [];
   watchSentPriceCommands(prisma, broadcast, tenantId!, publish);
 

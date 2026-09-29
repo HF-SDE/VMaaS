@@ -247,10 +247,28 @@ export async function recordDeviceEventService(
           })) as { id: string };
 
           if (cash.status === "completed" && slot) {
-            await tx.slot.update({
-              where: { id: slot.id },
-              data: { quantity: { decrement: 1 } },
-            });
+            // A sale from before the slot's last count (restock, correction,
+            // confirmed count) is already reflected in the counted number:
+            // booked as a sale, not taken off the stock again. Strictly
+            // after, the same rule the machine applies (spec: slot stock).
+            const lastCount = (await tx.inventoryMovement.findFirst({
+              where: { slotId: slot.id, type: { in: ["restock", "correction"] } },
+              orderBy: { occurredAt: "desc" },
+              select: { occurredAt: true },
+            })) as { occurredAt: Date } | null;
+
+            // A sale without a real timestamp (the device had no clock and
+            // sent uptimeMs) has only an estimated time; the machine always
+            // subtracts such a sale, so it always decrements here too.
+            const hasRealTime = input.occurredAt !== undefined;
+            if (!hasRealTime || !lastCount || occurredAt.getTime() > lastCount.occurredAt.getTime()) {
+              // Never below 0: a count set lower while the machine sold
+              // offline must not leave the slot negative.
+              await tx.slot.updateMany({
+                where: { id: slot.id, quantity: { gt: 0 } },
+                data: { quantity: { decrement: 1 } },
+              });
+            }
           }
 
           await tx.inventoryMovement.create({

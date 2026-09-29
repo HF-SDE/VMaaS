@@ -1,4 +1,4 @@
-import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
+import { getSlotsSchema, slotIdParamsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
 import { prisma } from "@/lib/prisma";
@@ -6,8 +6,13 @@ import { broadcast } from "@/lib/ws/server";
 import type { PricePublishOutcome } from "@vmaas/shared/types/configuration";
 
 import { watchSentPriceCommands } from "../services/configuration-sync.service";
-import { publishPricesService } from "../services/configuration.service";
-import { getLowStockSlotsService, getMachineSlotsService, updateSlotService } from "../services/slots.service";
+import { publishSlotStateService } from "../services/configuration.service";
+import {
+  confirmSlotCountService,
+  getLowStockSlotsService,
+  getMachineSlotsService,
+  updateSlotService,
+} from "../services/slots.service";
 
 /**
  * The same shape as the machines controllers: destructure the service's `Result`
@@ -68,13 +73,13 @@ export async function updateSlotController(req: Request, res: Response) {
     }
   }
 
-  // A new price or product changes what the slot costs on the machine, so the
-  // machine gets the new prices now, and `publish` tells the admin whether it
-  // follows. The save itself has already succeeded; a failed publish is
+  // A new price, product or quantity changes what the slot costs or holds on
+  // the machine, so the machine gets the new prices and stock now, and
+  // `publish` tells the admin whether it follows. The save itself has already succeeded; a failed publish is
   // logged, not reported as a failed save.
   const publish: PricePublishOutcome[] = [];
-  if (body.price !== undefined || body.productId !== undefined) {
-    const [publishError, outcome] = await publishPricesService(slot.machineId, session!.user.id);
+  if (body.price !== undefined || body.productId !== undefined || body.quantity !== undefined) {
+    const [publishError, outcome] = await publishSlotStateService(slot.machineId, session!.user.id);
     if (publishError) {
       console.warn(`slots: prices for machine ${slot.machineId} not published: ${publishError.reason}: ${publishError.message}`);
     } else {
@@ -108,4 +113,38 @@ export async function getLowStockSlotsController(req: Request, res: Response) {
   }
 
   return res.status(200).json(slots).end();
+}
+
+/**
+ * `POST /api/slots/:id/confirm-count`: the slot was counted and the number is
+ * right. Records the count and publishes, so the machine knows from when the
+ * quantity is a counted number (spec: slot stock).
+ */
+export async function confirmSlotCountController(req: Request, res: Response) {
+  const { tenantId, session } = req;
+  const { params } = slotIdParamsSchema.parse(req);
+
+  const [error, slot] = await confirmSlotCountService(tenantId!, params.id, session!.user.id);
+  if (error) {
+    const reason = error.reason;
+    switch (reason) {
+      case "SLOT_NOT_FOUND":
+        return res.status(404).json({ error: "Slot not found" }).end();
+      case "UNKNOWN_ERROR":
+        return res.status(500).json({ error: "An unknown error occurred while confirming the count" }).end();
+      default:
+        throw new Error(`Unhandled error reason ${reason satisfies never}`);
+    }
+  }
+
+  const publish: PricePublishOutcome[] = [];
+  const [publishError, outcome] = await publishSlotStateService(slot.machineId, session!.user.id);
+  if (publishError) {
+    console.warn(`slots: stock for machine ${slot.machineId} not published: ${publishError.reason}: ${publishError.message}`);
+  } else {
+    publish.push(outcome);
+    watchSentPriceCommands(prisma, broadcast, tenantId!, publish);
+  }
+
+  return res.status(200).json({ ...slot, publish }).end();
 }

@@ -4,7 +4,7 @@ import type { WsConfigurationResultMessage } from "@vmaas/shared/schemas"
 import type { PricePublishOutcome } from "@vmaas/shared/types/configuration"
 
 /**
- * Tells the user whether a price they changed reached the machine.
+ * Tells the user whether a price or stock change reached the machine.
  *
  * The slot and product endpoints answer with `publish`, one outcome per
  * machine. An offline machine gets a warning: it picks the price up when it
@@ -33,12 +33,12 @@ export function priceSyncNotices(
   if (offline.length === 1) {
     notices.push({
       kind: "warning",
-      message: `${offline[0].machineName} is offline. The price will be updated the next time it comes online.`,
+      message: `${offline[0].machineName} is offline. It will be updated the next time it comes online.`,
     })
   } else if (offline.length > 1) {
     notices.push({
       kind: "warning",
-      message: `${offline.length} machines are offline. Their prices will be updated the next time they come online.`,
+      message: `${offline.length} machines are offline. They will be updated the next time they come online.`,
     })
   }
 
@@ -46,7 +46,7 @@ export function priceSyncNotices(
     if (o.status === "sent" && o.commandId) {
       notices.push({
         kind: "loading",
-        message: `Sending the new price to ${o.machineName}…`,
+        message: `Sending the update to ${o.machineName}…`,
         commandId: o.commandId,
         machineName: o.machineName,
       })
@@ -59,7 +59,7 @@ export function priceSyncNotices(
 const pending = new Map<string,{ machineName: string; timer: ReturnType<typeof setTimeout> }>()
 
 function failed(commandId: string, machineName: string) {
-  toast.error(`The new price did not reach ${machineName}. See Alerts.`, {
+  toast.error(`The update did not reach ${machineName}. See Alerts.`, {
     id: commandId,
   })
 }
@@ -93,7 +93,7 @@ export function handleConfigurationResult(
   pending.delete(body.commandId)
 
   if (body.status === "completed") {
-    toast.success(`The new price is live on ${entry.machineName}.`, {
+    toast.success(`The update is live on ${entry.machineName}.`, {
       id: body.commandId,
     })
   } else {

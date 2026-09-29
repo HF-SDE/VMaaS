@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { publishCommand } from "@/mqtt/commands";
 
@@ -10,8 +10,10 @@ import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 
 import {
   type ConfigurationPayload,
+  type StockBlock,
   buildConfigurationPayload,
   buildPrices,
+  buildStock,
   comparePayloads,
   findUnwiredSlots,
   toPayloadSlots,
@@ -74,10 +76,45 @@ export async function publishInitialConfigurationService(machineId: string): Pro
   return ok(result ? { published: true, version: result.version } : { published: false });
 }
 
+/** Everything the stock block needs, read on the caller's transaction (which must be RepeatableRead). */
+async function readStock(tx: Prisma.TransactionClient, machineId: string): Promise<StockBlock> {
+  // buildStock sorts by slot number, so no orderBy here.
+  const slots = await tx.slot.findMany({ where: { machineId }, select: { id: true, slotNumber: true, quantity: true } });
+
+  // One ack per ledger the machine sold under, most recently used first.
+  // Four matches what the machine can track (STOCK_MAX_LEDGERS); an older
+  // ledger's sales are long booked. Raw SQL: Prisma cannot group by a JSON path.
+  const ackRows = await tx.$queryRaw<{ ledger: string; asOfSequence: bigint | null }[]>`
+    SELECT payload->>'ledger' AS ledger, MAX("sequenceNumber") AS "asOfSequence"
+    FROM "public"."machine_events"
+    WHERE "machineId" = ${machineId}::uuid AND type = 'cash_sale' AND payload->>'ledger' IS NOT NULL
+    GROUP BY payload->>'ledger'
+    ORDER BY MAX("receivedAt") DESC
+    LIMIT 4
+  `;
+  const acks = ackRows.map((row) => ({ ledger: row.ledger, asOfSequence: Number(row.asOfSequence ?? 0) }));
+
+  // orderBy only so Prisma's groupBy overloads accept the arguments.
+  const counts = await tx.inventoryMovement.groupBy({
+    by: ["slotId"],
+    where: { slotId: { in: slots.map((s) => s.id) }, type: { in: ["restock", "correction"] } },
+    _max: { occurredAt: true },
+    orderBy: { slotId: "asc" },
+  });
+  const countedAt = new Map(counts.map((c) => [c.slotId, c._max.occurredAt]));
+
+  return buildStock(
+    slots.map((s) => ({ slotNumber: s.slotNumber, quantity: s.quantity, countedAt: countedAt.get(s.id) ?? null })),
+    acks,
+  );
+}
+
+const STOCK_TX = { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead } as const;
+
 /** @param onlyIfNone Write nothing (and answer null) when any version already exists. */
 async function publish(machineId: string, userId: string | null, fromVersion: number | undefined, onlyIfNone: boolean): Promise<Result<PublishError, PublishConfigurationResult | null>> {
   try {
-    const machine = (await prisma.machine.findFirst({
+    const machine = await prisma.machine.findFirst({
       where: { id: machineId },
       select: {
         id: true,
@@ -94,13 +131,7 @@ async function publish(machineId: string, userId: string | null, fromVersion: nu
           },
         },
       },
-    })) as {
-      id: string;
-      tenantId: string | null;
-      siteId: string | null;
-      stepsPerVend: number;
-      slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
-    } | null;
+    });
 
     if (!machine) {
       return err({ reason: "MACHINE_NOT_FOUND", message: "No such machine." });
@@ -132,10 +163,10 @@ async function publish(machineId: string, userId: string | null, fromVersion: nu
       if (fromVersion === undefined) {
         payload = buildConfigurationPayload(slots, {}, { stepsPerVend: machine.stepsPerVend });
       } else {
-        const previous = (await tx.machineConfiguration.findFirst({
+        const previous = await tx.machineConfiguration.findFirst({
           where: { machineId, version: fromVersion },
           select: { payload: true },
-        })) as { payload: unknown } | null;
+        });
 
         if (!previous) {
           throw new VersionNotFoundError(`This machine has no version ${fromVersion}.`);
@@ -143,11 +174,13 @@ async function publish(machineId: string, userId: string | null, fromVersion: nu
         payload = previous.payload;
       }
 
-      const latest = (await tx.machineConfiguration.findFirst({
+      payload = { ...(payload as object), stock: await readStock(tx, machineId) };
+
+      const latest = await tx.machineConfiguration.findFirst({
         where: { machineId },
         orderBy: { version: "desc" },
         select: { version: true },
-      })) as { version: number } | null;
+      });
 
       if (onlyIfNone && latest) return null;
 
@@ -171,7 +204,7 @@ async function publish(machineId: string, userId: string | null, fromVersion: nu
       }
 
       return next;
-    });
+    }, STOCK_TX);
 
     if (version === null) return ok(null);
 
@@ -205,25 +238,27 @@ export type ConfigurationListResult = {
  * newest published version, for the "what's live vs. what's stored" banner.
  */
 /**
- * Publishes a machine's current prices as the next version, for the
- * customer's own price edits (slot price, slot product, product price).
+ * Publishes a machine's current prices and stock as the next version, for the
+ * customer's own edits (slot price, product or quantity, product price,
+ * confirmed count).
  *
- * Only `prices` comes from the live slots. Everything else, `wiring` above
- * all, is copied from the last published version, so a customer can change
- * what a slot costs but never which pins it drives: a wiring change still
- * needs publishConfigurationService() and its review step. A machine that
- * was never published has no reviewed wiring to build on and is left alone
- * (its first version comes at activation); unchanged prices write nothing.
+ * Only `prices` and `stock` come from the live slots. Everything else,
+ * `wiring` above all, is copied from the last published version, so a
+ * customer can change what a slot costs and holds but never which pins it
+ * drives: a wiring change still needs publishConfigurationService() and its
+ * review step. A machine that was never published has no reviewed wiring to
+ * build on and is left alone (its first version comes at activation);
+ * unchanged prices and stock write nothing.
  *
  * The outcome says whether the machine will follow now (`sent`, online) or
  * when it next connects (`offline`), so the admin can tell the user.
  */
-export async function publishPricesService(
+export async function publishSlotStateService(
   machineId: string,
   userId: string | null,
 ): Promise<Result<PublishError, PricePublishOutcome>> {
   try {
-    const machine = (await prisma.machine.findFirst({
+    const machine = await prisma.machine.findFirst({
       where: { id: machineId },
       select: {
         id: true,
@@ -236,14 +271,7 @@ export async function publishPricesService(
           select: { slotNumber: true, price: true, product: { select: { price: true } }, pins: { select: { number: true } } },
         },
       },
-    })) as {
-      id: string;
-      name: string;
-      status: string;
-      tenantId: string | null;
-      siteId: string | null;
-      slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
-    } | null;
+    });
 
     if (!machine) {
       return err({ reason: "MACHINE_NOT_FOUND", message: "No such machine." });
@@ -261,17 +289,18 @@ export async function publishPricesService(
     const commandId = tenantId !== null && siteId !== null ? `cfg-${randomUUID()}` : null;
 
     const outcome = await prisma.$transaction(async (tx) => {
-      const latest = (await tx.machineConfiguration.findFirst({
+      const latest = await tx.machineConfiguration.findFirst({
         where: { machineId },
         orderBy: { version: "desc" },
         select: { version: true, payload: true },
-      })) as { version: number; payload: unknown } | null;
+      });
 
       if (!latest) return { published: false as const, reason: "NO_PUBLISHED_VERSION" as const };
 
       const base = (latest.payload ?? {}) as ConfigurationPayload;
-      const payload = { ...base, prices };
-      if (!comparePayloads(payload, base).prices) return { published: false as const, reason: "UNCHANGED" as const };
+      const payload: ConfigurationPayload = { ...base, prices, stock: await readStock(tx, machineId) };
+      const changed = comparePayloads(payload, base);
+      if (!changed.prices && !changed.stock) return { published: false as const, reason: "UNCHANGED" as const };
 
       const next = latest.version + 1;
       await tx.machineConfiguration.create({
@@ -292,7 +321,7 @@ export async function publishPricesService(
       }
 
       return { published: true as const, version: next };
-    });
+    }, STOCK_TX);
 
     if (outcome.published && tenantId !== null && siteId !== null && commandId) {
       await publishCommand(
@@ -305,34 +334,34 @@ export async function publishPricesService(
     if (!outcome.published) return ok(report(outcome.reason === "UNCHANGED" ? "unchanged" : "not_published"));
     return ok(report(machine.status === "online" && commandId ? "sent" : "offline", commandId));
   } catch (error) {
-    Sentry.captureException(error, { tags: { service: "configuration", action: "publishing prices" } });
+    Sentry.captureException(error, { tags: { service: "configuration", action: "publishing prices and stock" } });
 
     return err({
       reason: "UNKNOWN_ERROR",
-      message: error instanceof Error ? error.message : "Unknown error while publishing prices.",
+      message: error instanceof Error ? error.message : "Unknown error while publishing prices and stock.",
     });
   }
 }
 
 /**
- * A product's price changed: republish the prices of every machine in the
+ * A product's price changed: republish the prices (and stock) of every machine in the
  * tenant where a slot sells that product without a price of its own (a slot
  * with its own price is not affected). One machine failing does not stop the
  * others: a failure is logged and left out of the returned outcomes.
  */
-export async function publishPricesForProductService(
+export async function publishSlotStateForProductService(
   tenantId: string,
   productId: string,
   userId: string | null,
 ): Promise<PricePublishOutcome[]> {
-  const machines = (await prisma.machine.findMany({
+  const machines = await prisma.machine.findMany({
     where: { tenantId, slots: { some: { productId, price: null } } },
     select: { id: true },
-  })) as { id: string }[];
+  });
 
   const outcomes: PricePublishOutcome[] = [];
   for (const { id } of machines) {
-    const [error, outcome] = await publishPricesService(id, userId);
+    const [error, outcome] = await publishSlotStateService(id, userId);
     if (error) console.warn(`configuration: prices for machine ${id} not published: ${error.reason}: ${error.message}`);
     else outcomes.push(outcome);
   }
@@ -343,7 +372,7 @@ export async function listConfigurationsService(
   machineId: string,
 ): Promise<Result<PublishError, ConfigurationListResult>> {
   try {
-    const machine = (await prisma.machine.findFirst({
+    const machine = await prisma.machine.findFirst({
       where: { id: machineId },
       select: {
         id: true,
@@ -357,41 +386,40 @@ export async function listConfigurationsService(
           },
         },
       },
-    })) as {
-      id: string;
-      stepsPerVend: number;
-      slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
-    } | null;
+    });
 
     if (!machine) {
       return err({ reason: "MACHINE_NOT_FOUND", message: "No such machine." });
     }
 
-    const rows = (await prisma.machineConfiguration.findMany({
+    const rows = await prisma.machineConfiguration.findMany({
       where: { machineId },
       orderBy: { version: "desc" },
       select: { version: true, createdAt: true, createdById: true },
-    })) as { version: number; createdAt: Date; createdById: string | null }[];
+    });
 
     const userIds = [...new Set(rows.flatMap((row) => (row.createdById ? [row.createdById] : [])))];
-    const users = (await prisma.user.findMany({
+    const users = await prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, name: true },
-    })) as { id: string; name: string }[];
+    });
     const nameById = new Map(users.map((user) => [user.id, user.name]));
 
-    const latest = (await prisma.machineConfiguration.findFirst({
+    const latest = await prisma.machineConfiguration.findFirst({
       where: { machineId },
       orderBy: { version: "desc" },
       select: { payload: true },
-    })) as { payload: unknown } | null;
+    });
 
-    const drift = latest
+    // Stock is left out of drift: a quantity edit publishes on its own, so
+    // there is never stock waiting for a superadmin to publish.
+    const compared = latest
       ? comparePayloads(
           buildConfigurationPayload(toPayloadSlots(machine.slots), {}, { stepsPerVend: machine.stepsPerVend }),
           latest.payload,
         )
       : null;
+    const drift = compared ? { wiring: compared.wiring, prices: compared.prices } : null;
 
     return ok({
       versions: rows.map((row) => ({

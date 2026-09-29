@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { fetchData } from "@/lib/data/data-fetch"
+import { confirmSlotCount } from "@/lib/confirm-count"
+import { canConfirmCount, slotPatchBody } from "@/lib/slot-patch"
 import { trackPriceSync } from "@/lib/price-sync"
 import type { PricePublishOutcome } from "@vmaas/shared/types/configuration"
 import { slotWriteSchema } from "@vmaas/shared/schemas"
@@ -63,6 +65,16 @@ export function EditSlotForm({
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     defaultProduct?.id ?? null
   )
+  const [confirming, setConfirming] = useState(false)
+
+  // The slot was counted and the number is already right. The form's other
+  // fields are not saved by this.
+  async function confirmCount() {
+    setConfirming(true)
+    const ok = await confirmSlotCount(id, slotWriteErrorMessage)
+    setConfirming(false)
+    if (ok) router.refresh()
+  }
 
   const form = useForm({
     defaultValues,
@@ -76,16 +88,14 @@ export function EditSlotForm({
         return
       }
 
-      // All three go every time even when only one changed: the endpoint takes a
-      // partial body, and a field that resends the value it already had is a
-      // no-op there — the stock ledger is written off the row's delta, not off
-      // what the body names.
+      // An unchanged quantity is left out: the loaded number may be stale, and
+      // resending it would reset the slot's count (see slotPatchBody).
       const [error, saved] = await fetchData<
         SlotListItem & { publish?: PricePublishOutcome[] },
         SlotWriteData
       >(`/api/slots/${id}`, {
         method: "PATCH",
-        body: { ...value, productId: selectedProductId },
+        body: slotPatchBody(value, defaultValues, selectedProductId),
       })
 
       if (error) {
@@ -141,7 +151,24 @@ export function EditSlotForm({
                 />
                 <FieldDescription>
                   Correcting this figure is recorded as a stock movement.
+                  Counted the slot and the number is right? Confirm it.
                 </FieldDescription>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  disabled={
+                    confirming ||
+                    !canConfirmCount(field.state.value, defaultValues.quantity)
+                  }
+                  onClick={() => confirmCount()}
+                >
+                  {confirming ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : null}
+                  Confirm count
+                </Button>
                 {isInvalid && <FieldError errors={field.state.meta.errors} />}
               </Field>
             )

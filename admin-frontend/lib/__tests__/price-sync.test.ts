@@ -30,7 +30,7 @@ describe("priceSyncNotices", () => {
       {
         kind: "warning",
         message:
-          "Lobby is offline. The price will be updated the next time it comes online.",
+          "Lobby is offline. It will be updated the next time it comes online.",
       },
     ])
   })
@@ -44,7 +44,7 @@ describe("priceSyncNotices", () => {
       {
         kind: "warning",
         message:
-          "2 machines are offline. Their prices will be updated the next time they come online.",
+          "2 machines are offline. They will be updated the next time they come online.",
       },
     ])
   })
@@ -53,7 +53,7 @@ describe("priceSyncNotices", () => {
     expect(priceSyncNotices([outcome({})])).toEqual([
       {
         kind: "loading",
-        message: "Sending the new price to Lobby…",
+        message: "Sending the update to Lobby…",
         commandId: "cfg-1",
         machineName: "Lobby",
       },
@@ -80,7 +80,7 @@ describe("trackPriceSync", () => {
   it("turns the loading toast green when the machine applies the price", () => {
     trackPriceSync([outcome({})])
     expect(toast.loading).toHaveBeenCalledWith(
-      "Sending the new price to Lobby…",
+      "Sending the update to Lobby…",
       { id: "cfg-1" }
     )
 
@@ -92,7 +92,7 @@ describe("trackPriceSync", () => {
     })
 
     expect(toast.success).toHaveBeenCalledWith(
-      "The new price is live on Lobby.",
+      "The update is live on Lobby.",
       { id: "cfg-1" }
     )
     vi.advanceTimersByTime(PRICE_SYNC_TIMEOUT_MS)
@@ -109,7 +109,7 @@ describe("trackPriceSync", () => {
     })
 
     expect(toast.error).toHaveBeenCalledWith(
-      "The new price did not reach Lobby. See Alerts.",
+      "The update did not reach Lobby. See Alerts.",
       { id: "cfg-1" }
     )
   })
@@ -119,7 +119,7 @@ describe("trackPriceSync", () => {
     vi.advanceTimersByTime(PRICE_SYNC_TIMEOUT_MS)
 
     expect(toast.error).toHaveBeenCalledWith(
-      "The new price did not reach Lobby. See Alerts.",
+      "The update did not reach Lobby. See Alerts.",
       { id: "cfg-1" }
     )
     // A late answer after the timeout changes nothing.
@@ -145,7 +145,7 @@ describe("trackPriceSync", () => {
   it("shows the offline warning as a warning toast", () => {
     trackPriceSync([outcome({ status: "offline" })])
     expect(toast.warning).toHaveBeenCalledWith(
-      "Lobby is offline. The price will be updated the next time it comes online."
+      "Lobby is offline. It will be updated the next time it comes online."
     )
   })
 })
