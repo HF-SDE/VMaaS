@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-stock",
+  "version": "0.1.0",
+  "description": "Hardware-free slot stock ledger for VMaaS",
+  "keywords": ["stock", "inventory", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["stock_ledger.h"]
+}

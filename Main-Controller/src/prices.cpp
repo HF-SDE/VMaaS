@@ -54,10 +54,13 @@ namespace
 
 namespace prices
 {
+    /// Shared by load() and load_stock(); see load_stock().
+    static char load_buf[MAX_PAYLOAD];
+
     bool load(vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table)
     {
-        static char buf[MAX_PAYLOAD];
-        const int n = vmaas::fs::read_text_file(PATH, buf, sizeof(buf));
+        char *buf = load_buf;
+        const int n = vmaas::fs::read_text_file(PATH, buf, sizeof(load_buf));
         if (n == -1)
         {
             ESP_LOGW(TAG, "%s not found or unreadable, no cash sales until it is provisioned", PATH);
@@ -145,6 +148,58 @@ namespace prices
         }
         cJSON_Delete(root);
         return ok;
+    }
+
+    bool parse_stock(const char *json, vmaas::StockBaseline &out)
+    {
+        if (json == nullptr) return false;
+        cJSON *root = cJSON_Parse(json);
+        const cJSON *stock = cJSON_GetObjectItemCaseSensitive(root, "stock");
+        const cJSON *acks = cJSON_GetObjectItemCaseSensitive(stock, "acks");
+        const cJSON *slots = cJSON_GetObjectItemCaseSensitive(stock, "slots");
+        if (!cJSON_IsObject(stock) || !cJSON_IsArray(acks) || !cJSON_IsArray(slots))
+        {
+            cJSON_Delete(root);
+            return false;
+        }
+
+        vmaas::StockBaseline b{};
+        const cJSON *ack = nullptr;
+        cJSON_ArrayForEach(ack, acks)
+        {
+            if (b.ack_count >= vmaas::STOCK_MAX_LEDGERS) break;
+            const cJSON *ledger = cJSON_GetObjectItemCaseSensitive(ack, "ledger");
+            uint32_t as_of = 0;
+            read_u32(ack, "asOfSequence", as_of);
+            if (!cJSON_IsString(ledger) || std::strlen(ledger->valuestring) > vmaas::STOCK_LEDGER_MAX) continue;
+            vmaas::StockAck &a = b.acks[b.ack_count++];
+            std::snprintf(a.ledger, sizeof(a.ledger), "%s", ledger->valuestring);
+            a.as_of_sequence = as_of;
+        }
+
+        const cJSON *row = nullptr;
+        cJSON_ArrayForEach(row, slots)
+        {
+            if (b.slot_count >= vmaas::STOCK_MAX_SLOTS) break;
+            uint32_t slot = 0, qty = 0;
+            read_u32(row, "slot", slot);
+            read_u32(row, "quantity", qty);
+            if (slot == 0 || slot > 255) continue;
+            int64_t counted = 0;
+            const cJSON *at = cJSON_GetObjectItemCaseSensitive(row, "countedAt");
+            if (cJSON_IsString(at) && !vmaas::parse_iso8601_utc(at->valuestring, counted)) counted = 0;
+            b.slots[b.slot_count++] = {static_cast<uint8_t>(slot), qty, counted};
+        }
+
+        cJSON_Delete(root);
+        out = b;
+        return true;
+    }
+
+    bool load_stock(vmaas::StockBaseline &out)
+    {
+        if (vmaas::fs::read_text_file(PATH, load_buf, sizeof(load_buf)) <= 0) return false;
+        return parse_stock(load_buf, out);
     }
 
     bool parse(const char *json, vmaas::CoinConfig &coin, vmaas::PurchaseConfig &purchase, Table &table)

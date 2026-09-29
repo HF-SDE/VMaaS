@@ -18,6 +18,7 @@
 
 #include "coin_acceptor.h"
 #include "purchase.h"
+#include "stock_ledger.h"
 
 namespace prices
 {
@@ -84,6 +85,16 @@ namespace prices
      *         wiring), or @p out is too small. @p out is then empty.
      */
     bool read_wiring(char *out, size_t out_len);
+
+    /**
+     * @brief Read the payload's `stock` block into @p out.
+     * @return False when there is no `stock` object or it is malformed
+     *         (then @p out is untouched): the machine enforces no stock.
+     */
+    bool parse_stock(const char *json, vmaas::StockBaseline &out);
+
+    /// parse_stock() on /storage/prices.json.
+    bool load_stock(vmaas::StockBaseline &out);
 
     /// Largest payload the device will accept, in bytes. The response buffer
     /// the fetch reads into has to be at least this big for a configuration

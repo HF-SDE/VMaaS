@@ -57,4 +57,11 @@ namespace outbox
     /// healthy (logged loudly and kept RAM-only when it is not - see
     /// outbox.cpp for why this module never erases NVS to recover).
     uint32_t next_sequence();
+
+    /// This machine's sale ledger id: 8 chars [a-z0-9], created at random the
+    /// first time the sequence counter starts (none in NVS) and kept in NVS
+    /// next to it. A reset NVS starts a new ledger, so sequence numbers never
+    /// have to be compared across a reset (spec: slot stock). Valid after
+    /// begin(); never empty.
+    const char *ledger();
 }

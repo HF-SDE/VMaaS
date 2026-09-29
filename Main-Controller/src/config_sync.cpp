@@ -263,6 +263,12 @@ namespace
 
         purchase_task::set_prices(fresh);
 
+        // The stock baseline rides in the same payload. Heap, briefly: it is
+        // ~550 bytes, this task's stack also carries TLS, and static DRAM is full.
+        vmaas::StockBaseline *fresh_stock = new vmaas::StockBaseline();
+        if (prices::load_stock(*fresh_stock)) purchase_task::set_stock(*fresh_stock);
+        delete fresh_stock;
+
         if (has_wiring)
         {
             wiring_sync::request(wiring_sync::Source::NewConfig);

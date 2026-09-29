@@ -84,7 +84,7 @@ namespace vmaas
             scratch, sizeof(scratch),
             "{%s\"sequenceNumber\":%lu,\"type\":\"cash_sale\",%s,"
             "\"payload\":{\"slot\":%u,\"price_minor\":%lu,\"received_minor\":%lu,"
-            "\"status\":\"%s\"%s,\"currency\":\"%s\"}}",
+            "\"status\":\"%s\"%s,\"currency\":\"%s\",\"ledger\":\"%s\"}}",
             event_id_part,
             static_cast<unsigned long>(line.sequence_number),
             when,
@@ -93,7 +93,8 @@ namespace vmaas
             static_cast<unsigned long>(line.received_minor),
             status_text(line.status),
             reason,
-            line.currency != nullptr ? line.currency : "DKK");
+            line.currency != nullptr ? line.currency : "DKK",
+            line.ledger != nullptr ? line.ledger : "");
 
         if (n < 0) return 0;
         const size_t written = static_cast<size_t>(n);
