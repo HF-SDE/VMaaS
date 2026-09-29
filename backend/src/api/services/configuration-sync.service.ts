@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/node";
 import type { WsServerMessage } from "@vmaas/shared/schemas";
 import type { PricePublishOutcome } from "@vmaas/shared/types/configuration";
 
-import { ALERT_SELECT, type AlertWithMachine, toAlertRow } from "./alerts.service";
+import { createAlertService } from "./alerts.service";
 import { isCommandOpen } from "./device.service";
 
 /**
@@ -26,25 +26,17 @@ export type Broadcast = (tenantId: string, message: WsServerMessage) => void;
 export type ConfigurationSyncDb = {
   machine: { findUnique(args: unknown): Promise<unknown> };
   machineCommand: { findFirst(args: unknown): Promise<unknown> };
-  securityAlert: {
-    create(args: unknown): Promise<unknown>;
-    updateMany(args: unknown): Promise<unknown>;
-  };
+  securityAlert: { updateMany(args: unknown): Promise<unknown> };
 };
 
-async function raiseAlert(
-  db: ConfigurationSyncDb,
-  broadcast: Broadcast,
-  tenantId: string,
-  machineId: string,
-  reason: string,
-): Promise<void> {
-  const alert = (await db.securityAlert.create({
-    data: { machineId, type: "error", message: `${CONFIGURATION_ALERT_PREFIX}: ${reason}` },
-    select: ALERT_SELECT,
-  })) as AlertWithMachine;
+async function raiseAlert(broadcast: Broadcast, tenantId: string, machineId: string, reason: string): Promise<void> {
+  const [error, row] = await createAlertService({
+    machineId,
+    type: "error",
+    message: `${CONFIGURATION_ALERT_PREFIX}: ${reason}`,
+  });
+  if (error) throw new Error(error.message);
 
-  const row = toAlertRow(alert);
   if (row) broadcast(tenantId, { type: "alert.created", body: row });
 }
 
@@ -71,7 +63,7 @@ export async function reportConfigurationResultService(
     broadcast(tenantId, { type: "configuration.result", body: { commandId, machineId, status, detail } });
 
     if (status === "failed") {
-      await raiseAlert(db, broadcast, tenantId, machineId, detail ?? "the machine reported a failure");
+      await raiseAlert(broadcast, tenantId, machineId, detail ?? "the machine reported a failure");
     } else {
       await db.securityAlert.updateMany({
         where: { machineId, type: "error", resolvedAt: null, message: { startsWith: CONFIGURATION_ALERT_PREFIX } },
@@ -109,7 +101,6 @@ export function watchPriceCommand(db: ConfigurationSyncDb, broadcast: Broadcast,
       if (machine?.status !== "online") return;
 
       await raiseAlert(
-        db,
         broadcast,
         input.tenantId,
         input.machineId,

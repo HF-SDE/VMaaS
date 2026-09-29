@@ -19,7 +19,7 @@ const DEFAULT_SORT_ORDER = "desc" as const;
 
 export type UnknownAlertError = { reason: "UNKNOWN_ERROR"; message: string };
 
-export const ALERT_SELECT = {
+const ALERT_SELECT = {
   id: true,
   type: true,
   message: true,
@@ -35,7 +35,7 @@ export const ALERT_SELECT = {
   },
 } as const;
 
-export type AlertWithMachine = Prisma.SecurityAlertGetPayload<{ select: typeof ALERT_SELECT }>;
+type AlertWithMachine = Prisma.SecurityAlertGetPayload<{ select: typeof ALERT_SELECT }>;
 
 function unknownError(action: string, cause: unknown): Result<UnknownAlertError, never> {
   Sentry.captureException(cause, { tags: { service: "alerts", action } });
@@ -80,7 +80,7 @@ export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Pris
   return where;
 }
 
-export function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
+function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
   const site = alert.machine.site;
   if (!site) {
     console.error(`[alerts.service] invariant violated: alert ${alert.id}'s machine ${alert.machineId} has no site`);
@@ -181,6 +181,29 @@ const ALERT_ALREADY_RESOLVED: AlertAlreadyResolvedError = {
   reason: "ALERT_ALREADY_RESOLVED",
   message: "That alert has already been resolved.",
 };
+
+/**
+ * Raises an alert on a machine and answers the row the alerts page lists, so
+ * the caller can push it to the tenant as `alert.created` without re-reading.
+ * The row is null when the machine has no site (the invariant toAlertRow
+ * guards): the alert is stored, it just cannot be shown yet.
+ */
+export async function createAlertService(input: {
+  machineId: string;
+  type: AlertType;
+  message: string;
+}): Promise<Result<UnknownAlertError, MachineAlertRow | null>> {
+  try {
+    const alert = await prisma.securityAlert.create({
+      data: { machineId: input.machineId, type: input.type, message: input.message },
+      select: ALERT_SELECT,
+    });
+
+    return ok(toAlertRow(alert));
+  } catch (error) {
+    return unknownError("creating", error);
+  }
+}
 
 export async function resolveAlertService(
   tenantId: string,

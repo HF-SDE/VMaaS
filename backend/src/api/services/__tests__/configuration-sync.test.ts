@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { createAlertService } = vi.hoisted(() => ({ createAlertService: vi.fn() }));
+vi.mock("../alerts.service", () => ({ createAlertService }));
+
 import {
   CONFIGURATION_ALERT_PREFIX,
   reportConfigurationResultService,
@@ -17,24 +20,18 @@ import {
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const MACHINE = "33333333-3333-4333-8333-333333333333";
 
+const alertRow = { id: "a-1", type: "error", machineId: MACHINE, machineName: "Lobby" };
+
+beforeEach(() => {
+  createAlertService.mockReset();
+  createAlertService.mockImplementation(async (input: { message: string }) => [null, { ...alertRow, message: input.message }]);
+});
+
 function fakeDb(options: { machineStatus?: string; commandStatus?: string } = {}) {
-  const alertRow = {
-    id: "a-1",
-    type: "error",
-    message: "",
-    createdAt: new Date("2026-09-29T08:00:00Z"),
-    occurredAt: new Date("2026-09-29T08:00:00Z"),
-    resolvedAt: null,
-    machineId: MACHINE,
-    machine: { name: "Lobby", site: { id: "s-1", name: "HQ", contactPhone: null, contactEmail: null } },
-  };
   return {
     machine: { findUnique: vi.fn().mockResolvedValue({ status: options.machineStatus ?? "online" }) },
     machineCommand: { findFirst: vi.fn().mockResolvedValue({ status: options.commandStatus ?? "sent" }) },
-    securityAlert: {
-      create: vi.fn(async (args: { data: { message: string } }) => ({ ...alertRow, message: args.data.message })),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-    },
+    securityAlert: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
 }
 
@@ -62,7 +59,7 @@ describe("reportConfigurationResultService", () => {
       resolvedAt: null,
       message: { startsWith: CONFIGURATION_ALERT_PREFIX },
     });
-    expect(db.securityAlert.create).not.toHaveBeenCalled();
+    expect(createAlertService).not.toHaveBeenCalled();
   });
 
   it("raises an alert when the machine reports a failure, and broadcasts it", async () => {
@@ -77,7 +74,7 @@ describe("reportConfigurationResultService", () => {
       detail: "v4 prices applied, wiring rejected (no reply)",
     });
 
-    const created = db.securityAlert.create.mock.calls[0][0].data;
+    const created = createAlertService.mock.calls[0][0];
     expect(created).toMatchObject({ machineId: MACHINE, type: "error" });
     expect(created.message).toBe(
       `${CONFIGURATION_ALERT_PREFIX}: v4 prices applied, wiring rejected (no reply)`,
@@ -113,11 +110,11 @@ describe("watchPriceCommand", () => {
 
     watchPriceCommand(db as never, broadcast, { tenantId: TENANT, machineId: MACHINE, commandId: "cfg-1" }, 60_000);
     await vi.advanceTimersByTimeAsync(59_999);
-    expect(db.securityAlert.create).not.toHaveBeenCalled();
+    expect(createAlertService).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(db.machineCommand.findFirst.mock.calls[0][0].where).toEqual({ commandId: "cfg-1", machineId: MACHINE });
-    expect(db.securityAlert.create.mock.calls[0][0].data.message).toBe(
+    expect(createAlertService.mock.calls[0][0].message).toBe(
       `${CONFIGURATION_ALERT_PREFIX}: no answer from the machine within 60 s`,
     );
     expect(broadcast.mock.calls.map((c) => c[1].type)).toEqual(["alert.created"]);
@@ -130,7 +127,7 @@ describe("watchPriceCommand", () => {
     watchPriceCommand(db as never, broadcast, { tenantId: TENANT, machineId: MACHINE, commandId: "cfg-1" }, 60_000);
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(db.securityAlert.create).not.toHaveBeenCalled();
+    expect(createAlertService).not.toHaveBeenCalled();
   });
 
   it("stays quiet when the machine went offline meanwhile: it will pick the price up on reconnect", async () => {
@@ -140,6 +137,6 @@ describe("watchPriceCommand", () => {
     watchPriceCommand(db as never, broadcast, { tenantId: TENANT, machineId: MACHINE, commandId: "cfg-1" }, 60_000);
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(db.securityAlert.create).not.toHaveBeenCalled();
+    expect(createAlertService).not.toHaveBeenCalled();
   });
 });
