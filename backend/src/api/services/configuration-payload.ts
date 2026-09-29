@@ -74,6 +74,21 @@ export function toPayloadSlots(rows: PayloadSlotRow[]): PayloadSlot[] {
   }));
 }
 
+/**
+ * The payload's `prices` block, in slot order. A slot's own price wins over
+ * its product's; a slot with neither is left out, which the machine reads as
+ * "not for sale".
+ */
+export function buildPrices(slots: PayloadSlot[]): ConfigurationPayload["prices"] {
+  return [...slots]
+    .sort((a, b) => a.slotNumber - b.slotNumber)
+    .flatMap((slot) => {
+      const major = slot.price ?? slot.product?.price ?? null;
+      if (major === null) return [];
+      return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
+    });
+}
+
 export function buildConfigurationPayload(
   slots: PayloadSlot[],
   cash: Record<string, unknown>,
@@ -93,11 +108,7 @@ export function buildConfigurationPayload(
 
   return {
     cash,
-    prices: ordered.flatMap((slot) => {
-      const major = slot.price ?? slot.product?.price ?? null;
-      if (major === null) return [];
-      return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
-    }),
+    prices: buildPrices(ordered),
     wiring: {
       version: WIRING_SCHEMA_VERSION,
       motor: { stepsPerVend: motor.stepsPerVend },

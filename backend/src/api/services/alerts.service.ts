@@ -19,7 +19,7 @@ const DEFAULT_SORT_ORDER = "desc" as const;
 
 export type UnknownAlertError = { reason: "UNKNOWN_ERROR"; message: string };
 
-const ALERT_SELECT = {
+export const ALERT_SELECT = {
   id: true,
   type: true,
   message: true,
@@ -35,7 +35,7 @@ const ALERT_SELECT = {
   },
 } as const;
 
-type AlertWithMachine = Prisma.SecurityAlertGetPayload<{ select: typeof ALERT_SELECT }>;
+export type AlertWithMachine = Prisma.SecurityAlertGetPayload<{ select: typeof ALERT_SELECT }>;
 
 function unknownError(action: string, cause: unknown): Result<UnknownAlertError, never> {
   Sentry.captureException(cause, { tags: { service: "alerts", action } });
@@ -80,7 +80,7 @@ export function buildAlertWhere(tenantId: string, params: GetAlertsParams): Pris
   return where;
 }
 
-function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
+export function toAlertRow(alert: AlertWithMachine): MachineAlertRow | null {
   const site = alert.machine.site;
   if (!site) {
     console.error(`[alerts.service] invariant violated: alert ${alert.id}'s machine ${alert.machineId} has no site`);

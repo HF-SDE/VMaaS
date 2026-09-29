@@ -5,9 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { publishCommand } from "@/mqtt/commands";
 
 import * as Sentry from "@sentry/node";
+import type { PricePublishOutcome } from "@vmaas/shared/types/configuration";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 
-import { buildConfigurationPayload, comparePayloads, findUnwiredSlots, toPayloadSlots } from "./configuration-payload";
+import {
+  type ConfigurationPayload,
+  buildConfigurationPayload,
+  buildPrices,
+  comparePayloads,
+  findUnwiredSlots,
+  toPayloadSlots,
+} from "./configuration-payload";
 
 /** How long a machine has to apply a configuration before the command lapses. */
 const COMMAND_TTL_MS = 24 * 60 * 60 * 1000;
@@ -196,6 +204,141 @@ export type ConfigurationListResult = {
  * control, plus whether the machine's current rows have drifted from the
  * newest published version, for the "what's live vs. what's stored" banner.
  */
+/**
+ * Publishes a machine's current prices as the next version, for the
+ * customer's own price edits (slot price, slot product, product price).
+ *
+ * Only `prices` comes from the live slots. Everything else, `wiring` above
+ * all, is copied from the last published version, so a customer can change
+ * what a slot costs but never which pins it drives: a wiring change still
+ * needs publishConfigurationService() and its review step. A machine that
+ * was never published has no reviewed wiring to build on and is left alone
+ * (its first version comes at activation); unchanged prices write nothing.
+ *
+ * The outcome says whether the machine will follow now (`sent`, online) or
+ * when it next connects (`offline`), so the admin can tell the user.
+ */
+export async function publishPricesService(
+  machineId: string,
+  userId: string | null,
+): Promise<Result<PublishError, PricePublishOutcome>> {
+  try {
+    const machine = (await prisma.machine.findFirst({
+      where: { id: machineId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        tenantId: true,
+        siteId: true,
+        slots: {
+          orderBy: { slotNumber: "asc" },
+          select: { slotNumber: true, price: true, product: { select: { price: true } }, pins: { select: { number: true } } },
+        },
+      },
+    })) as {
+      id: string;
+      name: string;
+      status: string;
+      tenantId: string | null;
+      siteId: string | null;
+      slots: { slotNumber: number; price: unknown; product: { price: unknown } | null; pins: { number: number }[] }[];
+    } | null;
+
+    if (!machine) {
+      return err({ reason: "MACHINE_NOT_FOUND", message: "No such machine." });
+    }
+
+    const report = (status: PricePublishOutcome["status"], sentId: string | null = null): PricePublishOutcome => ({
+      machineId,
+      machineName: machine.name,
+      status,
+      commandId: sentId,
+    });
+
+    const prices = buildPrices(toPayloadSlots(machine.slots));
+    const { tenantId, siteId } = machine;
+    const commandId = tenantId !== null && siteId !== null ? `cfg-${randomUUID()}` : null;
+
+    const outcome = await prisma.$transaction(async (tx) => {
+      const latest = (await tx.machineConfiguration.findFirst({
+        where: { machineId },
+        orderBy: { version: "desc" },
+        select: { version: true, payload: true },
+      })) as { version: number; payload: unknown } | null;
+
+      if (!latest) return { published: false as const, reason: "NO_PUBLISHED_VERSION" as const };
+
+      const base = (latest.payload ?? {}) as ConfigurationPayload;
+      const payload = { ...base, prices };
+      if (!comparePayloads(payload, base).prices) return { published: false as const, reason: "UNCHANGED" as const };
+
+      const next = latest.version + 1;
+      await tx.machineConfiguration.create({
+        data: { machineId, version: next, payload: payload as Prisma.InputJsonValue, createdById: userId },
+      });
+
+      if (tenantId !== null && siteId !== null && commandId) {
+        await tx.machineCommand.create({
+          data: {
+            tenantId,
+            machineId,
+            commandId,
+            type: "apply_configuration",
+            payload: { version: next },
+            expiresAt: new Date(Date.now() + COMMAND_TTL_MS),
+          },
+        });
+      }
+
+      return { published: true as const, version: next };
+    });
+
+    if (outcome.published && tenantId !== null && siteId !== null && commandId) {
+      await publishCommand(
+        { id: machineId, tenantId, siteId },
+        { type: "apply_configuration", version: outcome.version },
+        commandId,
+      );
+    }
+
+    if (!outcome.published) return ok(report(outcome.reason === "UNCHANGED" ? "unchanged" : "not_published"));
+    return ok(report(machine.status === "online" && commandId ? "sent" : "offline", commandId));
+  } catch (error) {
+    Sentry.captureException(error, { tags: { service: "configuration", action: "publishing prices" } });
+
+    return err({
+      reason: "UNKNOWN_ERROR",
+      message: error instanceof Error ? error.message : "Unknown error while publishing prices.",
+    });
+  }
+}
+
+/**
+ * A product's price changed: republish the prices of every machine in the
+ * tenant where a slot sells that product without a price of its own (a slot
+ * with its own price is not affected). One machine failing does not stop the
+ * others: a failure is logged and left out of the returned outcomes.
+ */
+export async function publishPricesForProductService(
+  tenantId: string,
+  productId: string,
+  userId: string | null,
+): Promise<PricePublishOutcome[]> {
+  const machines = (await prisma.machine.findMany({
+    where: { tenantId, slots: { some: { productId, price: null } } },
+    select: { id: true },
+  })) as { id: string }[];
+
+  const outcomes: PricePublishOutcome[] = [];
+  for (const { id } of machines) {
+    const [error, outcome] = await publishPricesService(id, userId);
+    if (error) console.warn(`configuration: prices for machine ${id} not published: ${error.reason}: ${error.message}`);
+    else outcomes.push(outcome);
+  }
+  return outcomes;
+}
+
 export async function listConfigurationsService(
   machineId: string,
 ): Promise<Result<PublishError, ConfigurationListResult>> {

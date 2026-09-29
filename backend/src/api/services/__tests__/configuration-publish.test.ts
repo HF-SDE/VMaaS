@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { machineFindFirst, configFindFirst, configCreate, commandCreate, publishCommand } = vi.hoisted(() => ({
+const { machineFindFirst, machineFindMany, configFindFirst, configCreate, commandCreate, publishCommand } = vi.hoisted(() => ({
   machineFindFirst: vi.fn(),
+  machineFindMany: vi.fn(),
   configFindFirst: vi.fn(),
   configCreate: vi.fn(),
   commandCreate: vi.fn(),
@@ -15,14 +16,19 @@ const tx = {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    machine: { findFirst: machineFindFirst },
+    machine: { findFirst: machineFindFirst, findMany: machineFindMany },
     $transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
   },
 }));
 
 vi.mock("@/mqtt/commands", () => ({ publishCommand }));
 
-import { publishConfigurationService, publishInitialConfigurationService } from "@/api/services/configuration.service";
+import {
+  publishConfigurationService,
+  publishInitialConfigurationService,
+  publishPricesForProductService,
+  publishPricesService,
+} from "@/api/services/configuration.service";
 
 const MACHINE = "33333333-3333-4333-8333-333333333333";
 const USER = "44444444-4444-4444-8444-444444444444";
@@ -41,7 +47,7 @@ function machine(slots: unknown[], overrides: Record<string, unknown> = {}) {
 const wiredSlot = { slotNumber: 1, price: 15, product: null, pins: [{ number: 18 }] };
 
 beforeEach(() => {
-  for (const fn of [machineFindFirst, configFindFirst, configCreate, commandCreate, publishCommand]) fn.mockReset();
+  for (const fn of [machineFindFirst, machineFindMany, configFindFirst, configCreate, commandCreate, publishCommand]) fn.mockReset();
   configFindFirst.mockResolvedValue({ version: 3 });
   configCreate.mockImplementation(async (args: { data: { version: number } }) => ({ version: args.data.version }));
   commandCreate.mockImplementation(async (args: { data: { commandId: string } }) => args.data);
@@ -239,5 +245,117 @@ describe("publishInitialConfigurationService", () => {
 
     expect(error?.reason).toBe("SLOTS_NOT_WIRED");
     expect(configCreate).not.toHaveBeenCalled();
+  });
+});
+
+// Customers change prices themselves (PATCH /slots/:id, PATCH /products/:id),
+// and the machine must follow without a superadmin publishing. Only `prices`
+// may change this way: the wiring is copied from the last published version,
+// so a customer can never send pins that were not reviewed.
+describe("publishPricesService", () => {
+  const publishedWiring = { version: 2, motor: { stepsPerVend: 6400 }, slots: [{ slot: 1, pins: [21] }] };
+  const published = {
+    version: 3,
+    payload: { cash: {}, prices: [{ slot: 1, priceMinor: 1500 }], wiring: publishedWiring },
+  };
+  const named = (slots: unknown[], overrides: Record<string, unknown> = {}) =>
+    machine(slots, { name: "Lobby", status: "online", ...overrides });
+
+  it("publishes the new prices on top of the last published wiring and reports it sent", async () => {
+    // The layout's pins have been edited (18) but not published: they must not leak out.
+    machineFindFirst.mockResolvedValue(named([{ ...wiredSlot, price: 20 }]));
+    configFindFirst.mockResolvedValue(published);
+
+    const [error, result] = await publishPricesService(MACHINE, USER);
+
+    expect(error).toBeNull();
+    expect(result).toMatchObject({ machineId: MACHINE, machineName: "Lobby", status: "sent" });
+    expect(result?.commandId).toMatch(/^cfg-/);
+    const data = configCreate.mock.calls[0][0].data;
+    expect(data.version).toBe(4);
+    expect(data.payload.prices).toEqual([{ slot: 1, priceMinor: 2000 }]);
+    expect(data.payload.wiring).toEqual(publishedWiring);
+    expect(data.createdById).toBe(USER);
+    expect(publishCommand.mock.calls[0][1]).toEqual({ type: "apply_configuration", version: 4 });
+  });
+
+  it("publishes for an offline machine too, and says it is offline", async () => {
+    machineFindFirst.mockResolvedValue(named([{ ...wiredSlot, price: 20 }], { status: "offline" }));
+    configFindFirst.mockResolvedValue(published);
+
+    const [, result] = await publishPricesService(MACHINE, USER);
+
+    expect(result?.status).toBe("offline");
+    expect(result?.commandId).toMatch(/^cfg-/);
+    expect(configCreate).toHaveBeenCalledTimes(1);
+    expect(commandCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes no version when the prices did not change", async () => {
+    machineFindFirst.mockResolvedValue(named([{ ...wiredSlot, price: 15 }]));
+    configFindFirst.mockResolvedValue(published);
+
+    const [error, result] = await publishPricesService(MACHINE, USER);
+
+    expect(error).toBeNull();
+    expect(result).toEqual({ machineId: MACHINE, machineName: "Lobby", status: "unchanged", commandId: null });
+    expect(configCreate).not.toHaveBeenCalled();
+    expect(publishCommand).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a machine that has never been published", async () => {
+    machineFindFirst.mockResolvedValue(named([{ ...wiredSlot, price: 20 }]));
+    configFindFirst.mockResolvedValue(null);
+
+    const [error, result] = await publishPricesService(MACHINE, USER);
+
+    expect(error).toBeNull();
+    expect(result?.status).toBe("not_published");
+    expect(configCreate).not.toHaveBeenCalled();
+  });
+
+  it("leaves a slot with neither price nor product out of the prices", async () => {
+    machineFindFirst.mockResolvedValue(
+      named([
+        { ...wiredSlot, price: 20 },
+        { ...wiredSlot, slotNumber: 2, price: null, product: null },
+      ]),
+    );
+    configFindFirst.mockResolvedValue(published);
+
+    await publishPricesService(MACHINE, USER);
+
+    expect(configCreate.mock.calls[0][0].data.payload.prices).toEqual([{ slot: 1, priceMinor: 2000 }]);
+  });
+});
+
+describe("publishPricesForProductService", () => {
+  it("republishes every machine of the tenant that sells the product at its own price", async () => {
+    machineFindMany.mockResolvedValue([{ id: "m-a" }, { id: "m-b" }]);
+    machineFindFirst.mockResolvedValue(null); // each per-machine publish answers MACHINE_NOT_FOUND; only the fan-out is under test
+
+    const outcomes = await publishPricesForProductService("t-1", "p-1", USER);
+
+    const where = machineFindMany.mock.calls[0][0].where;
+    expect(where).toEqual({ tenantId: "t-1", slots: { some: { productId: "p-1", price: null } } });
+    expect(machineFindFirst.mock.calls.map((c) => (c[0] as { where: { id: string } }).where.id)).toEqual([
+      "m-a",
+      "m-b",
+    ]);
+    // A machine whose publish failed is logged, not reported as an outcome.
+    expect(outcomes).toEqual([]);
+  });
+
+  it("returns one outcome per machine it published", async () => {
+    machineFindMany.mockResolvedValue([{ id: MACHINE }]);
+    machineFindFirst.mockResolvedValue(
+      machine([{ ...wiredSlot, price: null, product: { price: 25 } }], { name: "Lobby", status: "online" }),
+    );
+    configFindFirst.mockResolvedValue({ version: 3, payload: { prices: [{ slot: 1, priceMinor: 1500 }] } });
+
+    const outcomes = await publishPricesForProductService("t-1", "p-1", USER);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({ machineId: MACHINE, status: "sent" });
   });
 });

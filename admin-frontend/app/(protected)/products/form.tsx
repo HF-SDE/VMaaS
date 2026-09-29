@@ -16,6 +16,8 @@ import { toast } from "sonner"
 import { createProductSchema } from "@vmaas/shared/schemas"
 import { productWriteErrorMessage } from "./messages"
 import { fetchData } from "@/lib/data/data-fetch"
+import { trackPriceSync } from "@/lib/price-sync"
+import type { PricePublishOutcome } from "@vmaas/shared/types/configuration"
 import type { ProductDetail } from "@backend-responses"
 import { Product } from "@prisma"
 
@@ -211,17 +213,17 @@ export function EditProductForm({
       submitLabel="Gem ændringer"
       onCancel={onCancel}
       onSubmit={async (values) => {
-        const [error, product] = await fetchData<ProductDetail>(
-          `/api/products/${id}`,
-          {
-            method: "PATCH",
-            body: values,
-          }
-        )
+        const [error, product] = await fetchData<
+          ProductDetail & { publish?: PricePublishOutcome[] }
+        >(`/api/products/${id}`, {
+          method: "PATCH",
+          body: values,
+        })
 
         if (error) return productWriteErrorMessage(error.status)
 
         toast.success("Product saved.")
+        trackPriceSync(product.publish)
         onSaved()
         // The action revalidated the path; this is what makes the open page
         // re-render with the saved values.

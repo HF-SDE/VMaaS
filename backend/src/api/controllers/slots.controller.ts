@@ -1,6 +1,12 @@
 import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
+import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/ws/server";
+import type { PricePublishOutcome } from "@vmaas/shared/types/configuration";
+
+import { watchSentPriceCommands } from "../services/configuration-sync.service";
+import { publishPricesService } from "../services/configuration.service";
 import { getLowStockSlotsService, getMachineSlotsService, updateSlotService } from "../services/slots.service";
 
 /**
@@ -62,7 +68,22 @@ export async function updateSlotController(req: Request, res: Response) {
     }
   }
 
-  return res.status(200).json(slot).end();
+  // A new price or product changes what the slot costs on the machine, so the
+  // machine gets the new prices now, and `publish` tells the admin whether it
+  // follows. The save itself has already succeeded; a failed publish is
+  // logged, not reported as a failed save.
+  const publish: PricePublishOutcome[] = [];
+  if (body.price !== undefined || body.productId !== undefined) {
+    const [publishError, outcome] = await publishPricesService(slot.machineId, session!.user.id);
+    if (publishError) {
+      console.warn(`slots: prices for machine ${slot.machineId} not published: ${publishError.reason}: ${publishError.message}`);
+    } else {
+      publish.push(outcome);
+      watchSentPriceCommands(prisma, broadcast, tenantId!, publish);
+    }
+  }
+
+  return res.status(200).json({ ...slot, publish }).end();
 }
 
 /**

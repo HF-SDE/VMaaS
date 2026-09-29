@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { fetchData } from "@/lib/data/data-fetch"
+import { trackPriceSync } from "@/lib/price-sync"
+import type { PricePublishOutcome } from "@vmaas/shared/types/configuration"
 import { slotWriteSchema } from "@vmaas/shared/schemas"
 import type { SimpleProduct } from "@vmaas/shared/types/product"
 import type { SlotWriteData } from "@vmaas/shared/types/slot"
@@ -78,13 +80,13 @@ export function EditSlotForm({
       // partial body, and a field that resends the value it already had is a
       // no-op there — the stock ledger is written off the row's delta, not off
       // what the body names.
-      const [error] = await fetchData<SlotListItem, SlotWriteData>(
-        `/api/slots/${id}`,
-        {
-          method: "PATCH",
-          body: { ...value, productId: selectedProductId },
-        }
-      )
+      const [error, saved] = await fetchData<
+        SlotListItem & { publish?: PricePublishOutcome[] },
+        SlotWriteData
+      >(`/api/slots/${id}`, {
+        method: "PATCH",
+        body: { ...value, productId: selectedProductId },
+      })
 
       if (error) {
         toast.error(slotWriteErrorMessage(error.status))
@@ -92,6 +94,7 @@ export function EditSlotForm({
       }
 
       toast.success("Slot saved.")
+      trackPriceSync(saved.publish)
       onSaved()
       router.refresh()
     },
