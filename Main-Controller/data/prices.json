@@ -7,7 +7,7 @@
     "minPulseMs": 15,
     "trainGapMs": 250,
     "paymentTimeoutMs": 60000,
-    "hasInhibit": false
+    "hasInhibit": true
   },
   "prices": [
     { "slot": 1, "priceMinor": 1500 },

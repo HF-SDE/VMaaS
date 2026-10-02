@@ -7,6 +7,9 @@ import {
 } from "@vmaas/shared/schemas";
 import { Request, Response } from "express";
 
+import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/ws/server";
+
 import {
   createProductService,
   deleteProductService,
@@ -17,6 +20,8 @@ import {
   simpleProductSearchService,
   updateProductService,
 } from "../services/products.service";
+import { publishSlotStateForProductService } from "../services/configuration.service";
+import { watchSentPriceCommands } from "../services/configuration-sync.service";
 
 /**
  * Every controller destructures the service's `Result` tuple and switches on
@@ -154,7 +159,15 @@ export async function updateProductController(req: Request, res: Response) {
     }
   }
 
-  return res.status(200).json(product).end();
+  // Every machine selling this product at the product's price follows it;
+  // `publish` tells the admin which ones did.
+  const publish =
+    body.price !== undefined
+      ? await publishSlotStateForProductService(tenantId!, params.id, req.session?.user.id ?? null)
+      : [];
+  watchSentPriceCommands(prisma, broadcast, tenantId!, publish);
+
+  return res.status(200).json({ ...product, publish }).end();
 }
 
 /** Shared by the archive and unarchive routes — they differ only in the flag. */

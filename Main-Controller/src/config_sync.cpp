@@ -16,13 +16,15 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
-#include "activation.h"     // sync_time
+#include "activation.h"
 #include "config.h"
 #include "device_api.h"
 #include "prices.h"
 #include "purchase_task.h"
+#include "slot_config_parser.h"
 #include "storage.h"
 #include "wifi_sta.h"
+#include "wiring_sync.h"
 
 namespace
 {
@@ -121,10 +123,11 @@ namespace
      * decides what the machine is actually configured with, and what goes live
      * has to be that same document.
      *
-     * Payload first, version second. A reset between the two leaves the version
-     * reading older than the file, so the next boot fetches again and rewrites
-     * both; the opposite order would leave a device convinced it was current
-     * while running the old prices.
+     * Payload first, wiring second, version last. A reset between any two
+     * leaves the version reading older than what is on flash, so the next
+     * boot fetches again and rewrites everything; storing the version earlier
+     * would leave a device convinced it was current while Motorcontrol still
+     * ran the old wiring.
      *
      * @param detail Filled with a short reason, reported back with the command.
      * @param[out] retry True when the failure was the network rather than the
@@ -197,6 +200,24 @@ namespace
             cJSON_Delete(root);
             return true;
         }
+        // The wiring is validated with the parser Motorcontrol boots from,
+        const cJSON *wiring = cJSON_GetObjectItemCaseSensitive(payload, "wiring");
+        const bool has_wiring = cJSON_IsObject(wiring) && wiring->child != nullptr;
+        if (has_wiring)
+        {
+            char *wiring_text = cJSON_PrintUnformatted(wiring);
+            const bool fits = wiring_text != nullptr && std::strlen(wiring_text) < wiring_sync::WIRING_JSON_MAX;
+            static vmaas::SlotParseResult wiring_probe;
+            wiring_probe = vmaas::parse_slot_config(fits ? wiring_text : nullptr);
+            cJSON_free(wiring_text);
+            if (!wiring_probe.ok)
+            {
+                std::snprintf(detail, detail_len, "v%d wiring invalid", version);
+                ESP_LOGE(TAG, "%s", detail);
+                cJSON_Delete(root);
+                return false;
+            }
+        }
 
         char *text = cJSON_PrintUnformatted(payload);
         cJSON_Delete(root);
@@ -230,8 +251,6 @@ namespace
         }
         cJSON_free(text);
 
-        store_version(version);
-
         prices::Table fresh;
         vmaas::CoinConfig coin;
         vmaas::PurchaseConfig purchase;
@@ -243,6 +262,27 @@ namespace
         }
 
         purchase_task::set_prices(fresh);
+
+        // The stock baseline rides in the same payload. Heap, briefly: it is
+        // ~550 bytes, this task's stack also carries TLS, and static DRAM is full.
+        vmaas::StockBaseline *fresh_stock = new vmaas::StockBaseline();
+        if (prices::load_stock(*fresh_stock)) purchase_task::set_stock(*fresh_stock);
+        delete fresh_stock;
+
+        if (has_wiring)
+        {
+            wiring_sync::request(wiring_sync::Source::NewConfig);
+            char wiring_detail[64];
+            const wiring_sync::Outcome outcome = wiring_sync::wait_for_result(Config::wiring_result_timeout_ms, wiring_detail, sizeof(wiring_detail));
+            if (outcome != wiring_sync::Outcome::Applied)
+            {
+                std::snprintf(detail, detail_len, "v%d prices applied, %s", version, wiring_detail);
+                ESP_LOGE(TAG, "%s", detail);
+                return false;
+            }
+        }
+
+        store_version(version);
 
         ESP_LOGI(TAG, "applied configuration v%d", version);
         std::snprintf(detail, detail_len, "applied v%d", version);

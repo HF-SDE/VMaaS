@@ -31,10 +31,26 @@ export type WiringSlot = { slot: number; pins: number[] };
 /** Motorcontrol's `motor` block: the STEP pulse count every vend on this machine emits. */
 export type WiringMotor = { stepsPerVend: number };
 
+/** "Sales of this ledger are booked up to and including asOfSequence." */
+export type StockAck = { ledger: string; asOfSequence: number };
+
+/**
+ * The `stock` block: per slot the quantity the backend knows and when the slot
+ * was last counted, plus one ack per ledger the machine recently sold under,
+ * saying which of its sales that quantity already reflects. The machine
+ * subtracts its own sales no ack covers (spec: slot stock).
+ */
+export type StockBlock = {
+  acks: StockAck[];
+  slots: { slot: number; quantity: number; countedAt: string | null }[];
+};
+
 export type ConfigurationPayload = {
   cash: Record<string, unknown>;
   prices: { slot: number; priceMinor: number }[];
   wiring: { version: typeof WIRING_SCHEMA_VERSION; motor: WiringMotor; slots: WiringSlot[] };
+  /** Added at publish time from the live slots; absent from buildConfigurationPayload()'s result. */
+  stock?: StockBlock;
 };
 
 /** Major units to minor, as the firmware counts coins in minor units. */
@@ -74,6 +90,38 @@ export function toPayloadSlots(rows: PayloadSlotRow[]): PayloadSlot[] {
   }));
 }
 
+/**
+ * The payload's `prices` block, in slot order. A slot's own price wins over
+ * its product's; a slot with neither is left out, which the machine reads as
+ * "not for sale".
+ */
+export function buildPrices(slots: PayloadSlot[]): ConfigurationPayload["prices"] {
+  return [...slots]
+    .sort((a, b) => a.slotNumber - b.slotNumber)
+    .flatMap((slot) => {
+      const major = slot.price ?? slot.product?.price ?? null;
+      if (major === null) return [];
+      return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
+    });
+}
+
+/** The `stock` block, slots in order. A negative quantity is published as 0. */
+export function buildStock(
+  slots: { slotNumber: number; quantity: number; countedAt: Date | null }[],
+  acks: StockAck[],
+): StockBlock {
+  return {
+    acks,
+    slots: [...slots]
+      .sort((a, b) => a.slotNumber - b.slotNumber)
+      .map((s) => ({
+        slot: s.slotNumber,
+        quantity: Math.max(0, s.quantity),
+        countedAt: s.countedAt?.toISOString() ?? null,
+      })),
+  };
+}
+
 export function buildConfigurationPayload(
   slots: PayloadSlot[],
   cash: Record<string, unknown>,
@@ -93,11 +141,7 @@ export function buildConfigurationPayload(
 
   return {
     cash,
-    prices: ordered.flatMap((slot) => {
-      const major = slot.price ?? slot.product?.price ?? null;
-      if (major === null) return [];
-      return [{ slot: slot.slotNumber, priceMinor: toMinor(major) }];
-    }),
+    prices: buildPrices(ordered),
     wiring: {
       version: WIRING_SCHEMA_VERSION,
       motor: { stepsPerVend: motor.stepsPerVend },
@@ -151,15 +195,16 @@ function canonicalJson(value: unknown): string {
 export function comparePayloads(
   current: ConfigurationPayload,
   published: unknown,
-): { wiring: boolean; prices: boolean } {
+): { wiring: boolean; prices: boolean; stock: boolean } {
   const stored = published as Partial<ConfigurationPayload> | null;
 
   if (stored === null || typeof stored !== "object") {
-    return { wiring: true, prices: true };
+    return { wiring: true, prices: true, stock: true };
   }
 
   return {
     wiring: stored.wiring === undefined || canonicalJson(current.wiring) !== canonicalJson(stored.wiring),
     prices: stored.prices === undefined || canonicalJson(current.prices) !== canonicalJson(stored.prices),
+    stock: stored.stock === undefined || canonicalJson(current.stock) !== canonicalJson(stored.stock),
   };
 }

@@ -137,14 +137,28 @@ curl -I https://vmaas.example.com/api/health
 
 Two volumes hold state that cannot be rebuilt:
 
-- `postgres_data`: all application data. Back it up with `pg_dump`:
+- `postgres_data`: all application data. The `db-backup` service dumps it
+  every night to `/var/backups/vmaas` on the host and keeps 7 daily, 4 weekly
+  and 6 monthly files. Create the folder before the first `prod:up`, owned by
+  the image's postgres user; if Compose creates it, it is owned by root and
+  the dumps fail:
   ```sh
-  docker compose --env-file config/environment-variables/.env.backend.prod \
-    -f docker/docker-compose.prod.yml exec db pg_dump -U vmaas vmaas > vmaas.sql
+  sudo mkdir -p /var/backups/vmaas
+  sudo chown 999:999 /var/backups/vmaas
+  ```
+  The folder is on the same host as the database, so it protects against
+  mistakes, not against losing the host. Copy it elsewhere as well.
+
+  To restore a dump:
+  ```sh
+  zcat /var/backups/vmaas/daily/vmaas-latest.sql.gz | \
+    docker compose --env-file config/environment-variables/.env.backend.prod \
+    -f docker/docker-compose.prod.yml exec -T db psql -U vmaas vmaas
   ```
 - `pki`: holds `ca.key`, which signs every machine certificate. If it is lost,
-  every activated machine has to be activated again. Copy it somewhere
-  access-controlled after the first start.
+  every activated machine has to be activated again. It is written once, on
+  the first start, so copy it somewhere access-controlled once rather than on
+  a schedule.
 
 The broker and nginx-internal certificates that `pki-init` issues are valid for
 825 days. To reissue them, delete `emqx.crt`/`emqx.key` from the `pki` volume

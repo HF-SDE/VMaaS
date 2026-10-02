@@ -1,0 +1,4 @@
+# Applied when sdkconfig.motor-test is regenerated.
+# Without this the build falls back to ESP-IDF's 2 MB default and esptool warns
+# that the image does not match the 4 MB the esp32dev board actually carries.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

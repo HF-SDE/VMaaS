@@ -21,8 +21,24 @@ const wsAlertCreatedSchema = z.object({
  * Add new events as members here — that is the only place a new event type
  * needs to be declared.
  */
-export const wsServerMessageSchema = z.discriminatedUnion("type", [wsConnectedSchema, wsAlertCreatedSchema]);
+/** A machine reported the outcome of an `apply_configuration` command. */
+const wsConfigurationResultSchema = z.object({
+  type: z.literal("configuration.result"),
+  body: z.object({
+    commandId: z.string(),
+    machineId: z.uuid(),
+    status: z.enum(["completed", "failed"]),
+    detail: z.string().nullable(),
+  }),
+});
+
+export const wsServerMessageSchema = z.discriminatedUnion("type", [
+  wsConnectedSchema,
+  wsAlertCreatedSchema,
+  wsConfigurationResultSchema,
+]);
 
 export type WsServerMessage = z.infer<typeof wsServerMessageSchema>;
 export type WsAlertCreatedMessage = z.infer<typeof wsAlertCreatedSchema>;
 export type WsConnectedMessage = z.infer<typeof wsConnectedSchema>;
+export type WsConfigurationResultMessage = z.infer<typeof wsConfigurationResultSchema>;

@@ -1,3 +1,4 @@
+export * from "./configuration";
 export * from "./invoice";
 export * from "./machine";
 export * from "./member";

@@ -18,7 +18,8 @@ void tearDown() {}
 static SaleLine completed_sale()
 {
     SaleLine l;
-    l.event_id = "VM-16FEE909-000412";
+    l.event_id = "VM-16FEE909-k3f9x2a1-000412";
+    l.ledger = "k3f9x2a1";
     l.sequence_number = 412;
     l.slot = 12;
     l.price_minor = 1500;
@@ -37,10 +38,10 @@ void test_completed_sale_is_formatted_exactly()
     const size_t n = format_sale_line(completed_sale(), buf, sizeof(buf));
 
     const char *expected =
-        "{\"eventId\":\"VM-16FEE909-000412\",\"sequenceNumber\":412,"
+        "{\"eventId\":\"VM-16FEE909-k3f9x2a1-000412\",\"sequenceNumber\":412,"
         "\"type\":\"cash_sale\",\"occurredAt\":\"2026-09-21T13:04:11Z\","
         "\"payload\":{\"slot\":12,\"price_minor\":1500,\"received_minor\":2000,"
-        "\"status\":\"completed\",\"currency\":\"DKK\"}}";
+        "\"status\":\"completed\",\"currency\":\"DKK\",\"ledger\":\"k3f9x2a1\"}}";
 
     TEST_ASSERT_EQUAL_STRING(expected, buf);
     TEST_ASSERT_EQUAL_UINT32(std::strlen(expected), n);
@@ -49,7 +50,7 @@ void test_completed_sale_is_formatted_exactly()
 void test_failed_sale_carries_a_reason()
 {
     SaleLine l = completed_sale();
-    l.event_id = "VM-16FEE909-000414";
+    l.event_id = "VM-16FEE909-k3f9x2a1-000414";
     l.sequence_number = 414;
     l.slot = 7;
     l.received_minor = 1500;
@@ -61,10 +62,10 @@ void test_failed_sale_carries_a_reason()
     format_sale_line(l, buf, sizeof(buf));
 
     const char *expected =
-        "{\"eventId\":\"VM-16FEE909-000414\",\"sequenceNumber\":414,"
+        "{\"eventId\":\"VM-16FEE909-k3f9x2a1-000414\",\"sequenceNumber\":414,"
         "\"type\":\"cash_sale\",\"occurredAt\":\"2026-09-21T13:09:44Z\","
         "\"payload\":{\"slot\":7,\"price_minor\":1500,\"received_minor\":1500,"
-        "\"status\":\"failed\",\"reason\":\"motor_nak\",\"currency\":\"DKK\"}}";
+        "\"status\":\"failed\",\"reason\":\"motor_nak\",\"currency\":\"DKK\",\"ledger\":\"k3f9x2a1\"}}";
 
     TEST_ASSERT_EQUAL_STRING(expected, buf);
 }
@@ -81,10 +82,10 @@ void test_unsynced_clock_emits_uptime_instead()
     format_sale_line(l, buf, sizeof(buf));
 
     const char *expected =
-        "{\"eventId\":\"VM-16FEE909-000412\",\"sequenceNumber\":412,"
+        "{\"eventId\":\"VM-16FEE909-k3f9x2a1-000412\",\"sequenceNumber\":412,"
         "\"type\":\"cash_sale\",\"uptimeMs\":734512,"
         "\"payload\":{\"slot\":12,\"price_minor\":1500,\"received_minor\":2000,"
-        "\"status\":\"completed\",\"currency\":\"DKK\"}}";
+        "\"status\":\"completed\",\"currency\":\"DKK\",\"ledger\":\"k3f9x2a1\"}}";
 
     TEST_ASSERT_EQUAL_STRING(expected, buf);
 }
@@ -164,7 +165,7 @@ void test_null_event_id_omits_the_key()
         "{\"sequenceNumber\":412,"
         "\"type\":\"cash_sale\",\"occurredAt\":\"2026-09-21T13:04:11Z\","
         "\"payload\":{\"slot\":12,\"price_minor\":1500,\"received_minor\":2000,"
-        "\"status\":\"completed\",\"currency\":\"DKK\"}}";
+        "\"status\":\"completed\",\"currency\":\"DKK\",\"ledger\":\"k3f9x2a1\"}}";
 
     TEST_ASSERT_EQUAL_STRING(expected, buf);
 }

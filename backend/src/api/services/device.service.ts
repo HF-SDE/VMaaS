@@ -147,6 +147,36 @@ export async function recordCommandResultService(
   }
 }
 
+/** The unique index behind MachineEvent.eventId (migration 20260917185806_machine_activation). */
+const EVENT_ID_UNIQUE_INDEX = "machine_events_eventId_key";
+
+/**
+ * True when @p cause is a unique violation on MachineEvent.eventId.
+ *
+ * Prisma 7 through @prisma/adapter-pg reports P2002 without `meta.target`:
+ * the constraint is under `meta.driverAdapterError.cause.constraint`, as
+ * `{ index }` when Postgres names the constraint (it always does) or
+ * `{ fields }` otherwise. `meta.target` is still accepted for any other
+ * engine. Matching the index or field rather than P2002 alone keeps a future
+ * unique index on this table from being mistaken for "already booked".
+ */
+function isEventIdUniqueViolation(cause: unknown): boolean {
+  const e = cause as {
+    code?: string;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { constraint?: { index?: string; fields?: string[] } } };
+    };
+  };
+  if (e?.code !== "P2002") return false;
+
+  const target = e.meta?.target;
+  if (Array.isArray(target) ? target.includes("eventId") : target === "eventId") return true;
+
+  const constraint = e.meta?.driverAdapterError?.cause?.constraint;
+  return constraint?.index === EVENT_ID_UNIQUE_INDEX || (constraint?.fields?.includes("eventId") ?? false);
+}
+
 export async function recordDeviceEventService(
   db: DeviceDb,
   machine: MachineContext,
@@ -194,17 +224,7 @@ export async function recordDeviceEventService(
               },
             });
           } catch (cause) {
-            // eventId is @unique precisely so a replayed offline queue is
-            // recognised. Answering anything but success here would jam the
-            // device's queue behind a sale that is already booked. Checked
-            // against meta.target rather than the P2002 code alone, so a
-            // future unique index on this table is never silently mistaken
-            // for "already booked" — which would drop the event with no
-            // error, no sale and no trace.
-            const prismaError = cause as { code?: string; meta?: { target?: unknown } };
-            const target = prismaError.meta?.target;
-            const hitsEventId = Array.isArray(target) ? target.includes("eventId") : target === "eventId";
-            if (prismaError.code === "P2002" && hitsEventId) {
+            if (isEventIdUniqueViolation(cause)) {
               return { duplicate: true as const };
             }
             throw cause;
@@ -227,10 +247,28 @@ export async function recordDeviceEventService(
           })) as { id: string };
 
           if (cash.status === "completed" && slot) {
-            await tx.slot.update({
-              where: { id: slot.id },
-              data: { quantity: { decrement: 1 } },
-            });
+            // A sale from before the slot's last count (restock, correction,
+            // confirmed count) is already reflected in the counted number:
+            // booked as a sale, not taken off the stock again. Strictly
+            // after, the same rule the machine applies (spec: slot stock).
+            const lastCount = (await tx.inventoryMovement.findFirst({
+              where: { slotId: slot.id, type: { in: ["restock", "correction"] } },
+              orderBy: { occurredAt: "desc" },
+              select: { occurredAt: true },
+            })) as { occurredAt: Date } | null;
+
+            // A sale without a real timestamp (the device had no clock and
+            // sent uptimeMs) has only an estimated time; the machine always
+            // subtracts such a sale, so it always decrements here too.
+            const hasRealTime = input.occurredAt !== undefined;
+            if (!hasRealTime || !lastCount || occurredAt.getTime() > lastCount.occurredAt.getTime()) {
+              // Never below 0: a count set lower while the machine sold
+              // offline must not leave the slot negative.
+              await tx.slot.updateMany({
+                where: { id: slot.id, quantity: { gt: 0 } },
+                data: { quantity: { decrement: 1 } },
+              });
+            }
           }
 
           await tx.inventoryMovement.create({
