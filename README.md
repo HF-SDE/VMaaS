@@ -6,19 +6,7 @@ machines are ESP32-based and talk to the platform over mutually authenticated TL
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Browser -->|HTTPS| nginx
-    nginx -->|/| FE[admin-frontend<br/>Next.js 16]
-    nginx -->|/api, /api/ws| BE[backend<br/>Express 5 + Prisma 7]
-    FE -->|server-side fetch| BE
-    BE --> DB[(Postgres)]
-    BE <-->|MQTT| EMQX
-    BE --> Stripe
-    Machine[Main-Controller<br/>ESP32] -->|HTTPS mTLS :8443| nginx
-    Machine <-->|MQTT mTLS :8883| EMQX
-    Machine <-->|UART| Motor[Motorcontrol<br/>ESP32]
-```
+![Production deployment diagram](docs/deployment%20diagram.jpg)
 
 | Part | What it does |
 | --- | --- |
