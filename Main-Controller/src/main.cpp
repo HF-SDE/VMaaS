@@ -56,6 +56,9 @@ namespace
     bool backlight_ok = false;
     bool motor_error_shown = false;
     char last_row1[17] = {};
+    /// Row 1 was last written here while purchase_task owned it, so its own
+    /// text is gone from the screen though its cache says otherwise.
+    bool row1_over_purchase = false;
     uint32_t result_hold_until_ms = 0; // see render()
     uint32_t result_hold_ms = 0;       // from config.json, set in app_main()
 
@@ -88,6 +91,7 @@ namespace
         std::snprintf(last_row1, sizeof(last_row1), "%s", text);
         log_lcd("clear row 1", lcd.clear_row(1));
         log_lcd("row 1", lcd.print_at(0, 1, text));
+        row1_over_purchase = purchase_task::owns_display();
     }
 
     void show_prompt()
@@ -218,8 +222,21 @@ namespace
                 show_row1("> _");
                 break;
             case vmaas::EntryStatus::Editing:
-                if (st.buffer[0] == '\0' && (now_ms() < result_hold_until_ms || purchase_task::owns_display())) {
-                    return;
+                if (st.buffer[0] == '\0')
+                {
+                    if (now_ms() < result_hold_until_ms) return;
+
+                    if (purchase_task::owns_display())
+                    {
+                        result_hold_until_ms = 0;
+                        if (row1_over_purchase)
+                        {
+                            row1_over_purchase = false;
+                            last_row1[0] = '\0';
+                            purchase_task::invalidate_display();
+                        }
+                        return;
+                    }
                 }
                 result_hold_until_ms = 0;
                 std::snprintf(line, sizeof(line), "> %s_", st.buffer);

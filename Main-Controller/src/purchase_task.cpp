@@ -579,6 +579,12 @@ namespace purchase_task
 
     bool owns_display() { return cash_enabled && (notice_until_ms != 0 || !idle()); }
 
+    void invalidate_display()
+    {
+        last_row0[0] = '\0';
+        last_row1[0] = '\0';
+    }
+
     void set_motor_fault(bool fault_on)
     {
         if (fault_on == motor_fault_active_) return;
