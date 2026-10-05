@@ -182,45 +182,48 @@ namespace
         char line[17];
         switch (st.status)
         {
-        case vmaas::EntryStatus::Confirmed:
-        {
-            uint8_t slot = 0;
-            if (vmaas::slot_number(st, slot))
+            case vmaas::EntryStatus::Confirmed:
             {
-                std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
-                ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
-
-                if (purchase_task::active())
+                // The braces scope slot to this case; without them the
+                // later case labels jump past its initialisation.
+                uint8_t slot = 0;
+                if (vmaas::slot_number(st, slot))
                 {
-                    purchase_task::on_slot_confirmed(slot);
+                    std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
+                    ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
+
+                    if (purchase_task::active())
+                    {
+                        purchase_task::on_slot_confirmed(slot);
+                        return;
+                    }
+                }
+                else
+                {
+                    std::snprintf(line, sizeof(line), "Unknown slot");
+                }
+                show_row1(line);
+                result_hold_until_ms = now_ms() + result_hold_ms;
+                break;
+            }
+            case vmaas::EntryStatus::Cancelled:
+                ESP_LOGI(TAG, "entry cancelled");
+                show_row1("Cancelled");
+                result_hold_until_ms = now_ms() + result_hold_ms;
+                break;
+            case vmaas::EntryStatus::TimedOut:
+                ESP_LOGI(TAG, "entry timed out, clearing");
+                result_hold_until_ms = 0;
+                show_row1("> _");
+                break;
+            case vmaas::EntryStatus::Editing:
+                if (st.buffer[0] == '\0' && (now_ms() < result_hold_until_ms || purchase_task::owns_display())) {
                     return;
                 }
-            }
-            else
-            {
-                std::snprintf(line, sizeof(line), "Unknown slot");
-            }
-            show_row1(line);
-            result_hold_until_ms = now_ms() + result_hold_ms;
-            break;
-        }
-        case vmaas::EntryStatus::Cancelled:
-            ESP_LOGI(TAG, "entry cancelled");
-            show_row1("Cancelled");
-            result_hold_until_ms = now_ms() + result_hold_ms;
-            break;
-        case vmaas::EntryStatus::TimedOut:
-            ESP_LOGI(TAG, "entry timed out, clearing");
-            result_hold_until_ms = 0;
-            show_row1("> _");
-            break;
-        case vmaas::EntryStatus::Editing:
-            if (st.buffer[0] == '\0' && now_ms() < result_hold_until_ms)
-                return;
-            result_hold_until_ms = 0;
-            std::snprintf(line, sizeof(line), "> %s_", st.buffer);
-            show_row1(line);
-            break;
+                result_hold_until_ms = 0;
+                std::snprintf(line, sizeof(line), "> %s_", st.buffer);
+                show_row1(line);
+                break;
         }
     }
 }

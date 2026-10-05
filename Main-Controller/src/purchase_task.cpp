@@ -493,7 +493,7 @@ namespace purchase_task
         if (price == 0)
         {
             ESP_LOGW(TAG, "slot %u has no price", static_cast<unsigned>(slot));
-            show(nullptr, "Slot not for sale");
+            show(nullptr, "Not for sale");
             notice_until_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS) + SETTLED_HOLD_MS;
             return;
         }
@@ -576,6 +576,8 @@ namespace purchase_task
     bool active() { return cash_enabled; }
 
     bool idle() { return !cash_enabled || prev_state_ == vmaas::PurchaseState::Idle; }
+
+    bool owns_display() { return cash_enabled && (notice_until_ms != 0 || !idle()); }
 
     void set_motor_fault(bool fault_on)
     {
