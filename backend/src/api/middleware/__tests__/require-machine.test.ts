@@ -11,6 +11,7 @@ type CertRow = {
   id: string;
   machineId: string;
   notAfter: Date;
+  createdAt: Date;
   machine: { id: string; tenantId: string | null; siteId: string | null; disabledAt: Date | null };
 };
 
@@ -19,13 +20,19 @@ function certRow(overrides: Partial<CertRow> = {}): CertRow {
     id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     machineId: MACHINE,
     notAfter: new Date(Date.now() + 86_400_000),
+    createdAt: new Date("2026-09-01T00:00:00Z"),
     machine: { id: MACHINE, tenantId: TENANT, siteId: SITE, disabledAt: null },
     ...overrides,
   };
 }
 
 function fakeDb(row: CertRow | null) {
-  const db = { machineCertificate: { findFirst: vi.fn(async (_args: unknown) => row) } };
+  const db = {
+    machineCertificate: {
+      findFirst: vi.fn(async (_args: unknown) => row),
+      updateMany: vi.fn(async (_args: unknown) => ({ count: 0 })),
+    },
+  };
   return db as unknown as MachineLookupDb & typeof db;
 }
 
@@ -74,6 +81,40 @@ describe("resolveMachineCertificate", () => {
     const row = certRow();
     row.machine.siteId = null;
     expect(await resolveMachineCertificate(fakeDb(row), "0a1b2c")).toBeNull();
+  });
+
+  it("revokes the machine's older live certificates once a newer one is used", async () => {
+    const row = certRow();
+    const db = fakeDb(row);
+    const now = new Date("2026-10-01T12:00:00Z");
+
+    await resolveMachineCertificate(db, "0a1b2c", now);
+
+    expect(db.machineCertificate.updateMany).toHaveBeenCalledWith({
+      where: { machineId: MACHINE, revokedAt: null, createdAt: { lt: row.createdAt } },
+      data: { revokedAt: now, revokedReason: "superseded" },
+    });
+  });
+
+  it("leaves older certificates alone when asked not to supersede", async () => {
+    const db = fakeDb(certRow());
+
+    expect(await resolveMachineCertificate(db, "0a1b2c", new Date(), { supersede: false })).not.toBeNull();
+    expect(db.machineCertificate.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an expired certificate", (r: CertRow) => { r.notAfter = new Date(Date.now() - 1000); }],
+    ["a disabled machine", (r: CertRow) => { r.machine.disabledAt = new Date(); }],
+    ["a machine with no tenant", (r: CertRow) => { r.machine.tenantId = null; }],
+  ])("revokes nothing when it refuses %s", async (_label, spoil) => {
+    const row = certRow();
+    spoil(row);
+    const db = fakeDb(row);
+
+    await resolveMachineCertificate(db, "0a1b2c");
+
+    expect(db.machineCertificate.updateMany).not.toHaveBeenCalled();
   });
 });
 

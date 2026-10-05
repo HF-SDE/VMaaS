@@ -27,7 +27,7 @@ export type AuthzBody = AuthnBody & { action?: string; topic?: string };
  * has no (or no longer has a live) `MachineCertificate` row is inert: this
  * row lookup IS the authentication, not the broker's TLS chain check.
  */
-async function identify(db: MachineLookupDb, body: AuthnBody) {
+async function identify(db: MachineLookupDb, body: AuthnBody, supersede: boolean) {
   const { machineId, serial } = parseSubject(body.cert_subject ?? "");
   if (!machineId || !serial) return null;
 
@@ -36,18 +36,18 @@ async function identify(db: MachineLookupDb, body: AuthnBody) {
   // path would target the wrong client.
   if (body.clientid !== machineId) return null;
 
-  return resolveMachineCertificate(db, serial.toLowerCase());
+  return resolveMachineCertificate(db, serial.toLowerCase(), new Date(), { supersede });
 }
 
 export async function decideAuthn(db: MachineLookupDb, body: AuthnBody): Promise<Decision> {
-  return (await identify(db, body)) ? "allow" : "deny";
+  return (await identify(db, body, true)) ? "allow" : "deny";
 }
 
 export async function decideAuthz(db: MachineLookupDb, body: AuthzBody): Promise<Decision> {
   if (body.action !== "publish" && body.action !== "subscribe") return "deny";
   if (typeof body.topic !== "string") return "deny";
 
-  const machine = await identify(db, body);
+  const machine = await identify(db, body, false);
   if (!machine) return "deny";
 
   return authorizeTopic(machine, body.action as MqttAction, body.topic) ? "allow" : "deny";

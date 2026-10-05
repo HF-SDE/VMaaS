@@ -13,8 +13,11 @@
 #include "nvs_flash.h"
 
 #include "mbedtls/pk.h"
+#include "mbedtls/x509_crt.h"
 #include "mbedtls/x509_csr.h"
 #include "psa/crypto.h"
+
+#include "renewal_policy.h"
 
 namespace
 {
@@ -42,6 +45,9 @@ namespace
     constexpr size_t CSR_PEM_LEN  = 1024;
     constexpr size_t REQ_LEN      = 2048;
     constexpr size_t RESP_LEN     = 8192;
+    constexpr size_t CERT_PEM_LEN = activation::RENEWED_CERT_MAX;
+
+    constexpr const char* RENEW_PATH = "/device/certificate/renew";
 
     /// "CN=" plus an id, so the two cannot drift apart.
     constexpr size_t SUBJECT_LEN = activation::ID_MAX + 4;
@@ -135,6 +141,27 @@ namespace
 
         ESP_LOGI(TAG, "generated a new EC P-256 device key");
         return err;
+    }
+
+    /// Parse the stored key without ever replacing it. See activation::renew().
+    esp_err_t load_key(mbedtls_pk_context& key, char* pem, size_t pem_len)
+    {
+        const esp_err_t err = nvs_get(K_KEY, pem, pem_len);
+        if (err != ESP_OK) return err;
+
+        const int rc = mbedtls_pk_parse_key(&key, reinterpret_cast<const unsigned char*>(pem),
+                                            std::strlen(pem) + 1, nullptr, 0);
+        if (rc != 0)
+        {
+            ESP_LOGE(TAG, "stored key does not parse (-0x%04x)", -rc);
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+        return ESP_OK;
+    }
+
+    int64_t to_utc(const mbedtls_x509_time& t)
+    {
+        return vmaas::utc_seconds({t.year, t.mon, t.day, t.hour, t.min, t.sec});
     }
 
     /**
@@ -410,6 +437,156 @@ namespace activation
 
         out = id;
         return ESP_OK;
+    }
+
+    esp_err_t certificate_validity(int64_t& not_before, int64_t& not_after)
+    {
+        char* pem = static_cast<char*>(std::calloc(1, CERT_PEM_LEN));
+        if (pem == nullptr) return ESP_ERR_NO_MEM;
+
+        esp_err_t err = nvs_get(K_CERT, pem, CERT_PEM_LEN);
+        if (err == ESP_OK)
+        {
+            mbedtls_x509_crt crt;
+            mbedtls_x509_crt_init(&crt);
+            const int rc = mbedtls_x509_crt_parse(&crt, reinterpret_cast<const unsigned char*>(pem), std::strlen(pem) + 1);
+            if (rc == 0)
+            {
+                not_before = to_utc(crt.valid_from);
+                not_after = to_utc(crt.valid_to);
+            }
+            else
+            {
+                ESP_LOGE(TAG, "stored certificate does not parse (-0x%04x)", -rc);
+                err = ESP_ERR_INVALID_RESPONSE;
+            }
+            mbedtls_x509_crt_free(&crt);
+        }
+
+        std::free(pem);
+        return err;
+    }
+
+    RenewResult renew(char* cert_out, char* ca_out)
+    {
+        Identity id{};
+        if (load_identity(id) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "no stored identity; cannot renew");
+            return RenewResult::Rejected;
+        }
+
+        char* key_pem = static_cast<char*>(std::calloc(1, KEY_PEM_LEN));
+        char* csr_pem = static_cast<char*>(std::calloc(1, CSR_PEM_LEN));
+        char* req_body = static_cast<char*>(std::calloc(1, REQ_LEN));
+        char* resp = static_cast<char*>(std::calloc(1, RESP_LEN));
+
+        const psa_status_t ps = psa_crypto_init();
+        if (ps != PSA_SUCCESS) ESP_LOGW(TAG, "psa_crypto_init: %d", static_cast<int>(ps));
+
+        mbedtls_pk_context key;
+        mbedtls_pk_init(&key);
+        mbedtls_x509_crt crt;
+        mbedtls_x509_crt_init(&crt);
+
+        auto finish = [&](RenewResult r) {
+            mbedtls_x509_crt_free(&crt);
+            mbedtls_pk_free(&key);
+            std::free(resp);
+            std::free(req_body);
+            std::free(csr_pem);
+            std::free(key_pem);
+            return r;
+        };
+
+        if (key_pem == nullptr || csr_pem == nullptr || req_body == nullptr || resp == nullptr)
+        {
+            ESP_LOGE(TAG, "out of memory");
+            return finish(RenewResult::Unreachable);
+        }
+
+        if (load_key(key, key_pem, KEY_PEM_LEN) != ESP_OK) return finish(RenewResult::Rejected);
+        if (make_csr(key, id.machine_id, csr_pem, CSR_PEM_LEN) != ESP_OK) return finish(RenewResult::Unreachable);
+
+        cJSON* body = cJSON_CreateObject();
+        cJSON_AddStringToObject(body, "csr", csr_pem);
+        const bool printed = cJSON_PrintPreallocated(body, req_body, REQ_LEN, /*fmt=*/0);
+        cJSON_Delete(body);
+        if (!printed)
+        {
+            ESP_LOGE(TAG, "request body does not fit %u bytes", static_cast<unsigned>(REQ_LEN));
+            return finish(RenewResult::Unreachable);
+        }
+
+        device_api::Response r{};
+        esp_err_t err = device_api::post_json_mtls(RENEW_PATH, req_body, resp, RESP_LEN, r);
+        if (err != ESP_OK) return finish(RenewResult::Unreachable);
+
+        if (r.status != 200)
+        {
+            ESP_LOGE(TAG, "renewal answered %d: %s", r.status, resp);
+            return finish(r.status >= 500 ? RenewResult::Unreachable : RenewResult::Rejected);
+        }
+
+        if (r.truncated)
+        {
+            ESP_LOGE(TAG, "renewal response does not fit %u bytes", static_cast<unsigned>(RESP_LEN));
+            return finish(RenewResult::Unreachable);
+        }
+
+        cJSON* root = cJSON_Parse(resp);
+        const cJSON* c = cJSON_GetObjectItemCaseSensitive(root, "certificate");
+        const cJSON* a = cJSON_GetObjectItemCaseSensitive(root, "caCertificate");
+        if (!cJSON_IsString(c) || !cJSON_IsString(a))
+        {
+            ESP_LOGE(TAG, "renewal response is missing a certificate");
+            cJSON_Delete(root);
+            return finish(RenewResult::Unreachable);
+        }
+
+        const char* cert = c->valuestring;
+        const char* ca = a->valuestring;
+
+        int rc = mbedtls_x509_crt_parse(&crt, reinterpret_cast<const unsigned char*>(cert), std::strlen(cert) + 1);
+        if (rc == 0) rc = mbedtls_pk_check_pair(&crt.pk, &key);
+        if (rc != 0)
+        {
+            ESP_LOGE(TAG, "renewed certificate does not parse or is not for this key (-0x%04x)", -rc);
+            cJSON_Delete(root);
+            return finish(RenewResult::Rejected);
+        }
+
+        const size_t cert_len = std::strlen(cert);
+        const size_t ca_len = std::strlen(ca);
+        if (cert_len >= RENEWED_CERT_MAX || ca_len >= RENEWED_CA_MAX)
+        {
+            ESP_LOGE(TAG, "renewed certificate (%u bytes) or CA (%u bytes) is too large to store",
+                     static_cast<unsigned>(cert_len), static_cast<unsigned>(ca_len));
+            cJSON_Delete(root);
+            return finish(RenewResult::Rejected);
+        }
+
+        std::memcpy(cert_out, cert, cert_len + 1);
+        std::memcpy(ca_out, ca, ca_len + 1);
+        cJSON_Delete(root);
+
+        ESP_LOGI(TAG, "renewed certificate received, valid until %04d-%02d-%02d", crt.valid_to.year, crt.valid_to.mon, crt.valid_to.day);
+        return finish(RenewResult::Ok);
+    }
+
+    esp_err_t store_renewed(const char* cert, const char* ca)
+    {
+        nvs_handle_t h;
+        esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+        if (err != ESP_OK) return err;
+
+        err = nvs_put_str(h, K_CA, ca);
+        if (err == ESP_OK) err = nvs_put_str(h, K_CERT, cert);
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+
+        if (err != ESP_OK) ESP_LOGE(TAG, "storing the renewed certificate failed: %s", esp_err_to_name(err));
+        return err;
     }
 
     esp_err_t load_certificate(char* out, size_t out_len) { return nvs_get(K_CERT, out, out_len); }

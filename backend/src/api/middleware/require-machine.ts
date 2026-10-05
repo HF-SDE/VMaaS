@@ -34,7 +34,10 @@ export type MachineContext = {
 };
 
 export type MachineLookupDb = {
-  machineCertificate: { findFirst(args: unknown): Promise<unknown> };
+  machineCertificate: {
+    findFirst(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+  };
 };
 
 declare global {
@@ -45,21 +48,36 @@ declare global {
   }
 }
 
+/**
+ * Resolve a verified certificate serial to the machine it belongs to.
+ *
+ * Also where a renewal takes effect: the first time a machine authenticates
+ * with a certificate, every live certificate it was issued before that one is
+ * revoked as superseded. Renewal itself revokes nothing, so a machine whose
+ * renewal answer was lost in transit still holds a working certificate and
+ * can simply ask again.
+ *
+ * `supersede: false` skips that write for checks that run on every message,
+ * such as the broker's per-topic authorization: a connect already did it.
+ */
 export async function resolveMachineCertificate(
   db: MachineLookupDb,
   serial: string,
   now: Date = new Date(),
+  { supersede = true }: { supersede?: boolean } = {},
 ): Promise<MachineContext | null> {
   const certificate = (await db.machineCertificate.findFirst({
     where: { serial, revokedAt: null },
     select: {
       id: true,
       notAfter: true,
+      createdAt: true,
       machine: { select: { id: true, tenantId: true, siteId: true, disabledAt: true } },
     },
   })) as {
     id: string;
     notAfter: Date;
+    createdAt: Date;
     machine: { id: string; tenantId: string | null; siteId: string | null; disabledAt: Date | null };
   } | null;
 
@@ -71,6 +89,13 @@ export async function resolveMachineCertificate(
   // An activated machine always has both. Without them there is no topic
   // prefix and no tenant to scope reads by, so there is nothing it may do.
   if (!machine.tenantId || !machine.siteId) return null;
+
+  if (supersede) {
+    await db.machineCertificate.updateMany({
+      where: { machineId: machine.id, revokedAt: null, createdAt: { lt: certificate.createdAt } },
+      data: { revokedAt: now, revokedReason: "superseded" },
+    });
+  }
 
   return {
     id: machine.id,
