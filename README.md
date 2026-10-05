@@ -143,8 +143,6 @@ Live alerts reach the browser over a WebSocket at `/api/ws`.
 
 | Doc | For |
 | --- | --- |
-| [CLAUDE.md](CLAUDE.md) | Detailed architecture notes and rules (also used by AI assistants). |
 | [docs/api-endpoints.md](docs/api-endpoints.md) / [docs/openapi.yaml](docs/openapi.yaml) | Every API endpoint (the endpoint reference is in Danish). |
 | [docs/guides/first-time-setup.md](docs/guides/first-time-setup.md) | Bringing a physical machine online. |
 | [docs/guides/production-deployment.md](docs/guides/production-deployment.md) | Running the stack in production. |
-| [docs/superpowers/specs/](docs/superpowers/specs/) | Design specs. Read the auth/caching spec before changing either. |
