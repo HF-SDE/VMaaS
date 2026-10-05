@@ -41,15 +41,12 @@ namespace vmaas
 
     LcdError GroveLcdRgb::data(const char* bytes, size_t n)
     {
-        if (n == 0)
-            return LcdError::None;
+        if (n == 0) return LcdError::None;
         uint8_t buf[1 + COLS];
-        if (n > COLS)
-            n = COLS;
+        if (n > COLS) n = COLS;
         buf[0] = CTRL_DATA;
         std::memcpy(buf + 1, bytes, n);
-        if (!port_.write(LCD_ADDR, buf, n + 1))
-            return LcdError::I2cWrite;
+        if (!port_.write(LCD_ADDR, buf, n + 1)) return LcdError::I2cWrite;
         const unsigned next = col_ + n;
         col_ = next > COLS ? COLS : static_cast<uint8_t>(next);
         return LcdError::None;
@@ -58,8 +55,7 @@ namespace vmaas
     LcdError GroveLcdRgb::write_cursor(uint8_t col, uint8_t row)
     {
         const LcdError err = command(static_cast<uint8_t>(CMD_SET_DDRAM | (ROW_OFFSET[row] + col)));
-        if (err != LcdError::None)
-            return err;
+        if (err != LcdError::None) return err;
         col_ = col;
         row_ = row;
         return LcdError::None;
@@ -75,8 +71,9 @@ namespace vmaas
     {
         initialised_ = false;
         rgb_ = RgbChip::None;
-        for (ScrollRow& s : scroll_)
+        for (ScrollRow& s : scroll_) {
             s.active = false;
+        }
 
         port_.delay_ms(50);
         if (command(CMD_FUNCTION_SET) != LcdError::None) return LcdError::I2cWrite;
@@ -95,16 +92,19 @@ namespace vmaas
         if (rgb_reg(RGB_ADDR_V5, SGM_ENABLE, 0x07))
         {
             rgb_ = RgbChip::Sgm31323;
-            if (!rgb_reg(RGB_ADDR_V5, SGM_MODE, 0x15))
+            if (!rgb_reg(RGB_ADDR_V5, SGM_MODE, 0x15)) {
                 return LcdError::I2cWrite;
+            }
         }
         else if (rgb_reg(RGB_ADDR_V4, PCA_MODE1, 0x00))
         {
             rgb_ = RgbChip::Pca9633;
-            if (!rgb_reg(RGB_ADDR_V4, PCA_LEDOUT, 0xFF))
+            if (!rgb_reg(RGB_ADDR_V4, PCA_LEDOUT, 0xFF)) {
                 return LcdError::I2cWrite;
-            if (!rgb_reg(RGB_ADDR_V4, PCA_MODE2, 0x20))
+            }
+            if (!rgb_reg(RGB_ADDR_V4, PCA_MODE2, 0x20)) {
                 return LcdError::I2cWrite;
+            }
         }
         else
         {
@@ -115,21 +115,20 @@ namespace vmaas
 
     LcdError GroveLcdRgb::set_rgb(uint8_t r, uint8_t g, uint8_t b)
     {
-        if (!initialised_)
-            return LcdError::NotInitialized;
+        if (!initialised_) return LcdError::NotInitialized;
         bool ok = false;
         switch (rgb_)
         {
-        case RgbChip::Pca9633:
-            ok = rgb_reg(RGB_ADDR_V4, PCA_RED, r) && rgb_reg(RGB_ADDR_V4, PCA_GREEN, g) &&
-                 rgb_reg(RGB_ADDR_V4, PCA_BLUE, b);
-            break;
-        case RgbChip::Sgm31323:
-            ok = rgb_reg(RGB_ADDR_V5, SGM_RED, r) && rgb_reg(RGB_ADDR_V5, SGM_GREEN, g) &&
-                 rgb_reg(RGB_ADDR_V5, SGM_BLUE, b);
-            break;
-        case RgbChip::None:
-            return LcdError::RgbChipNotFound;
+            case RgbChip::Pca9633:
+                ok = rgb_reg(RGB_ADDR_V4, PCA_RED, r) && rgb_reg(RGB_ADDR_V4, PCA_GREEN, g) &&
+                     rgb_reg(RGB_ADDR_V4, PCA_BLUE, b);
+                break;
+            case RgbChip::Sgm31323:
+                ok = rgb_reg(RGB_ADDR_V5, SGM_RED, r) && rgb_reg(RGB_ADDR_V5, SGM_GREEN, g) &&
+                     rgb_reg(RGB_ADDR_V5, SGM_BLUE, b);
+                break;
+            case RgbChip::None:
+                return LcdError::RgbChipNotFound;
         }
         return ok ? LcdError::None : LcdError::I2cWrite;
     }
@@ -149,8 +148,9 @@ namespace vmaas
         port_.delay_ms(2);
         col_ = 0;
         row_ = 0;
-        for (ScrollRow& s : scroll_)
+        for (ScrollRow& s : scroll_) {
             s.active = false;
+        }
         return LcdError::None;
     }
 
@@ -253,10 +253,12 @@ namespace vmaas
         }
         case Overflow::Scroll:
         {
-            if (remaining == 0)
+            if (remaining == 0) {
                 return LcdError::None; // nothing visible could scroll; same as Truncate on a full row
-            if (n <= remaining)
+            }
+            if (n <= remaining) {
                 return data(text, n);
+            }
             ScrollRow& s = scroll_[row_];
             std::memcpy(s.text, text, n);
             std::memset(s.text + n, ' ', SCROLL_PADDING);
@@ -304,8 +306,9 @@ namespace vmaas
     {
         ScrollRow& s = scroll_[row];
         char slice[COLS];
-        for (uint8_t i = 0; i < s.window_width; ++i)
+        for (uint8_t i = 0; i < s.window_width; ++i) {
             slice[i] = s.text[(s.offset + i) % s.len];
+        }
         const LcdError err = write_cursor(s.window_col, row);
         if (err != LcdError::None) return err;
         return data(slice, s.window_width);

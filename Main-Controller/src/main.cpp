@@ -20,6 +20,7 @@
 #include "activation.h"
 #include "onboarding.h"
 #include "broker_client.h"
+#include "cert_renewal.h"
 #include "device_api.h"
 #include "purchase_task.h"
 #include "service_code.h"
@@ -354,6 +355,10 @@ extern "C" void app_main()
 
     if (config_sync::begin() != ESP_OK) {
         ESP_LOGW(TAG, "configuration sync did not start; the machine keeps the configuration on flash");
+    }
+
+    if (cert_renewal::start() != ESP_OK) {
+        ESP_LOGW(TAG, "certificate renewal did not start; the certificate will not be renewed this boot");
     }
 
     show_prompt();

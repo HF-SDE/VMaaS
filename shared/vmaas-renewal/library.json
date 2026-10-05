@@ -1,0 +1,9 @@
+{
+  "name": "vmaas-renewal",
+  "version": "0.1.0",
+  "description": "Hardware-free device certificate renewal policy for VMaaS",
+  "keywords": ["certificate", "renewal", "vmaas"],
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": ["renewal_policy.h"]
+}

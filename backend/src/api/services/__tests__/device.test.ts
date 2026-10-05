@@ -535,27 +535,25 @@ describe("renewCertificateService", () => {
     expect(issued.subject).toContain(`CN=${MACHINE}`);
   });
 
-  it("writes the new certificate row before revoking the old one", async () => {
+  it("records the new certificate for this machine", async () => {
+    const db = fakeDb();
+
+    const [, result] = await renewCertificateService(db, ca, machine, csr);
+
+    const args = db.machineCertificate.create.mock.calls[0][0] as { data: { machineId: string; serial: string } };
+    expect(args.data.machineId).toBe(MACHINE);
+    expect(args.data.serial).toBe(new x509.X509Certificate(result!.certificate).serialNumber.toLowerCase());
+  });
+
+  it("leaves the current certificate live, so a machine that never received the answer can ask again", async () => {
     const db = fakeDb();
 
     await renewCertificateService(db, ca, machine, csr);
 
-    const createdAt = db.machineCertificate.create.mock.invocationCallOrder[0];
-    const revokedAt = db.machineCertificate.update.mock.invocationCallOrder[0];
-    expect(createdAt).toBeLessThan(revokedAt);
+    expect(db.machineCertificate.update).not.toHaveBeenCalled();
   });
 
-  it("revokes the certificate named by this machine's own credential, never one from the request", async () => {
-    const db = fakeDb();
-
-    await renewCertificateService(db, ca, machine, csr);
-
-    const args = db.machineCertificate.update.mock.calls[0][0] as { where: { id: string } };
-    expect(args.where.id).toBe(machine.certificateId);
-    expect(args.where.id).not.toBe(OTHER_CERT_ID);
-  });
-
-  it("rejects a malformed CSR without writing or revoking any certificate", async () => {
+  it("rejects a malformed CSR without writing any certificate", async () => {
     const db = fakeDb();
 
     const [error] = await renewCertificateService(
@@ -567,52 +565,13 @@ describe("renewCertificateService", () => {
 
     expect(error?.reason).toBe("CSR_REJECTED");
     expect(db.machineCertificate.create).not.toHaveBeenCalled();
-    expect(db.machineCertificate.update).not.toHaveBeenCalled();
   });
 
-  it("wraps the new-row create and the old-row revoke in a single transaction", async () => {
-    const db = fakeDb();
-
-    await renewCertificateService(db, ca, machine, csr);
-
-    expect(db.$transaction).toHaveBeenCalledTimes(1);
-  });
-
-  it("surfaces a failing revoke as UNKNOWN_ERROR rather than a false success", async () => {
-    const db = fakeDb({ machineCertificate: { update: vi.fn(async () => { throw new Error("db down"); }) } });
+  it("surfaces a failing write as UNKNOWN_ERROR rather than a false success", async () => {
+    const db = fakeDb({ machineCertificate: { create: vi.fn(async () => { throw new Error("db down"); }), update: vi.fn() } });
 
     const [error] = await renewCertificateService(db, ca, machine, csr);
 
     expect(error?.reason).toBe("UNKNOWN_ERROR");
-  });
-
-  it("leaves no new certificate row when the revoke inside the transaction fails", async () => {
-    // Same rollback-fixture pattern as the command-result transaction test:
-    // a mock has no real transaction engine, so this reproduces the property
-    // the service depends on — nothing the callback wrote survives a throw.
-    let certificates: Array<{ id: string }> = [{ id: machine.certificateId }];
-    const create = vi.fn(async (_args: unknown) => {
-      certificates = [...certificates, { id: "new-cert-row" }];
-      return {};
-    });
-    const update = vi.fn(async (_args: unknown) => {
-      throw new Error("db down");
-    });
-
-    const db = fakeDb({ machineCertificate: { create, update } });
-    const before = [...certificates];
-    db.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      try {
-        return await fn({ machineCertificate: { create, update } });
-      } catch (error) {
-        certificates = before; // rollback: the new row never survives a failed revoke
-        throw error;
-      }
-    }) as unknown as typeof db.$transaction;
-
-    const [error] = await renewCertificateService(db, ca, machine, csr);
-
-    expect(error?.reason).toBe("UNKNOWN_ERROR");
-    expect(certificates).toEqual(before);
   });
 });

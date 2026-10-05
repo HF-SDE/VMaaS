@@ -166,4 +166,26 @@ namespace Config
     /// again. Covers Motorcontrol still booting when Main-Controller's boot
     /// send goes out, and a vend left running.
     constexpr uint32_t wiring_retry_ms = 30000;
+
+    // --- Certificate renewal ------------------------------------------------
+
+    /// Stack for the renewal task. It writes a CSR and runs a TLS handshake
+    /// through device_api, the same load as config_sync.
+    constexpr int cert_renewal_task_stack = 12288;
+    constexpr int cert_renewal_task_priority = 3;
+
+    /// Longest sleep before a certificate that is not yet due is looked at
+    /// again. The task otherwise sleeps until it is due, so this only bounds
+    /// how long a clock correction or a reissued certificate goes unnoticed.
+    constexpr uint32_t cert_renewal_check_ms = 12u * 60u * 60u * 1000u;
+
+    /// Shortest sleep between checks, so rounding at the due second cannot spin.
+    constexpr uint32_t cert_renewal_min_wait_ms = 60u * 1000u;
+
+    /// Gap before a renewal that failed on the network is tried again.
+    constexpr uint32_t cert_renewal_retry_ms = 60u * 60u * 1000u;
+
+    /// How often a stored renewal checks whether the machine is idle enough
+    /// to restart into it.
+    constexpr uint32_t cert_renewal_idle_poll_ms = 1000;
 }

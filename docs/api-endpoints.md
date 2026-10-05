@@ -1293,6 +1293,11 @@ Maskinen tømmer sin offline-kø.
 
 Roterer maskinens certifikat. Det nuværende certifikat autoriserer det nye.
 
+Det nuværende certifikat forbliver gyldigt, indtil maskinen første gang bruger det
+nye (over HTTPS eller MQTT); da revokeres alle ældre certifikater for maskinen med
+`revokedReason: "superseded"`. Et svar, der går tabt undervejs, kan derfor bare
+hentes igen med det gamle certifikat.
+
 **Body:** `{ "csr": string }` – PEM, samme regler som ved aktivering.
 
 | Status | Body |
