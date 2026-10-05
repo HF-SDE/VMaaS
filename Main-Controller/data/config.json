@@ -2,10 +2,10 @@
   "version": 4,
   "device": {
     "name": "",
-    "machine_id": "72b2f62b-4c11-4396-b883-baacfa0698de"
+    "machine_id": ""
   },
   "backend": {
-    "api_base_url": "https://192.168.48.225:8443/api"
+    "api_base_url": ""
   },
   "door": {
     "code": "1234"
@@ -18,7 +18,7 @@
     "dispense_timeout_ms": 30000
   },
   "broker": {
-    "host": "192.168.48.225",
+    "host": "",
     "port": 8883
   }
 }
