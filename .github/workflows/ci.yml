@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -42,6 +44,10 @@ jobs:
         working-directory: backend
         run: npm test
 
+      - name: Backend integration tests
+        working-directory: backend
+        run: npm run test:integration
+
       - name: Install frontend
         working-directory: admin-frontend
         run: npm ci
@@ -75,6 +81,7 @@ jobs:
   # Set the repository variable DEPLOY_DIR if that clone is not at /srv/vmaas.
   deploy:
     needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: self-hosted
     # Never cancel a deploy halfway through; queue instead.
     concurrency:

@@ -131,7 +131,7 @@ describe("deviceEventSchema", () => {
 
 describe("cashSalePayloadSchema — the device's slot ceiling", () => {
   const sale = (slot: number) =>
-    cashSalePayloadSchema.safeParse({ slot, price_minor: 1500, received_minor: 1500, status: "completed" });
+    cashSalePayloadSchema.safeParse({ slot, price_minor: 1500, received_minor: 1500, status: "completed", ledger: "k3f9x2a1" });
 
   it("accepts the highest slot the device can address", () => {
     expect(sale(DEVICE_MAX_SLOT).success).toBe(true);

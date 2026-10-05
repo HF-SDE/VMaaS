@@ -136,6 +136,42 @@ export async function updateSlotService(
   }
 }
 
+/**
+ * The technician counted the slot and the number already matches: record the
+ * count (a zero correction) so the machine and the booking of late sales know
+ * from when the quantity is a counted number.
+ */
+export async function confirmSlotCountService(
+  tenantId: string,
+  id: string,
+  userId: string,
+): Promise<Result<SlotNotFoundError | UnknownSlotError, SlotListItem>> {
+  try {
+    return ok(
+      await prisma.$transaction(async (tx) => {
+        const slot = await tx.slot.findFirst({ where: { id, machine: { tenantId } }, include: { product: PRODUCT_SELECT } });
+        if (!slot) throw new SlotWriteRejected(SLOT_NOT_FOUND);
+
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            slotId: id,
+            userId,
+            type: inventory_movement_type.correction,
+            quantity: 0,
+            note: "Count confirmed in the admin",
+          },
+        });
+
+        return slot;
+      }),
+    );
+  } catch (error) {
+    if (error instanceof SlotWriteRejected) return err(error.failure as SlotNotFoundError);
+    return unknownError("confirming the count of", error);
+  }
+}
+
 /** The columns the restock queue needs, joined down to the names it prints. */
 const LOW_STOCK_SELECT = {
   id: true,

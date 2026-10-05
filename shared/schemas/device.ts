@@ -76,6 +76,7 @@ export const cashSalePayloadSchema = z.object({
   status: z.enum(["completed", "failed"]),
   reason: z.string().trim().max(64).optional(),
   currency: z.string().trim().length(3).default("DKK"),
+  ledger: z.string().trim().min(1).max(16),
 });
 
 export type CashSalePayload = z.infer<typeof cashSalePayloadSchema>;

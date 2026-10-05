@@ -3,10 +3,15 @@ import { requireSubscription } from "@/api/middleware/require-subscription";
 import { validate } from "@/api/middleware/validate";
 import { PERMISSIONS } from "@/lib/rbac";
 
-import { getSlotsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
+import { getSlotsSchema, slotIdParamsSchema, updateSlotSchema } from "@vmaas/shared/schemas";
 import { Router } from "express";
 
-import { getLowStockSlotsController, getSlotsController, updateSlotController } from "../controllers/slots.controller";
+import {
+  confirmSlotCountController,
+  getLowStockSlotsController,
+  getSlotsController,
+  updateSlotController,
+} from "../controllers/slots.controller";
 
 export const slotsRouter = Router();
 
@@ -30,3 +35,11 @@ slotsRouter.get("/", requirePermission(PERMISSIONS.MACHINE_READ), validate(getSl
 slotsRouter.get("/low-stock", requirePermission(PERMISSIONS.MACHINE_READ), getLowStockSlotsController);
 
 slotsRouter.patch("/:id", requirePermission(PERMISSIONS.SLOT_MANAGE), validate(updateSlotSchema), updateSlotController);
+
+/** Records that the slot was counted and the quantity already matches; SLOT_MANAGE like the edit. */
+slotsRouter.post(
+  "/:id/confirm-count",
+  requirePermission(PERMISSIONS.SLOT_MANAGE),
+  validate(slotIdParamsSchema),
+  confirmSlotCountController,
+);

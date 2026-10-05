@@ -41,6 +41,15 @@ namespace purchase_task
      */
     void set_prices(const prices::Table &fresh);
 
+    /**
+     * @brief Apply a new stock baseline from config_sync.
+     *
+     * Safe from config_sync's task: guarded by the same lock as the prices.
+     * The machine's own sales the baseline already counts are dropped from
+     * /storage/stock_sales.json (spec: slot stock).
+     */
+    void set_stock(const vmaas::StockBaseline &baseline);
+
     /// SlotEntry reported Confirmed.
     void on_slot_confirmed(uint8_t slot);
     /// Motorcontrol reported DONE.
@@ -54,6 +63,11 @@ namespace purchase_task
 
     /// True while a purchase owns the display, so the caller leaves it alone.
     bool active();
+
+    /// True when no purchase is under way: nothing chosen, nothing paid,
+    /// nothing dispensing. Always true with cash disabled, since no RUN is
+    /// sent then. Gates the wiring transfer (wiring_sync).
+    bool idle();
 
     /**
      * @brief Tell purchase_task whether main.cpp's persistent motor-fault

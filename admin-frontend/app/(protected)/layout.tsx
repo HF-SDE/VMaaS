@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 
 import { AppSidebar, AppSidebarSkeleton } from "@/components/app-sidebar"
+import { PriceSyncListener } from "@/components/price-sync-listener"
 import { SidebarSession } from "@/components/sidebar-session"
 import { SiteHeader } from "@/components/site-header"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -21,6 +22,7 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
         <Suspense fallback={<AppSidebarSkeleton />}>
           <SidebarSession>
             <AppSidebar variant="inset" />
+            <PriceSyncListener />
           </SidebarSession>
         </Suspense>
         <SidebarInset className="min-w-0 overflow-x-hidden">

@@ -84,6 +84,13 @@ public:
      */
     bool request_status();
 
+    /**
+     * @brief Send an already built request frame, for the WIRING_* transfer.
+     * @param f Frame from vmaas::frames.
+     * @return false if the frame could not be written to the UART.
+     */
+    bool send(const vmaas::Frame& f);
+
     /// @brief Register the DONE handler. Replaces any previous one, see @ref motorclient_handlers "motorclient_handlers".
     void on_done(DoneHandler h) { on_done_ = std::move(h); }
     /// @brief Register the NAK handler. Replaces any previous one, see @ref motorclient_handlers "motorclient_handlers".

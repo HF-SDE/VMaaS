@@ -151,4 +151,19 @@ namespace Config
     /// command behind it to report a failure against, and a machine retrying
     /// forever against a backend that is down would say nothing about it.
     constexpr int config_sync_max_attempts = 3;
+
+    /// How long config_sync waits for Motorcontrol to take a new wiring table
+    /// before reporting "wiring pending". One full purchase: 60 s payment
+    /// timeout plus 30 s dispense, with room to spare.
+    constexpr uint32_t wiring_result_timeout_ms = 120000;
+
+    /// At most one wiring resend per this long while Motorcontrol reports
+    /// STATUS ERROR (it does so every 2 s). Matches Motorcontrol's own 30 s
+    /// restart in the config-error state.
+    constexpr uint32_t wiring_error_request_gap_ms = 30000;
+
+    /// Gap before a wiring transfer that failed on no reply or BUSY is tried
+    /// again. Covers Motorcontrol still booting when Main-Controller's boot
+    /// send goes out, and a vend left running.
+    constexpr uint32_t wiring_retry_ms = 30000;
 }

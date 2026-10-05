@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "nvs.h"
@@ -34,8 +35,18 @@ namespace
     constexpr const char *TMP_PATH = "/storage/outbox.tmp";
     constexpr const char *NVS_NS = "vmaas";
     constexpr const char *NVS_SEQ = "outbox_seq";
+    constexpr const char *NVS_LEDGER = "outbox_ledger";
+    constexpr size_t LEDGER_LEN = 8;
 
     uint32_t sequence = 0;
+    char ledger_id[LEDGER_LEN + 1] = "";
+
+    void generate_ledger()
+    {
+        static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+        for (size_t i = 0; i < LEDGER_LEN; ++i) ledger_id[i] = alphabet[esp_random() % 36];
+        ledger_id[LEDGER_LEN] = '\0';
+    }
 
     /**
      * @brief Guards every access to PATH/TMP_PATH, created by begin().
@@ -309,6 +320,18 @@ namespace outbox
             if (err == ESP_OK)
             {
                 if (nvs_get_u32(h, NVS_SEQ, &sequence) != ESP_OK) sequence = 0;
+
+                size_t len = sizeof(ledger_id);
+                if (nvs_get_str(h, NVS_LEDGER, ledger_id, &len) != ESP_OK || std::strlen(ledger_id) != LEDGER_LEN)
+                {
+                    generate_ledger();
+                    if (nvs_set_str(h, NVS_LEDGER, ledger_id) != ESP_OK || nvs_commit(h) != ESP_OK) {
+                        ESP_LOGE(TAG, "could not persist sale ledger %s; the next boot starts another one", ledger_id);
+                    }
+                    else {
+                        ESP_LOGW(TAG, "new sale ledger %s", ledger_id);
+                    }
+                }
                 nvs_close(h);
             }
             else
@@ -317,7 +340,9 @@ namespace outbox
             }
         }
 
-        ESP_LOGI(TAG, "ready: %u pending, %u bytes, next sequence %lu", static_cast<unsigned>(pending_impl()), static_cast<unsigned>(file_size()), static_cast<unsigned long>(sequence));
+        if (ledger_id[0] == '\0') generate_ledger();
+
+        ESP_LOGI(TAG, "ready: %u pending, %u bytes, ledger %s, next sequence %lu", static_cast<unsigned>(pending_impl()), static_cast<unsigned>(file_size()), ledger_id, static_cast<unsigned long>(sequence));
 
         unlock();
         return ESP_OK;
@@ -358,6 +383,8 @@ namespace outbox
         unlock();
         return result;
     }
+
+    const char *ledger() { return ledger_id; }
 
     esp_err_t append(const char *line)
     {

@@ -38,7 +38,7 @@ namespace vmaas
     {
         if (pulses_ == 0) return false;
         if (in_pulse_) return false;
-        if (now_ms - last_edge_ms_ < cfg_.train_gap_ms) return false;
+        if (static_cast<int32_t>(now_ms - last_edge_ms_) < static_cast<int32_t>(cfg_.train_gap_ms)) return false;
 
         out.pulses = pulses_;
         out.value_minor = value_for(pulses_);

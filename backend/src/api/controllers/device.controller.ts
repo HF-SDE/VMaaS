@@ -3,6 +3,9 @@ import { Request, Response } from "express";
 
 import { getCertificateAuthority } from "@/lib/ca";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/ws/server";
+
+import { reportConfigurationResultService } from "../services/configuration-sync.service";
 
 import {
   getDeviceConfigurationService,
@@ -51,6 +54,16 @@ export async function postCommandResultController(req: Request, res: Response) {
       default:
         throw new Error(`Unhandled error reason ${reason satisfies never}`);
     }
+  }
+
+  if (result.applied) {
+    await reportConfigurationResultService(prisma, broadcast, {
+      tenantId: req.machine!.tenantId,
+      machineId: req.machine!.id,
+      commandId: body.commandId,
+      status: body.status,
+      detail: body.detail ?? null,
+    });
   }
 
   return res.status(200).json(result).end();

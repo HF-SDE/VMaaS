@@ -182,6 +182,29 @@ const ALERT_ALREADY_RESOLVED: AlertAlreadyResolvedError = {
   message: "That alert has already been resolved.",
 };
 
+/**
+ * Raises an alert on a machine and answers the row the alerts page lists, so
+ * the caller can push it to the tenant as `alert.created` without re-reading.
+ * The row is null when the machine has no site (the invariant toAlertRow
+ * guards): the alert is stored, it just cannot be shown yet.
+ */
+export async function createAlertService(input: {
+  machineId: string;
+  type: AlertType;
+  message: string;
+}): Promise<Result<UnknownAlertError, MachineAlertRow | null>> {
+  try {
+    const alert = await prisma.securityAlert.create({
+      data: { machineId: input.machineId, type: input.type, message: input.message },
+      select: ALERT_SELECT,
+    });
+
+    return ok(toAlertRow(alert));
+  } catch (error) {
+    return unknownError("creating", error);
+  }
+}
+
 export async function resolveAlertService(
   tenantId: string,
   alertId: string,

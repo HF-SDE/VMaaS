@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildConfigurationPayload,
+  buildStock,
   comparePayloads,
   findUnwiredSlots,
   toPayloadSlots,
@@ -154,11 +155,11 @@ describe("comparePayloads", () => {
   // stepsPerVend rides inside wiring, so changing it is a wiring drift: the
   // device has to be re-published before the new pulse count takes effect.
   it("reports a stepsPerVend change as wiring drift", () => {
-    expect(comparePayloads(withMotor(3200) as never, withMotor(6400))).toEqual({ wiring: true, prices: false });
+    expect(comparePayloads(withMotor(3200) as never, withMotor(6400))).toMatchObject({ wiring: true, prices: false });
   });
 
   it("reports no difference when both blocks match", () => {
-    expect(comparePayloads(payload([18], 1500) as never, payload([18], 1500))).toEqual({
+    expect(comparePayloads(payload([18], 1500) as never, payload([18], 1500))).toMatchObject({
       wiring: false,
       prices: false,
     });
@@ -167,14 +168,14 @@ describe("comparePayloads", () => {
   // The two blocks move for different reasons: prices change when a tenant
   // edits one in their own UI, wiring only changes in the layout editor.
   it("reports a wiring difference alone", () => {
-    expect(comparePayloads(payload([19], 1500) as never, payload([18], 1500))).toEqual({
+    expect(comparePayloads(payload([19], 1500) as never, payload([18], 1500))).toMatchObject({
       wiring: true,
       prices: false,
     });
   });
 
   it("reports a price difference alone", () => {
-    expect(comparePayloads(payload([18], 1600) as never, payload([18], 1500))).toEqual({
+    expect(comparePayloads(payload([18], 1600) as never, payload([18], 1500))).toMatchObject({
       wiring: false,
       prices: true,
     });
@@ -183,7 +184,7 @@ describe("comparePayloads", () => {
   // A published payload from an older shape, or a hand-edited row, must not
   // throw — it simply differs.
   it("treats an unrecognisable published payload as differing in both", () => {
-    expect(comparePayloads(payload([18], 1500) as never, null)).toEqual({ wiring: true, prices: true });
+    expect(comparePayloads(payload([18], 1500) as never, null)).toMatchObject({ wiring: true, prices: true });
   });
 
   // What Postgres jsonb actually hands back: keys sorted by length, then bytewise.
@@ -194,18 +195,18 @@ describe("comparePayloads", () => {
   });
 
   it("ignores the key order jsonb imposes on a stored payload", () => {
-    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(6400, [18]))).toEqual({
+    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(6400, [18]))).toMatchObject({
       wiring: false,
       prices: false,
     });
   });
 
   it("still sees a real change through the reordered keys", () => {
-    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(3200, [18]))).toEqual({
+    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(3200, [18]))).toMatchObject({
       wiring: true,
       prices: false,
     });
-    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(6400, [19]))).toEqual({
+    expect(comparePayloads(withMotor(6400) as never, asStoredByJsonb(6400, [19]))).toMatchObject({
       wiring: true,
       prices: false,
     });
@@ -213,7 +214,7 @@ describe("comparePayloads", () => {
 
   // A stored payload from before wiring existed has no such block: that is drift.
   it("treats a stored payload with no wiring block as wiring drift", () => {
-    expect(comparePayloads(withMotor(6400) as never, { cash: {}, prices: [{ slot: 1, priceMinor: 1500 }] })).toEqual({
+    expect(comparePayloads(withMotor(6400) as never, { cash: {}, prices: [{ slot: 1, priceMinor: 1500 }] })).toMatchObject({
       wiring: true,
       prices: false,
     });
@@ -232,5 +233,40 @@ describe("comparePayloads", () => {
       wiring: { version: 2, motor: { stepsPerVend: 6400 }, slots: [{ slot: 2, pins: [19] }, { slot: 1, pins: [18] }] },
     };
     expect(comparePayloads(current as never, stored).wiring).toBe(true);
+  });
+});
+
+// The stock block tells the machine how many items a slot has, as of the last
+// sale the backend booked (spec: slot stock).
+describe("buildStock", () => {
+  it("lists every slot in order with its quantity and count time", () => {
+    const stock = buildStock(
+      [
+        { slotNumber: 2, quantity: 0, countedAt: null },
+        { slotNumber: 1, quantity: 7, countedAt: new Date("2026-09-29T09:14:00.000Z") },
+      ],
+      [{ ledger: "k3f9x2a1", asOfSequence: 41 }],
+    );
+    expect(stock).toEqual({
+      acks: [{ ledger: "k3f9x2a1", asOfSequence: 41 }],
+      slots: [
+        { slot: 1, quantity: 7, countedAt: "2026-09-29T09:14:00.000Z" },
+        { slot: 2, quantity: 0, countedAt: null },
+      ],
+    });
+  });
+
+  it("never publishes a negative quantity", () => {
+    expect(buildStock([{ slotNumber: 1, quantity: -1, countedAt: null }], []).slots[0].quantity).toBe(0);
+  });
+});
+
+describe("comparePayloads, stock", () => {
+  it("reports a stock change, and none when the stock is the same", () => {
+    const base = buildConfigurationPayload([], CASH, MOTOR);
+    const a = { ...base, stock: buildStock([{ slotNumber: 1, quantity: 1, countedAt: null }], []) };
+    const b = { ...base, stock: buildStock([{ slotNumber: 1, quantity: 2, countedAt: null }], []) };
+    expect(comparePayloads(a, b).stock).toBe(true);
+    expect(comparePayloads(a, a).stock).toBe(false);
   });
 });

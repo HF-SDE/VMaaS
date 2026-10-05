@@ -30,6 +30,9 @@ namespace vmaas
         const char *occurred_at = nullptr;
         uint32_t    uptime_ms = 0;
         const char *currency = "DKK";
+        /// This machine's sale ledger id (outbox::ledger()); the backend
+        /// needs it to tell which of these sales a stock baseline counts.
+        const char *ledger = "";
     };
 
     /**

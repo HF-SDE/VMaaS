@@ -15,10 +15,15 @@ function fakeDb() {
   const tx = {
     machineEvent: { create: vi.fn().mockResolvedValue({ id: "e-1" }) },
     sale: { create: vi.fn().mockResolvedValue({ id: "s-1" }) },
-    inventoryMovement: { create: vi.fn().mockResolvedValue({ id: "i-1" }) },
+    inventoryMovement: {
+      create: vi.fn().mockResolvedValue({ id: "i-1" }),
+      // The slot's last count; none by default, so every completed sale decrements.
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     slot: {
       findFirst: vi.fn().mockResolvedValue({ id: "slot-1", productId: "p-1" }),
       update: vi.fn().mockResolvedValue({ id: "slot-1" }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 
@@ -49,6 +54,7 @@ function completedEvent() {
       received_minor: 2000,
       status: "completed",
       currency: "DKK",
+      ledger: "k3f9x2a1",
     },
   } as never;
 }
@@ -76,9 +82,10 @@ describe("recordDeviceEventService, cash_sale", () => {
     // in slots.service.ts) — the InventoryMovement row above only mirrors it.
     // Without this, a machine could sell down to empty while the column, the
     // low-stock alert and the machine-level total never move.
-    expect(tx.slot.update).toHaveBeenCalledTimes(1);
-    const slotUpdate = tx.slot.update.mock.calls[0][0];
-    expect(slotUpdate.where).toEqual({ id: "slot-1" });
+    expect(tx.slot.updateMany).toHaveBeenCalledTimes(1);
+    const slotUpdate = tx.slot.updateMany.mock.calls[0][0];
+    // Never below 0: the filter keeps an already-empty slot where it is.
+    expect(slotUpdate.where).toEqual({ id: "slot-1", quantity: { gt: 0 } });
     expect(slotUpdate.data).toEqual({ quantity: { decrement: 1 } });
   });
 
@@ -115,7 +122,7 @@ describe("recordDeviceEventService, cash_sale", () => {
 
     // A failed vend must leave the real stock column alone — nothing left the
     // slot, so nothing here may decrement it.
-    expect(tx.slot.update).not.toHaveBeenCalled();
+    expect(tx.slot.updateMany).not.toHaveBeenCalled();
   });
 
   it("does not throw when the slot cannot be found for a completed sale", async () => {
@@ -126,7 +133,7 @@ describe("recordDeviceEventService, cash_sale", () => {
 
     expect(error).toBeNull();
     expect(tx.sale.create).toHaveBeenCalledTimes(1);
-    expect(tx.slot.update).not.toHaveBeenCalled();
+    expect(tx.slot.updateMany).not.toHaveBeenCalled();
   });
 
   it("answers a replayed eventId without creating a second Sale", async () => {
@@ -143,6 +150,107 @@ describe("recordDeviceEventService, cash_sale", () => {
     // queue would jam forever behind one already-booked sale.
     expect(error).toBeNull();
     expect(result).toMatchObject({ duplicate: true });
+    expect(tx.sale.create).not.toHaveBeenCalled();
+  });
+
+  // The shape Prisma 7 actually throws through @prisma/adapter-pg: no
+  // meta.target, the constraint sits under meta.driverAdapterError instead
+  // (adapter-pg maps Postgres 23505 to { index: error.constraint }). Found on
+  // the bench: one sale whose 201 the device never saw was answered 500 on
+  // every retry, and every later sale queued behind it.
+  it("answers a replayed eventId as a duplicate when the error comes from the pg driver adapter", async () => {
+    const { tx, db } = fakeDb();
+    const duplicate = Object.assign(new Error("Unique constraint failed on the constraint: `machine_events_eventId_key`"), {
+      code: "P2002",
+      meta: {
+        modelName: "MachineEvent",
+        driverAdapterError: {
+          cause: { kind: "UniqueConstraintViolation", constraint: { index: "machine_events_eventId_key" } },
+        },
+      },
+    });
+    tx.machineEvent.create.mockRejectedValueOnce(duplicate);
+
+    const [error, result] = await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(error).toBeNull();
+    expect(result).toMatchObject({ duplicate: true });
+    expect(tx.sale.create).not.toHaveBeenCalled();
+  });
+
+  it("still fails on a unique violation of some other index", async () => {
+    const { tx, db } = fakeDb();
+    const other = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002",
+      meta: {
+        driverAdapterError: {
+          cause: { kind: "UniqueConstraintViolation", constraint: { index: "machine_events_other_key" } },
+        },
+      },
+    });
+    tx.machineEvent.create.mockRejectedValueOnce(other);
+
+    const [error] = await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(error?.reason).toBe("UNKNOWN_ERROR");
+  });
+
+  // A late sale from before the slot's last count is already reflected in the
+  // counted number, so it is booked as a sale but does not lower the stock.
+  it("does not decrement for a sale from before the slot's last count", async () => {
+    const { tx, db } = fakeDb();
+    tx.inventoryMovement.findFirst.mockResolvedValueOnce({ occurredAt: new Date("2026-09-21T14:00:00Z") });
+
+    const [error] = await recordDeviceEventService(db, machine, completedEvent()); // occurredAt 13:04:11
+
+    expect(error).toBeNull();
+    expect(tx.sale.create).toHaveBeenCalledTimes(1);
+    expect(tx.slot.updateMany).not.toHaveBeenCalled();
+    const where = tx.inventoryMovement.findFirst.mock.calls[0][0].where;
+    expect(where).toEqual({ slotId: "slot-1", type: { in: ["restock", "correction"] } });
+  });
+
+  it("does not decrement a sale at exactly the count time", async () => {
+    const { tx, db } = fakeDb();
+    tx.inventoryMovement.findFirst.mockResolvedValueOnce({ occurredAt: new Date("2026-09-21T13:04:11Z") });
+
+    await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(tx.slot.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("decrements for a sale after the slot's last count", async () => {
+    const { tx, db } = fakeDb();
+    tx.inventoryMovement.findFirst.mockResolvedValueOnce({ occurredAt: new Date("2026-09-21T12:00:00Z") });
+
+    await recordDeviceEventService(db, machine, completedEvent());
+
+    expect(tx.slot.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  // Without a clock the device sends uptimeMs and the time is only an
+  // estimate (about the boot time). The machine always subtracts such a sale,
+  // so the backend must always decrement it too, or the two disagree by one.
+  it("always decrements a sale without a real timestamp, whatever the count time", async () => {
+    const { tx, db } = fakeDb();
+    tx.inventoryMovement.findFirst.mockResolvedValue({ occurredAt: new Date(Date.now() + 60_000) });
+    const event = completedEvent() as unknown as Record<string, unknown>;
+    delete event.occurredAt;
+    event.uptimeMs = 3_600_000;
+
+    await recordDeviceEventService(db, machine, event as never);
+
+    expect(tx.slot.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a cash sale without a ledger", async () => {
+    const { tx, db } = fakeDb();
+    const bad = completedEvent() as unknown as { payload: Record<string, unknown> };
+    delete bad.payload.ledger;
+
+    const [error] = await recordDeviceEventService(db, machine, bad as never);
+
+    expect(error?.reason).toBe("CASH_SALE_PAYLOAD_INVALID");
     expect(tx.sale.create).not.toHaveBeenCalled();
   });
 
@@ -184,6 +292,7 @@ describe("recordDeviceEventService, clock-less devices", () => {
         received_minor: 2000,
         status: "completed",
         currency: "DKK",
+        ledger: "k3f9x2a1",
       },
     } as never;
 
@@ -222,6 +331,7 @@ describe("recordDeviceEventService, clock-less devices", () => {
         received_minor: 2000,
         status: "completed",
         currency: "DKK",
+        ledger: "k3f9x2a1",
       },
     } as never;
 

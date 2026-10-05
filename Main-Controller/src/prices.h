@@ -18,6 +18,7 @@
 
 #include "coin_acceptor.h"
 #include "purchase.h"
+#include "stock_ledger.h"
 
 namespace prices
 {
@@ -72,6 +73,28 @@ namespace prices
      * @return True once the merged document is on flash.
      */
     bool merge_store(const char *json);
+
+    /**
+     * @brief Copy the cached payload's `wiring` block out as JSON text.
+     *
+     * The block has config.json v2's shape ({version, motor, slots}), so the
+     * text goes straight into vmaas::parse_slot_config().
+     *
+     * @return False when there is no file, it does not parse, or it has no
+     *         non-empty `wiring` object (a machine never published with
+     *         wiring), or @p out is too small. @p out is then empty.
+     */
+    bool read_wiring(char *out, size_t out_len);
+
+    /**
+     * @brief Read the payload's `stock` block into @p out.
+     * @return False when there is no `stock` object or it is malformed
+     *         (then @p out is untouched): the machine enforces no stock.
+     */
+    bool parse_stock(const char *json, vmaas::StockBaseline &out);
+
+    /// parse_stock() on /storage/prices.json.
+    bool load_stock(vmaas::StockBaseline &out);
 
     /// Largest payload the device will accept, in bytes. The response buffer
     /// the fetch reads into has to be at least this big for a configuration

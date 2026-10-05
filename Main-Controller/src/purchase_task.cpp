@@ -25,6 +25,8 @@
 #include "prices.h"
 #include "purchase.h"
 #include "sale_line.h"
+#include "stock_ledger.h"
+#include "stock_store.h"
 
 namespace
 {
@@ -37,6 +39,10 @@ namespace
     vmaas::CoinConfig coin_cfg;
     vmaas::PurchaseConfig purchase_cfg;
     prices::Table table;
+    /// How many items each slot has, including this machine's own sales the
+    /// backend has not counted yet. Guarded by price_mutex, like `table`:
+    /// config_sync swaps the baseline from its task.
+    vmaas::StockLedger stock;
 
     /**
      * @brief Guards `table` alone, not the rest of this file's state.
@@ -230,8 +236,8 @@ namespace
 
         const uint32_t seq = outbox::next_sequence();
 
-        char event_id[72];
-        std::snprintf(event_id, sizeof(event_id), "%s-%06lu", machine_id, static_cast<unsigned long>(seq));
+        char event_id[80];
+        std::snprintf(event_id, sizeof(event_id), "%s-%s-%06lu", machine_id, outbox::ledger(), static_cast<unsigned long>(seq));
 
         // A real timestamp when the clock is known, uptime otherwise.
         char stamp[32];
@@ -262,6 +268,7 @@ namespace
             xSemaphoreGive(price_mutex);
         }
         line.currency = currency;
+        line.ledger = outbox::ledger();
 
         char text[outbox::MAX_LINE];
         if (vmaas::format_sale_line(line, text, sizeof(text)) == 0)
@@ -275,6 +282,17 @@ namespace
         {
             ESP_LOGE(TAG, "outbox append failed: %s", esp_err_to_name(err));
             return false;
+        }
+
+        if (o.sale_status == vmaas::SaleStatus::Completed && price_mutex != nullptr &&
+            xSemaphoreTake(price_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            const int64_t at = clock_ok ? static_cast<int64_t>(std::time(nullptr)) : 0;
+            if (!stock.record_sale(outbox::ledger(), seq, o.slot, at)) {
+                ESP_LOGE(TAG, "own-sales list is full: every slot reads sold out until the next stock baseline");
+            }
+            stock_store::save(stock);
+            xSemaphoreGive(price_mutex);
         }
 
         ESP_LOGI(TAG, "settled %s", text);
@@ -379,6 +397,22 @@ namespace purchase_task
 
         outbox::begin();
 
+        // Own sales first, then the baseline, so set_baseline() drops the
+        // ones the stored baseline already counts.
+        // Fail closed: own sales that cannot be read back may be items already
+        // sold, so nothing is sold until a fresh baseline arrives.
+        if (stock_store::load(stock) == stock_store::LoadResult::Failed)
+        {
+            ESP_LOGE(TAG, "own sales could not be restored: every slot reads sold out until the next stock baseline");
+            stock.mark_unreliable();
+        }
+        // Heap, briefly: a baseline is ~550 bytes and static DRAM is full.
+        vmaas::StockBaseline *boot_baseline = new vmaas::StockBaseline();
+        if (prices::load_stock(*boot_baseline)) stock.set_baseline(*boot_baseline);
+        delete boot_baseline;
+        ESP_LOGI(TAG, "stock: %s, %u own sales pending", stock.has_baseline() ? "enforced" : "not published yet",
+                 static_cast<unsigned>(stock.own_sale_count()));
+
         static vmaas::CoinAcceptor acc(coin_cfg);
         static vmaas::Purchase mac(purchase_cfg);
         acceptor = &acc;
@@ -424,14 +458,35 @@ namespace purchase_task
         }
     }
 
+    void set_stock(const vmaas::StockBaseline &baseline)
+    {
+        if (price_mutex == nullptr)
+        {
+            ESP_LOGE(TAG, "set_stock before begin(); the baseline is on flash but not live");
+            return;
+        }
+
+        if (xSemaphoreTake(price_mutex, portMAX_DELAY) != pdTRUE) return;
+        stock.set_baseline(baseline);
+        stock_store::save(stock);
+        const size_t pending = stock.own_sale_count();
+        xSemaphoreGive(price_mutex);
+
+        ESP_LOGI(TAG, "stock baseline applied: %u slots, %u ledger acks, %u own sales pending",
+                 static_cast<unsigned>(baseline.slot_count), static_cast<unsigned>(baseline.ack_count),
+                 static_cast<unsigned>(pending));
+    }
+
     void on_slot_confirmed(uint8_t slot)
     {
         if (!cash_enabled) return;
 
         uint32_t price = 0;
+        bool sold_out = false;
         if (price_mutex != nullptr && xSemaphoreTake(price_mutex, portMAX_DELAY) == pdTRUE)
         {
             price = prices::for_slot(table, slot);
+            sold_out = stock.sold_out(slot);
             xSemaphoreGive(price_mutex);
         }
 
@@ -439,6 +494,14 @@ namespace purchase_task
         {
             ESP_LOGW(TAG, "slot %u has no price", static_cast<unsigned>(slot));
             show(nullptr, "Slot not for sale");
+            notice_until_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS) + SETTLED_HOLD_MS;
+            return;
+        }
+
+        if (sold_out)
+        {
+            ESP_LOGI(TAG, "slot %u is sold out", static_cast<unsigned>(slot));
+            show(nullptr, "Sold out");
             notice_until_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS) + SETTLED_HOLD_MS;
             return;
         }
@@ -475,8 +538,12 @@ namespace purchase_task
             acceptor->on_edge(edge.at_ms, edge.level);
         }
 
+        // The decoder's "now" must be on the edges' clock: esp_coin_port
+        // stamps them with esp_timer in the ISR, while now_ms is FreeRTOS
+        // ticks, which start later and run behind it.
+        const uint32_t edge_clock_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
         vmaas::CoinEvent ev;
-        while (acceptor->tick(now_ms, ev))
+        while (acceptor->tick(edge_clock_ms, ev))
         {
             ESP_LOGI(TAG, "coin: %u pulses = %lu minor", static_cast<unsigned>(ev.pulses), static_cast<unsigned long>(ev.value_minor));
             apply(machine->coin(ev.value_minor, now_ms), nullptr);
@@ -507,6 +574,8 @@ namespace purchase_task
     }
 
     bool active() { return cash_enabled; }
+
+    bool idle() { return !cash_enabled || prev_state_ == vmaas::PurchaseState::Idle; }
 
     void set_motor_fault(bool fault_on)
     {
