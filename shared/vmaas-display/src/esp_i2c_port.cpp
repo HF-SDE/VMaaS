@@ -5,6 +5,7 @@
 #ifdef ESP_PLATFORM
 
 #include "esp_i2c_port.h"
+#include "delay_ticks.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -87,9 +88,9 @@ namespace vmaas
 
     void EspI2cPort::delay_ms(uint32_t ms)
     {
-        // pdMS_TO_TICKS rounds down and vTaskDelay(n) can return after as
-        // little as (n-1) ticks, so add one tick to guarantee at least ms.
-        vTaskDelay(pdMS_TO_TICKS(ms) + 1);
+        // Every delay here is the LCD's own busy time; one cut short makes it
+        // NACK the next write. See delay_ticks.h.
+        vTaskDelay(delay_ticks(ms, portTICK_PERIOD_MS));
     }
 }
 

@@ -1,5 +1,6 @@
 #include "activation.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -9,6 +10,8 @@
 #include "device_api.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -216,33 +219,40 @@ namespace activation
             return ESP_OK;
         }
 
-        esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-        esp_err_t err = esp_netif_sntp_init(&cfg);
-        // Onboarding can reach this more than once - a retry after a rejection
-        // comes back through here - and a second init is not an error.
-        if (err == ESP_ERR_INVALID_STATE) err = ESP_OK;
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "sntp_init failed: %s", esp_err_to_name(err));
-            return err;
-        }
+        esp_err_t err = start_time_sync();
+        if (err != ESP_OK) return err;
 
-        err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(timeout_ms));
-        if (err != ESP_OK)
+        const TickType_t started = xTaskGetTickCount();
+        while ((now = std::time(nullptr)) <= YEAR_2020)
         {
-            ESP_LOGE(TAG, "no SNTP answer within %u ms", static_cast<unsigned>(timeout_ms));
-            return err;
-        }
-
-        now = std::time(nullptr);
-        if (now <= YEAR_2020)
-        {
-            ESP_LOGE(TAG, "SNTP answered but the clock is still %lld", static_cast<long long>(now));
-            return ESP_ERR_INVALID_STATE;
+            if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(timeout_ms))
+            {
+                ESP_LOGE(TAG, "no SNTP answer within %u ms", static_cast<unsigned>(timeout_ms));
+                return ESP_ERR_TIMEOUT;
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
 
         ESP_LOGI(TAG, "clock set to %lld", static_cast<long long>(now));
         return ESP_OK;
+    }
+
+    esp_err_t start_time_sync()
+    {
+        // esp_netif_sntp_init() refuses a second call, and logs it as an
+        // error, so only the first caller of the boot gets to make it.
+        static std::atomic<bool> started{false};
+        bool expected = false;
+        if (!started.compare_exchange_strong(expected, true)) return ESP_OK;
+
+        esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+        const esp_err_t err = esp_netif_sntp_init(&cfg);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "sntp_init failed: %s", esp_err_to_name(err));
+            started = false;
+        }
+        return err;
     }
 
     Result activate(const char* api_base_url, const char* machine_id, const char* code)

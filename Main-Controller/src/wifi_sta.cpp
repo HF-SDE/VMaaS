@@ -65,8 +65,8 @@ namespace
             s_backoff_ms = BACKOFF_MIN_MS;
             ESP_LOGI(TAG, "connected, ip " IPSTR, IP2STR(&e->ip_info.ip));
 
-            if (activation::sync_time(5000) != ESP_OK) {
-                ESP_LOGW(TAG, "time sync failed; sales will carry uptime instead of a timestamp");
+            if (activation::start_time_sync() != ESP_OK) {
+                ESP_LOGW(TAG, "time sync did not start; sales will carry uptime instead of a timestamp");
             }
         }
     }

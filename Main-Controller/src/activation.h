@@ -95,10 +95,24 @@ namespace activation
      * reports something that looks nothing like a clock problem, so this runs
      * first and its failure is reported as itself.
      *
+     * Safe to call from several tasks at once: each waits on the clock
+     * itself, so all of them return as soon as it is set.
+     *
      * @param timeout_ms How long to wait for the first SNTP answer.
      * @return ESP_OK once the system clock is past 2020.
      */
     esp_err_t sync_time(uint32_t timeout_ms);
+
+    /**
+     * @brief Start SNTP without waiting for an answer.
+     *
+     * For the event-loop task, which must not block: the clock gets set in
+     * the background and sync_time() callers see it. Starts SNTP once per
+     * boot; later calls do nothing.
+     *
+     * @return ESP_OK once SNTP is running.
+     */
+    esp_err_t start_time_sync();
 
     /**
      * @brief Generate a key if needed, request a certificate, store the answer.
