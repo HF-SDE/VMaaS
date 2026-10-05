@@ -34,6 +34,25 @@ services:
     networks:
       - internal
 
+  db-backup:
+    <<: [*restart, *logging]
+    image: prodrigestivill/postgres-backup-local:17
+    env_file:
+      - ../config/environment-variables/.env.db.prod
+    environment:
+      POSTGRES_HOST: db
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+    volumes:
+      - /var/backups/vmaas:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
   # Creates the CA and the server/platform certificates on first run, then
   # leaves them alone. The `pki` volume holds ca.key, which signs every device
   # certificate: back it up. Losing it strands every activated machine.
