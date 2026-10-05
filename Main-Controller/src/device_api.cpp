@@ -29,7 +29,6 @@ namespace
 
     /// PEM scratch. Static, not stack: together these are ~5 KB and the TLS
     /// handshake wants about 8 KB of its own on the same task.
-    char ca_pem[2560];
     char cert_pem[2048];
     char key_pem[512];
     char api_ca_pem[2560];
@@ -41,7 +40,7 @@ namespace
      * at once - Task 10 puts outbox draining on its own FreeRTOS task so a
      * slow POST cannot stall the main loop, and activation can still be in
      * flight from the onboarding task. Without this lock, two concurrent
-     * calls would both write ca_pem/cert_pem/key_pem/api_ca_pem and race the
+     * calls would both write cert_pem/key_pem/api_ca_pem and race the
      * mbedTLS layer reading them mid-handshake, corrupting both requests.
      *
      * Held for the whole of one POST, including the TLS handshake - seconds,
@@ -101,27 +100,23 @@ namespace
 
         if (with_client_cert)
         {
-            if (activation::load_broker_ca(ca_pem, sizeof(ca_pem)) != ESP_OK ||
-                activation::load_certificate(cert_pem, sizeof(cert_pem)) != ESP_OK ||
+            if (activation::load_certificate(cert_pem, sizeof(cert_pem)) != ESP_OK ||
                 activation::load_private_key(key_pem, sizeof(key_pem)) != ESP_OK)
             {
-                ESP_LOGE(TAG, "no stored certificate, key or CA; cannot use mTLS");
+                ESP_LOGE(TAG, "no stored certificate or key; cannot use mTLS");
                 return ESP_ERR_INVALID_STATE;
             }
 
-            cfg.cert_pem = ca_pem;
             cfg.client_cert_pem = cert_pem;
             cfg.client_key_pem = key_pem;
         }
-        else
-        {
-            const int n = vmaas::fs::read_text_file(config_store::API_CA_PATH, api_ca_pem, sizeof(api_ca_pem));
-            if (n > 0) {
-                cfg.cert_pem = api_ca_pem;
-            }
-            else {
-                cfg.crt_bundle_attach = esp_crt_bundle_attach;
-            }
+
+        const int n = vmaas::fs::read_text_file(config_store::API_CA_PATH, api_ca_pem, sizeof(api_ca_pem));
+        if (n > 0) {
+            cfg.cert_pem = api_ca_pem;
+        }
+        else {
+            cfg.crt_bundle_attach = esp_crt_bundle_attach;
         }
 
         esp_http_client_handle_t client = esp_http_client_init(&cfg);

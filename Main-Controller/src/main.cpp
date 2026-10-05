@@ -1,5 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_bt.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include <cstdio>
 #include <cstring>
@@ -324,6 +326,19 @@ extern "C" void app_main()
     else if (wifi_err != ESP_OK)
     {
         ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
+    }
+
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE)
+    {
+        const size_t before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        const esp_err_t bt_err = esp_bt_mem_release(ESP_BT_MODE_BTDM);
+        if (bt_err != ESP_OK) {
+            ESP_LOGW(TAG, "releasing Bluetooth memory failed: %s", esp_err_to_name(bt_err));
+        }
+        else {
+            ESP_LOGI(TAG, "Bluetooth memory released: heap %u -> %u bytes free",
+                     static_cast<unsigned>(before), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+        }
     }
 
     broker_client::start(cfg);

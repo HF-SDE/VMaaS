@@ -27,6 +27,10 @@ idf_component_register(
         # The broker connection the admin UI reads Online/Offline from.
         espressif__mqtt
 
+        # esp_bt.h: main hands the controller's reserved RAM back when
+        # onboarding did not leave Bluetooth running.
+        bt
+
         # Storage and peripherals.
         esp_partition
         spi_flash
