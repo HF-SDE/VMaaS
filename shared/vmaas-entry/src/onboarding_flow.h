@@ -128,6 +128,18 @@ namespace vmaas
         void set_connected_ssid(const char* ssid);
 
         /**
+         * @brief Report that the phone sent credentials and the controller is trying them.
+         *
+         * Shows the Connecting screen for a connection the flow did not
+         * request: connect_requested stays false, because the provisioning
+         * component applies BLE credentials itself. Answer it with
+         * on_connect_result() like a keypad attempt. Ignored while a keypad
+         * attempt is in flight and once the flow has reached Connected.
+         * @param ssid NUL-terminated SSID. Truncated to fit if longer than storage.
+         */
+        void on_remote_connecting(const char* ssid);
+
+        /**
          * @brief Replace the PIN shown on the BLE screen.
          *
          * A machine with stored credentials is given a bounded chance to use
@@ -137,6 +149,16 @@ namespace vmaas
          * @param pin Eight digits. Shorter is padded by the "PIN 1234 5678" format.
          */
         void set_pin(const char* pin);
+
+        /**
+         * @brief Say whether stored credentials are being tried before setup opens.
+         *
+         * While true the BLE screen reads only "Connecting...": there is no
+         * PIN yet and no manual setup on offer, so * does nothing. Set it
+         * false when the driver gives up and opens setup.
+         * @param retrying True while the stored network is being tried.
+         */
+        void set_retrying_stored_wifi(bool retrying);
 
         /**
          * @brief Say what has to happen once Wi-Fi is up.
@@ -201,7 +223,8 @@ namespace vmaas
 
         OnboardingScreen screen_ = OnboardingScreen::BleWaiting;
         char name_[17] = {};
-        char pin_row_[17] = {};   ///< "PIN 1234 5678", built once in the constructor.
+        char pin_row_[17] = {};   ///< "PIN 1234 5678"; empty when there is no PIN.
+        bool retrying_stored_wifi_ = false;
 
         char networks_[ONBOARDING_MAX_NETWORKS][ONBOARDING_SSID_MAX] = {};
         size_t network_count_ = 0;

@@ -9,6 +9,7 @@
  * on that screen, so there is no factory tooling, no provisioning database and
  * no QR sticker.
  */
+#include <cstddef>
 #include "esp_err.h"
 
 /// BLE provisioning for the Main-Controller.
@@ -40,6 +41,24 @@ namespace provisioning
     ///       backs.
     const char* pin();
 
-    /// @brief Stop advertising and release the Bluetooth memory.
+    /**
+     * @brief Whether the phone has sent credentials since the last call.
+     * @param ssid Receives the SSID being tried when this returns true.
+     * @param len  Size of ssid. 33 holds any SSID.
+     * @return True once per set of credentials received.
+     */
+    bool take_credentials_received(char* ssid, size_t len);
+
+    /// @return True once per failed attempt with the phone's credentials.
+    bool take_connect_failed();
+
+    /**
+     * @return True once the service has stopped itself. It does that a grace
+     *         period after the phone's credentials connected, so the app can
+     *         still read the result over BLE.
+     */
+    bool ended();
+
+    /// @brief Stop advertising and release the Bluetooth memory. Blocks until BLE is down.
     void stop();
 }

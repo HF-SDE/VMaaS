@@ -32,6 +32,8 @@ namespace
     constexpr TickType_t STATUS_INTERVAL = pdMS_TO_TICKS(2000);
 
     constexpr const char *PROMPT_ROW0 = "VMaaS: pick slot";   // exactly 16
+    constexpr const char *BOOT_ROW0 = "Starting up...";
+    constexpr const char *BOOT_ROW1 = "Please wait";
     constexpr const char *ERROR_ROW0 = "MOTOR CONFIG ERR";
     constexpr const char *ERROR_ROW1 = "check slot config on Motorcontrol";
 
@@ -238,6 +240,25 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "door lock init failed: %s, the door stays locked", esp_err_to_name(door_err));
     }
 
+    // Second, so the screen says the machine is starting instead of staying
+    // dark through the seconds below. The display depends on nothing that
+    // follows. This screen stays until onboarding or show_prompt() replaces
+    // it, i.e. until the machine can actually be used.
+    i2c.begin();
+    const vmaas::LcdError lcd_err = lcd.begin();
+    display_ok = lcd.ready();
+    backlight_ok = (lcd_err == vmaas::LcdError::None);
+    if (!display_ok) {
+        ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
+    }
+    else if (!backlight_ok) {
+        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
+    }
+    if (backlight_ok) {
+        log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
+    }
+    show_rows(BOOT_ROW0, BOOT_ROW1);
+
     // Mounts LittleFS, so it runs before anything else touches storage.
     const vmaas::DeviceConfig cfg = config_store::load();
 
@@ -269,17 +290,6 @@ extern "C" void app_main()
     // No command to ask Motorcontrol which table it runs, so send ours once
     // per boot: this is what repairs a board flashed with another config.json.
     wiring_sync::request(wiring_sync::Source::Boot);
-
-    i2c.begin();
-    const vmaas::LcdError lcd_err = lcd.begin();
-    display_ok = lcd.ready();
-    backlight_ok = (lcd_err == vmaas::LcdError::None);
-    if (!display_ok) {
-        ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
-    }
-    else if (!backlight_ok) {
-        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
-    }
 
     const vmaas::KeypadError kp_err = keypad.begin(Pins::KEYPAD_ROWS, 4, Pins::KEYPAD_COLS, 3);
     if (kp_err != vmaas::KeypadError::None) {

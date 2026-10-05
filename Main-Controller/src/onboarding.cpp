@@ -165,6 +165,7 @@ namespace onboarding
         vmaas::OnboardingFlow flow(name, prov_started ? provisioning::pin() : "");
         flow.set_networks(ptrs, count);
         flow.set_activation(decide_activation(cfg));
+        flow.set_retrying_stored_wifi(!prov_attempted);
         flow.begin(now_ms());
 
         char last0[17] = {}, last1[17] = {};
@@ -181,6 +182,19 @@ namespace onboarding
             vmaas::FlowState st = flow.tick(now_ms());
             while (keypad_task_next(ev)) {
                 st = flow.handle(ev);
+            }
+
+            if (prov_started && !prov_stopped)
+            {
+                char remote_ssid[wifi_sta::SSID_BUF_LEN] = {};
+                if (provisioning::take_credentials_received(remote_ssid, sizeof(remote_ssid)))
+                {
+                    ESP_LOGI(TAG, "phone sent credentials for '%s'", remote_ssid);
+                    flow.on_remote_connecting(remote_ssid);
+                }
+                if (provisioning::take_connect_failed() && !waiting_for_ip && flow.state().screen == vmaas::OnboardingScreen::Connecting) {
+                    flow.on_connect_result(false);
+                }
             }
 
             if (st.connect_requested && !waiting_for_ip)
@@ -236,6 +250,7 @@ namespace onboarding
                 prov_attempted = true;
                 wifi_sta::pause_retries();
                 esp_wifi_disconnect();
+                flow.set_retrying_stored_wifi(false);
 
                 if (provisioning::begin(name) == ESP_OK)
                 {
@@ -249,13 +264,9 @@ namespace onboarding
                 }
             }
 
-            if (prov_started && !prov_stopped && connected_handled)
-            {
-                // BLE has nothing left to do once credentials are in, and the
-                // TLS handshake in activate() wants the heap NimBLE is holding.
-                prov_stopped = true;
-                provisioning::stop();
-            }
+            // The results above changed the flow after st was taken; draw what
+            // it says now, or a short-lived screen like Connected never shows.
+            st = flow.state();
 
             if (std::strcmp(st.row0, last0) != 0 || std::strcmp(st.row1, last1) != 0)
             {
@@ -269,6 +280,17 @@ namespace onboarding
             {
                 log_lcd("set_rgb", lcd.set_rgb(st.r, st.g, st.b));
                 last_r = st.r; last_g = st.g; last_b = st.b;
+            }
+
+            // BLE outlives the connection on purpose: the phone app learns the
+            // result only by asking over it, and provisioning stops itself a
+            // grace period later. Stopping blocks, so it waits until the
+            // screen above is drawn. Activation cannot wait for the grace
+            // period: its TLS handshake wants the heap NimBLE is holding.
+            if (prov_started && !prov_stopped && (provisioning::ended() || st.activate_requested || st.done))
+            {
+                prov_stopped = true;
+                provisioning::stop();
             }
 
             if (st.activate_requested)

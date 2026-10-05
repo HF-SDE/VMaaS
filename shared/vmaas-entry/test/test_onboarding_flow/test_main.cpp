@@ -233,6 +233,66 @@ void test_ble_provisioned_connection_reaches_connected_with_its_ssid()
     TEST_ASSERT_FALSE(st.done);
 }
 
+void test_ble_credentials_show_connecting()
+{
+    // The phone has sent credentials; the radio is trying them. Without this
+    // the PIN screen stays up for the whole association, as if nothing came.
+    OnboardingFlow f = make();
+    f.on_remote_connecting("Cafe-Gaesten");
+
+    const FlowState st = f.state();
+    TEST_ASSERT_EQUAL(OnboardingScreen::Connecting, st.screen);
+    TEST_ASSERT_EQUAL_STRING("Connecting...", st.row0);
+    TEST_ASSERT_EQUAL_STRING("", st.row1);
+    TEST_ASSERT_EQUAL_STRING("Cafe-Gaesten", st.ssid);
+    // The provisioning component applies BLE credentials itself; asking the
+    // driver to apply them too would start a second, competing attempt.
+    TEST_ASSERT_FALSE(st.connect_requested);
+}
+
+void test_a_failed_ble_connection_shows_the_error_screen()
+{
+    OnboardingFlow f = make();
+    f.on_remote_connecting("Cafe-Gaesten");
+    f.on_connect_result(false);
+    TEST_ASSERT_EQUAL(OnboardingScreen::WrongPassword, f.state().screen);
+}
+
+void test_ble_credentials_after_a_failure_connect_again()
+{
+    OnboardingFlow f = make();
+    f.on_remote_connecting("Cafe-Gaesten");
+    f.on_connect_result(false);
+    f.on_remote_connecting("Office-5G");
+
+    const FlowState st = f.state();
+    TEST_ASSERT_EQUAL(OnboardingScreen::Connecting, st.screen);
+    TEST_ASSERT_EQUAL_STRING("Office-5G", st.ssid);
+}
+
+void test_ble_credentials_do_not_interrupt_a_keypad_connection()
+{
+    OnboardingFlow f = make();
+    type(f, "*55#");
+    f.on_remote_connecting("Office-5G");
+
+    const FlowState st = f.state();
+    TEST_ASSERT_TRUE(st.connect_requested);
+    TEST_ASSERT_EQUAL_STRING("Cafe-Gaesten", st.ssid);
+}
+
+void test_ble_credentials_are_ignored_once_connected()
+{
+    OnboardingFlow f = make();
+    f.set_connected_ssid("Cafe-Gaesten");
+    f.on_connect_result(true);
+    f.on_remote_connecting("Office-5G");
+
+    const FlowState st = f.state();
+    TEST_ASSERT_EQUAL(OnboardingScreen::Connected, st.screen);
+    TEST_ASSERT_EQUAL_STRING("Cafe-Gaesten", st.row1);
+}
+
 void test_begin_anchors_the_first_pin_phase_to_the_real_clock()
 {
     // Without begin(), screen_since_ms_ starts at 0; on real hardware the
@@ -295,6 +355,7 @@ void test_every_row_fits_the_display()
         assert_fits(st);
         // Wrong in an earlier round; pinned so it cannot silently regress.
         TEST_ASSERT_EQUAL_STRING("Connecting...", st.row0);
+        TEST_ASSERT_EQUAL_STRING("", st.row1);
     }
 
     // WrongPassword: on_connect_result(false).
@@ -603,13 +664,72 @@ void test_every_activation_row_fits_the_display()
 void test_the_pin_row_can_be_set_after_construction()
 {
     OnboardingFlow f("VMaaS-0042", "");
-    TEST_ASSERT_EQUAL_STRING("PIN  ", f.state().row1);
-
     f.set_pin("85003199");
     const FlowState st = f.state();
     TEST_ASSERT_EQUAL(OnboardingScreen::BleWaiting, st.screen);
     TEST_ASSERT_EQUAL_STRING("PIN 8500 3199", st.row1);
     assert_fits(st);
+}
+
+void test_without_a_pin_only_the_hint_is_shown()
+{
+    // BLE could not start, so no PIN will ever come; the keypad is the way in.
+    // An empty "PIN" row would only look like a broken screen.
+    OnboardingFlow f("VMaaS-0042", "");
+    f.begin(0);
+    TEST_ASSERT_EQUAL_STRING("VMaaS-0042", f.tick(0).row0);
+    TEST_ASSERT_EQUAL_STRING("* = manual setup", f.tick(0).row1);
+    TEST_ASSERT_EQUAL_STRING("* = manual setup", f.tick(ONBOARDING_PIN_MS + 1).row1);
+}
+
+void test_retrying_stored_wifi_shows_only_connecting()
+{
+    OnboardingFlow f("VMaaS-0042", "");
+    f.set_retrying_stored_wifi(true);
+    f.begin(0);
+
+    const uint32_t times[] = {0, ONBOARDING_PIN_MS + 1, ONBOARDING_PIN_MS + ONBOARDING_HINT_MS + 1};
+    for (uint32_t t : times)
+    {
+        const FlowState st = f.tick(t);
+        TEST_ASSERT_EQUAL_STRING("Connecting...", st.row0);
+        TEST_ASSERT_EQUAL_STRING("", st.row1);
+        TEST_ASSERT_EQUAL_UINT8(255, st.r);
+        TEST_ASSERT_EQUAL_UINT8(200, st.g);
+        TEST_ASSERT_EQUAL_UINT8(0, st.b);
+    }
+}
+
+void test_star_is_inert_while_retrying_stored_wifi()
+{
+    // The screen offers no manual setup, so no key may open one.
+    OnboardingFlow f("VMaaS-0042", "");
+    f.set_retrying_stored_wifi(true);
+    const FlowState st = f.handle(press('*'));
+    TEST_ASSERT_EQUAL(OnboardingScreen::BleWaiting, st.screen);
+    TEST_ASSERT_EQUAL_STRING("Connecting...", st.row0);
+}
+
+void test_giving_up_on_stored_wifi_shows_the_pin_screen()
+{
+    OnboardingFlow f("VMaaS-0042", "");
+    f.set_retrying_stored_wifi(true);
+    f.set_retrying_stored_wifi(false);
+    f.set_pin("85003199");
+
+    const FlowState st = f.state();
+    TEST_ASSERT_EQUAL_STRING("VMaaS-0042", st.row0);
+    TEST_ASSERT_EQUAL_STRING("PIN 8500 3199", st.row1);
+    TEST_ASSERT_EQUAL(OnboardingScreen::NetworkList, f.handle(press('*')).screen);
+}
+
+void test_stored_wifi_connecting_reaches_connected()
+{
+    OnboardingFlow f("VMaaS-0042", "");
+    f.set_retrying_stored_wifi(true);
+    f.set_connected_ssid("Cafe-Gaesten");
+    f.on_connect_result(true);
+    TEST_ASSERT_EQUAL(OnboardingScreen::Connected, f.state().screen);
 }
 
 int main(int, char**)
@@ -633,6 +753,11 @@ int main(int, char**)
     RUN_TEST(test_done_only_after_a_successful_result_and_the_green_hold);
     RUN_TEST(test_star_on_an_empty_password_returns_to_the_list);
     RUN_TEST(test_ble_provisioned_connection_reaches_connected_with_its_ssid);
+    RUN_TEST(test_ble_credentials_show_connecting);
+    RUN_TEST(test_a_failed_ble_connection_shows_the_error_screen);
+    RUN_TEST(test_ble_credentials_after_a_failure_connect_again);
+    RUN_TEST(test_ble_credentials_do_not_interrupt_a_keypad_connection);
+    RUN_TEST(test_ble_credentials_are_ignored_once_connected);
     RUN_TEST(test_begin_anchors_the_first_pin_phase_to_the_real_clock);
     RUN_TEST(test_every_row_fits_the_display);
     RUN_TEST(test_the_green_hold_leads_to_the_code_screen_when_activation_is_needed);
@@ -653,5 +778,10 @@ int main(int, char**)
     RUN_TEST(test_an_already_activated_machine_finishes_at_the_green_hold);
     RUN_TEST(test_every_activation_row_fits_the_display);
     RUN_TEST(test_the_pin_row_can_be_set_after_construction);
+    RUN_TEST(test_without_a_pin_only_the_hint_is_shown);
+    RUN_TEST(test_retrying_stored_wifi_shows_only_connecting);
+    RUN_TEST(test_star_is_inert_while_retrying_stored_wifi);
+    RUN_TEST(test_giving_up_on_stored_wifi_shows_the_pin_screen);
+    RUN_TEST(test_stored_wifi_connecting_reaches_connected);
     return UNITY_END();
 }
