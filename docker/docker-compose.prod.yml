@@ -5,7 +5,8 @@ name: vmaas-prod
 # certificate in place, none of which are committed.
 #
 # Published ports: 80/443 (browsers), 8443 (device API, mTLS), 8883 (device
-# MQTT, mTLS). Postgres, the backend, the frontend and the EMQX dashboard are
+# MQTT, mTLS). Postgres is published on the host's loopback only (reach it via
+# an SSH tunnel). The backend, the frontend and the EMQX dashboard are
 # reachable only on the internal network.
 
 x-restart: &restart
@@ -31,8 +32,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Loopback only, for pgAdmin over an SSH tunnel. Publishing needs a
+    # non-internal network, hence public.
+    ports:
+      - 127.0.0.1:5432:5432
     networks:
       - internal
+      - public
 
   # Creates the CA and the server/platform certificates on first run, then
   # leaves them alone. The `pki` volume holds ca.key, which signs every device

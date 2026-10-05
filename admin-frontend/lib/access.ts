@@ -1,4 +1,4 @@
-import type { Session, SessionSubscription } from "./session-fetch"
+import type { Session, SessionSubscription } from "./session"
 
 /**
  * Where a user stands in onboarding, decided in one place.
@@ -35,12 +35,8 @@ export type UserAccess = {
  *  backend's copy is the enforcing one. */
 const ACCESS_GRANTING = ["active", "trialing"] as const
 
-function subscriptionGrantsAccess(
-  subscription: SessionSubscription
-): boolean {
-  if (
-    !(ACCESS_GRANTING as readonly string[]).includes(subscription.status)
-  ) {
+function subscriptionGrantsAccess(subscription: SessionSubscription): boolean {
+  if (!(ACCESS_GRANTING as readonly string[]).includes(subscription.status)) {
     return false
   }
 
@@ -140,10 +136,7 @@ export function resolveUserAccess(session: Session | null): UserAccess {
 
 /** Where each state sends a user who tried to reach a protected page. `READY`
  *  has no destination — it is the page they asked for. */
-export const ACCESS_REDIRECTS: Record<
-  Exclude<AccessState, "READY">,
-  string
-> = {
+export const ACCESS_REDIRECTS: Record<Exclude<AccessState, "READY">, string> = {
   AUTH_REQUIRED: "/login",
   NO_ORGANIZATION: "/onboarding",
   SELECT_ORGANIZATION: "/organizations/select",

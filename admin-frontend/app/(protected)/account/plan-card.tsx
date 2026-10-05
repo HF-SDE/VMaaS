@@ -6,11 +6,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import type {
-  SessionSubscription,
-  SubscriptionStatus,
-} from "@/lib/session-fetch"
+import type { SessionSubscription } from "@/lib/session"
 import type { SubscriptionPlan } from "@vmaas/shared/schemas"
+import type { SubscriptionStatus } from "@vmaas/shared/types"
 
 /** What each billing state is called, and whether it is something the owner
  *  needs to act on. Kept short: this card states where the organization stands,

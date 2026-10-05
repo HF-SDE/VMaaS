@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fetchSession } from "@/lib/session-fetch"
+import { fetchSession } from "@/lib/session"
 
 const payload = {
   user: { id: "u1", name: "Kenni", email: "k@example.com" },
   session: { activeTenantId: "t1" },
   tenants: [{ id: "t1", name: "Tenant One" }],
   tenantInvites: [
-    { tenantId: "t2", tenantName: "Tenant Two", token: "inv1", roleName: "Operator" },
+    {
+      tenantId: "t2",
+      tenantName: "Tenant Two",
+      token: "inv1",
+      roleName: "Operator",
+    },
   ],
   permissions: ["machine:read"],
 }
@@ -19,7 +24,8 @@ function mockFetch(status: number, body: unknown = {}) {
 function mockFetchSequence(...responses: [status: number, body?: unknown][]) {
   let call = 0
   return vi.fn(async () => {
-    const [status, body = {}] = responses[Math.min(call++, responses.length - 1)]!
+    const [status, body = {}] =
+      responses[Math.min(call++, responses.length - 1)]!
     return new Response(JSON.stringify(body), { status })
   })
 }
@@ -55,9 +61,9 @@ describe("fetchSession", () => {
 
   it("throws on a backend failure rather than reporting signed-out", async () => {
     vi.stubGlobal("fetch", mockFetch(500))
-    await expect(settle(fetchSession("better-auth.session_token=abc"))).rejects.toThrow(
-      /500/
-    )
+    await expect(
+      settle(fetchSession("better-auth.session_token=abc"))
+    ).rejects.toThrow(/500/)
   })
 
   it("maps the enriched payload", async () => {
@@ -122,9 +128,9 @@ describe("fetchSession transient failures", () => {
     const spy = mockFetch(429)
     vi.stubGlobal("fetch", spy)
 
-    await expect(settle(fetchSession("better-auth.session_token=abc"))).rejects.toThrow(
-      /429/
-    )
+    await expect(
+      settle(fetchSession("better-auth.session_token=abc"))
+    ).rejects.toThrow(/429/)
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
@@ -146,7 +152,9 @@ describe("fetchSession transient failures", () => {
     const spy = mockFetch(401)
     vi.stubGlobal("fetch", spy)
 
-    expect(await settle(fetchSession("better-auth.session_token=abc"))).toBeNull()
+    expect(
+      await settle(fetchSession("better-auth.session_token=abc"))
+    ).toBeNull()
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
@@ -154,9 +162,9 @@ describe("fetchSession transient failures", () => {
     const spy = mockFetch(400)
     vi.stubGlobal("fetch", spy)
 
-    await expect(settle(fetchSession("better-auth.session_token=abc"))).rejects.toThrow(
-      /400/
-    )
+    await expect(
+      settle(fetchSession("better-auth.session_token=abc"))
+    ).rejects.toThrow(/400/)
     expect(spy).toHaveBeenCalledTimes(1)
   })
 })

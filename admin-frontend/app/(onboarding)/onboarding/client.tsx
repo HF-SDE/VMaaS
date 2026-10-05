@@ -21,7 +21,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ItemActions } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
-import type { Session } from "@/lib/session-fetch"
+import type { Session } from "@/lib/session"
 import type { CreateTenantFormData } from "@/lib/tenant-form"
 import { createTenant } from "@/app/(protected)/actions"
 
@@ -214,7 +214,8 @@ function CreateOrganizationForm() {
         render={({ field, fieldState }) => (
           <Field data-invalid={fieldState.invalid}>
             <FieldLabel htmlFor="organization-description">
-              Description <span className="text-muted-foreground">(optional)</span>
+              Description{" "}
+              <span className="text-muted-foreground">(optional)</span>
             </FieldLabel>
             <Input
               {...field}

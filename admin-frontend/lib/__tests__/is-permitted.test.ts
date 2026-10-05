@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { PERMISSIONS } from "../../../shared/types/permissions"
 import { isPermitted } from "@/lib/permissions"
-import type { Session } from "@/lib/session-fetch"
+import type { Session } from "@/lib/session"
 
 const session: Session = {
   user: { id: "u1", name: "Kenni", email: "k@example.com" },

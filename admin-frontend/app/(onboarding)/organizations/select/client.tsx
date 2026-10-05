@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import type { Session } from "@/lib/session-fetch"
+import type { Session } from "@/lib/session"
 import { switchTenant } from "@/app/(protected)/actions"
 
 /**

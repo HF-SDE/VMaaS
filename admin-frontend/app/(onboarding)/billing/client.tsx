@@ -18,11 +18,9 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import type { AccessState } from "@/lib/access"
-import type {
-  SessionSubscription,
-  SubscriptionStatus,
-} from "@/lib/session-fetch"
+import type { SessionSubscription } from "@/lib/session"
 import type { SubscriptionPlan } from "@vmaas/shared/schemas"
+import type { SubscriptionStatus } from "@vmaas/shared/types"
 
 import {
   cancelSubscription,

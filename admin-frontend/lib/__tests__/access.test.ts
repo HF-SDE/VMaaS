@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { ACCESS_REDIRECTS, resolveUserAccess } from "@/lib/access"
-import type { Session, SubscriptionStatus } from "@/lib/session-fetch"
+import type { Session } from "@/lib/session"
+import type { SubscriptionStatus } from "@vmaas/shared/types"
 
 function session(overrides: Partial<Session> = {}): Session {
   return {
@@ -68,7 +69,13 @@ describe("resolveUserAccess", () => {
   })
 
   describe("billing", () => {
-    it.each(["pending", "past_due", "canceled", "incomplete", "unpaid"] as const)(
+    it.each([
+      "pending",
+      "past_due",
+      "canceled",
+      "incomplete",
+      "unpaid",
+    ] as const)(
       "sends an owner of a %s organization to the paywall",
       (status: SubscriptionStatus) => {
         const access = resolveUserAccess(
@@ -212,7 +219,11 @@ describe("resolveUserAccess", () => {
     }
 
     const access = resolveUserAccess(
-      session({ activeTenantId: null, tenants: [], tenantInvites: [invitation] })
+      session({
+        activeTenantId: null,
+        tenants: [],
+        tenantInvites: [invitation],
+      })
     )
 
     expect(access.accessState).toBe("NO_ORGANIZATION")

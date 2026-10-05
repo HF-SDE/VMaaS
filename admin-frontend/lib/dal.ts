@@ -8,7 +8,7 @@ import type { PermissionKey } from "@vmaas/shared/types/permissions"
 import { ACCESS_REDIRECTS, resolveUserAccess } from "./access"
 import { forbiddenPath } from "./forbidden"
 import { hasPermission } from "./permissions"
-import { fetchSession, type Session } from "./session-fetch"
+import { fetchSession, type Session } from "./session"
 import { getAuthCookie } from "./data/fetch-helpers"
 
 export type { Session }
