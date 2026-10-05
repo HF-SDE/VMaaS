@@ -21,7 +21,7 @@ on.
 ```mermaid
 flowchart TD
     A([Power on]) --> B{Wi-Fi credentials<br/>already stored?}
-    B -- yes --> S[Sales loop<br/>VMaaS: pick slot]
+    B -- yes --> S[Sales loop<br/>VMaaS: Pick Slot]
     B -- no --> C[Setup screen<br/>machine name + 8-digit PIN<br/>blue backlight]
     C -- phone app, enter the PIN --> H
     C -- press * --> E[Select network]

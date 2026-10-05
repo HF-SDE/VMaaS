@@ -148,7 +148,7 @@ namespace
         switch (o.state)
         {
         case vmaas::PurchaseState::Idle:
-            show("VMaaS: pick slot", "> _");
+            show("VMaaS: Pick Slot", "> _");
             break;
 
         case vmaas::PurchaseState::AwaitingPayment:

@@ -33,7 +33,7 @@ namespace
     constexpr const char *TAG = "MainController";
     constexpr TickType_t STATUS_INTERVAL = pdMS_TO_TICKS(2000);
 
-    constexpr const char *PROMPT_ROW0 = "VMaaS: pick slot";   // exactly 16
+    constexpr const char *PROMPT_ROW0 = "VMaaS: Pick Slot";   // exactly 16
     constexpr const char *BOOT_ROW0 = "Starting up...";
     constexpr const char *BOOT_ROW1 = "Please wait";
     constexpr const char *ERROR_ROW0 = "MOTOR CONFIG ERR";
