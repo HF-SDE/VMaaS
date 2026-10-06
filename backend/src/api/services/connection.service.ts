@@ -1,3 +1,5 @@
+import { createAlertService } from "@/api/services/alerts.service";
+import { broadcast } from "@/lib/ws/registry";
 import { redeliverOpenCommands } from "@/mqtt/commands";
 
 import { type Result, err, ok } from "@vmaas/shared/lib";
@@ -170,6 +172,18 @@ export async function recordConnectionEventService(
 
     if (transitioned) {
       if (input.status === "online") void redeliverOpenCommands(machine.id);
+
+      if (input.status === "offline" && machine.tenantId) {
+        const [alertError, row] = await createAlertService({
+          machineId: machine.id,
+          type: "offline",
+          message: input.reason ? `Machine went offline (${input.reason})` : "Machine went offline",
+          occurredAt: input.occurredAt,
+        });
+        if (alertError) return err(alertError);
+
+        if (row) broadcast(machine.tenantId, { type: "alert.created", body: row });
+      }
 
       return ok({ applied: true });
     }

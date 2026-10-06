@@ -1,7 +1,8 @@
+import * as Sentry from "@sentry/node";
+
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
-import * as Sentry from "@sentry/node";
 import { type Result, err, ok } from "@vmaas/shared/lib/error-handling";
 import type { GetPaginatedResult } from "@vmaas/shared/types/data-table";
 import {
@@ -192,10 +193,11 @@ export async function createAlertService(input: {
   machineId: string;
   type: AlertType;
   message: string;
+  occurredAt?: Date;
 }): Promise<Result<UnknownAlertError, MachineAlertRow | null>> {
   try {
     const alert = await prisma.securityAlert.create({
-      data: { machineId: input.machineId, type: input.type, message: input.message },
+      data: { machineId: input.machineId, type: input.type, message: input.message, occurredAt: input.occurredAt },
       select: ALERT_SELECT,
     });
 

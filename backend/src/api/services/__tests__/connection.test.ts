@@ -1,4 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { createAlertService, broadcast } = vi.hoisted(() => ({
+  createAlertService: vi.fn(),
+  broadcast: vi.fn(),
+}));
+
+vi.mock("@/api/services/alerts.service", () => ({ createAlertService }));
+vi.mock("@/lib/ws/registry", () => ({ broadcast }));
+vi.mock("@/mqtt/commands", () => ({ redeliverOpenCommands: vi.fn() }));
 
 import {
   CONNECTION_EVENT_TYPES,
@@ -79,6 +88,11 @@ function fakeDb(overrides: {
 
   return { db: db as unknown as ConnectionDb & typeof db, findUnique, updateMany, create, getRow: () => row };
 }
+
+beforeEach(() => {
+  createAlertService.mockReset().mockResolvedValue([null, null]);
+  broadcast.mockReset();
+});
 
 describe("recordConnectionEventService", () => {
   it("ignores the platform client without even looking it up", async () => {
@@ -375,5 +389,78 @@ describe("recordConnectionEventService", () => {
     expect(error).toBeNull();
     expect(result?.applied).toBe(false);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordConnectionEventService — offline alert", () => {
+  it("raises an offline alert at the broker's disconnect time and pushes it to the tenant", async () => {
+    const row = { id: "a-1" };
+    createAlertService.mockResolvedValue([null, row]);
+    const { db } = fakeDb();
+
+    await recordConnectionEventService(db, {
+      clientId: MACHINE,
+      status: "offline",
+      occurredAt: T0,
+      reason: "keepalive_timeout",
+    });
+
+    expect(createAlertService).toHaveBeenCalledWith({
+      machineId: MACHINE,
+      type: "offline",
+      message: "Machine went offline (keepalive_timeout)",
+      occurredAt: T0,
+    });
+    expect(broadcast).toHaveBeenCalledWith(TENANT, { type: "alert.created", body: row });
+  });
+
+  it("does not raise an alert when the machine was already offline", async () => {
+    const { db } = fakeDb({
+      machine: { id: MACHINE, tenantId: TENANT, status: "offline", lastConnectionEventAt: null },
+    });
+
+    await recordConnectionEventService(db, { clientId: MACHINE, status: "offline", occurredAt: T0 });
+
+    expect(createAlertService).not.toHaveBeenCalled();
+  });
+
+  it("does not raise an alert for a stale disconnect", async () => {
+    const { db } = fakeDb({
+      machine: { id: MACHINE, tenantId: TENANT, status: "online", lastConnectionEventAt: T1 },
+    });
+
+    await recordConnectionEventService(db, { clientId: MACHINE, status: "offline", occurredAt: T_BEFORE });
+
+    expect(createAlertService).not.toHaveBeenCalled();
+  });
+
+  it("does not raise an alert when a machine comes online", async () => {
+    const { db } = fakeDb({
+      machine: { id: MACHINE, tenantId: TENANT, status: "offline", lastConnectionEventAt: null },
+    });
+
+    await recordConnectionEventService(db, { clientId: MACHINE, status: "online", occurredAt: T0 });
+
+    expect(createAlertService).not.toHaveBeenCalled();
+  });
+
+  it("does not raise an alert for a machine that belongs to no tenant", async () => {
+    const { db } = fakeDb({
+      machine: { id: MACHINE, tenantId: null, status: "online", lastConnectionEventAt: null },
+    });
+
+    await recordConnectionEventService(db, { clientId: MACHINE, status: "offline", occurredAt: T0 });
+
+    expect(createAlertService).not.toHaveBeenCalled();
+  });
+
+  it("answers the error when the alert cannot be stored", async () => {
+    createAlertService.mockResolvedValue([{ reason: "UNKNOWN_ERROR", message: "db down" }, null]);
+    const { db } = fakeDb();
+
+    const [error] = await recordConnectionEventService(db, { clientId: MACHINE, status: "offline", occurredAt: T0 });
+
+    expect(error).toEqual({ reason: "UNKNOWN_ERROR", message: "db down" });
+    expect(broadcast).not.toHaveBeenCalled();
   });
 });
