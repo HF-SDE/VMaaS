@@ -354,7 +354,7 @@ namespace
         // The boot fetch. No command asked for it, so there is no id to report.
         Request req{};
 
-        for (;;)
+        while (true)
         {
             char ids[Config::config_sync_queue_len + 1][COMMAND_ID_MAX];
             int id_count = 0;
