@@ -69,6 +69,11 @@ namespace purchase_task
     /// echo must not draw "> _" over it until the customer types again.
     bool owns_display();
 
+    /// The customer backs out of the slot they chose. Cancels only while
+    /// nothing has been paid, since coins cannot be handed back.
+    /// @return True if a purchase was cancelled and the machine is idle again.
+    bool cancel_unpaid();
+
     /// Forget what is on screen, so the next tick() redraws the purchase.
     /// For the main loop, after it has written over row 1 mid-purchase.
     void invalidate_display();

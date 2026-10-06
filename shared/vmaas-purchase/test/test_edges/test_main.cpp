@@ -158,6 +158,52 @@ void test_cancel_forfeits_without_reporting()
     TEST_ASSERT_EQUAL(SaleStatus::None, out.sale_status);
 }
 
+// The customer backs out of a slot before paying: nothing was received, so
+// nothing is forfeited and nothing is reported - straight back to idle.
+void test_cancel_unpaid_returns_to_idle()
+{
+    Purchase p(with_inhibit());
+    p.slot_chosen(12, 1500, 1000);
+
+    const PurchaseOutput out = p.cancel_unpaid(2000);
+
+    TEST_ASSERT_EQUAL(PurchaseState::Idle, out.state);
+    TEST_ASSERT_EQUAL_UINT8(0, out.slot);
+    TEST_ASSERT_EQUAL_UINT32(0, out.price_minor);
+    TEST_ASSERT_FALSE(out.settle_sale);
+    TEST_ASSERT_TRUE(out.inhibit_coins);   // the coin slot shuts again
+}
+
+// Money is in and the machine cannot hand it back, so backing out is refused:
+// the purchase and its credit stay, and another slot can still be chosen.
+void test_cancel_unpaid_keeps_a_purchase_with_credit()
+{
+    Purchase p(with_inhibit());
+    p.slot_chosen(12, 1500, 1000);
+    p.coin(500, 2000);
+
+    const PurchaseOutput out = p.cancel_unpaid(3000);
+
+    TEST_ASSERT_EQUAL(PurchaseState::AwaitingPayment, out.state);
+    TEST_ASSERT_EQUAL_UINT32(500, out.credit_minor);
+    TEST_ASSERT_EQUAL_UINT8(12, out.slot);
+    TEST_ASSERT_FALSE(out.settle_sale);
+}
+
+// Nothing to back out of: idle stays idle, a vend in progress keeps going.
+void test_cancel_unpaid_leaves_other_states_alone()
+{
+    Purchase idle(with_inhibit());
+    TEST_ASSERT_EQUAL(PurchaseState::Idle, idle.cancel_unpaid(1000).state);
+
+    Purchase vending(with_inhibit());
+    vending.slot_chosen(12, 1500, 1000);
+    vending.coin(1500, 2000);
+    const PurchaseOutput out = vending.cancel_unpaid(2500);
+    TEST_ASSERT_EQUAL(PurchaseState::Dispensing, out.state);
+    TEST_ASSERT_FALSE(out.run_slot);       // the RUN was already handed out
+}
+
 // With INHIBIT wired the coin slot is shut while idle, so a coin cannot
 // arrive. If one somehow does, it must not start a purchase.
 void test_coin_in_idle_is_refused_when_inhibit_is_wired()
@@ -365,6 +411,9 @@ int main()
     RUN_TEST(test_a_failed_purchase_settles_exactly_once);
     RUN_TEST(test_a_completed_purchase_settles_exactly_once);
     RUN_TEST(test_cancel_forfeits_without_reporting);
+    RUN_TEST(test_cancel_unpaid_returns_to_idle);
+    RUN_TEST(test_cancel_unpaid_keeps_a_purchase_with_credit);
+    RUN_TEST(test_cancel_unpaid_leaves_other_states_alone);
     RUN_TEST(test_coin_in_idle_is_refused_when_inhibit_is_wired);
     RUN_TEST(test_coin_in_idle_starts_a_payment_when_inhibit_is_absent);
     RUN_TEST(test_coin_first_then_an_affordable_slot_vends_at_once);

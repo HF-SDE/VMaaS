@@ -127,6 +127,13 @@ namespace vmaas
         return out();
     }
 
+    PurchaseOutput Purchase::cancel_unpaid(uint32_t now_ms)
+    {
+        (void)now_ms;
+        if (state_ == PurchaseState::AwaitingPayment && credit_minor_ == 0) return reset();
+        return out();
+    }
+
     PurchaseOutput Purchase::tick(uint32_t now_ms)
     {
         if (state_ == PurchaseState::AwaitingPayment &&

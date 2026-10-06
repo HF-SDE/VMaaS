@@ -213,6 +213,15 @@ namespace
             }
             case vmaas::EntryStatus::Cancelled:
                 ESP_LOGI(TAG, "entry cancelled");
+                if (purchase_task::owns_display())
+                {
+                    if (!purchase_task::cancel_unpaid())
+                    {
+                        ESP_LOGI(TAG, "purchase has credit; not cancelled");
+                        return;
+                    }
+                    last_row1[0] = '\0';
+                }
                 show_row1("Cancelled");
                 result_hold_until_ms = now_ms() + result_hold_ms;
                 break;

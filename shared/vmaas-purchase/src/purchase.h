@@ -85,6 +85,10 @@ namespace vmaas
         PurchaseOutput dispense_done(uint32_t now_ms);
         PurchaseOutput dispense_failed(uint32_t now_ms);
         PurchaseOutput cancel(uint32_t now_ms);
+        /// The customer backs out of a chosen slot. Only before any money is
+        /// in: then back to Idle with nothing settled. With credit the
+        /// purchase stays, since the machine cannot hand coins back.
+        PurchaseOutput cancel_unpaid(uint32_t now_ms);
         /// Call every loop pass. This is what enforces payment_timeout_ms and dispense_timeout_ms.
         PurchaseOutput tick(uint32_t now_ms);
         /**

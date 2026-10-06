@@ -579,6 +579,18 @@ namespace purchase_task
 
     bool owns_display() { return cash_enabled && (notice_until_ms != 0 || !idle()); }
 
+    bool cancel_unpaid()
+    {
+        if (!cash_enabled || prev_state_ != vmaas::PurchaseState::AwaitingPayment) return false;
+
+        const vmaas::PurchaseOutput o = machine->cancel_unpaid(static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS));
+        apply(o, nullptr);
+        if (o.state != vmaas::PurchaseState::Idle) return false;
+
+        ESP_LOGI(TAG, "unpaid purchase cancelled");
+        return true;
+    }
+
     void invalidate_display()
     {
         last_row0[0] = '\0';
