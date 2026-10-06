@@ -5,6 +5,7 @@
 #ifdef ESP_PLATFORM
 
 #include "esp_i2c_port.h"
+#include "delay_ticks.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -35,15 +36,17 @@ namespace vmaas
         ESP_ERROR_CHECK(i2c_new_master_bus(&config, &bus_));
         (void)i2c_master_probe(bus_, 0x7F, PROBE_TIMEOUT_MS);
 
-        ESP_LOGI(TAG, "I2C%d ready, SDA=%d SCL=%d, %lu Hz", (int)port_, sda_pin_, scl_pin_,
-                 (unsigned long)clock_hz_);
+        ESP_LOGI(TAG, "I2C%d ready, SDA=%d SCL=%d, %lu Hz", (int)port_, sda_pin_, scl_pin_, (unsigned long)clock_hz_);
     }
 
     i2c_master_dev_handle_t EspI2cPort::device_for(uint8_t addr)
     {
-        for (size_t i = 0; i < device_count_; ++i)
+        for (size_t i = 0; i < device_count_; ++i) {
             if (addrs_[i] == addr)
+            {
                 return devices_[i];
+            }
+        }
         if (device_count_ >= MAX_DEVICES)
         {
             ESP_LOGE(TAG, "device table full, cannot add 0x%02X", addr);
@@ -70,16 +73,13 @@ namespace vmaas
 
     bool EspI2cPort::write(uint8_t addr, const uint8_t* data, size_t len)
     {
-        if (bus_ == nullptr)
-            return false;
+        if (bus_ == nullptr) return false;
         i2c_master_dev_handle_t dev = device_for(addr);
-        if (dev == nullptr)
-            return false;
+        if (dev == nullptr) return false;
         const esp_err_t err = i2c_master_transmit(dev, data, len, XFER_TIMEOUT_MS);
         if (err != ESP_OK)
         {
-            ESP_LOGD(TAG, "write to 0x%02X (%u bytes) failed: %s", addr, (unsigned)len,
-                     esp_err_to_name(err));
+            ESP_LOGD(TAG, "write to 0x%02X (%u bytes) failed: %s", addr, (unsigned)len, esp_err_to_name(err));
             return false;
         }
         return true;
@@ -87,9 +87,9 @@ namespace vmaas
 
     void EspI2cPort::delay_ms(uint32_t ms)
     {
-        // pdMS_TO_TICKS rounds down and vTaskDelay(n) can return after as
-        // little as (n-1) ticks, so add one tick to guarantee at least ms.
-        vTaskDelay(pdMS_TO_TICKS(ms) + 1);
+        // Every delay here is the LCD's own busy time; one cut short makes it
+        // NACK the next write. See delay_ticks.h.
+        vTaskDelay(delay_ticks(ms, portTICK_PERIOD_MS));
     }
 }
 

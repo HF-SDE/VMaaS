@@ -1889,7 +1889,7 @@ paths:
     post:
       tags: [Device]
       summary: Forny certifikat
-      description: "**Machine (mTLS).** Det nuværende certifikat autoriserer det nye."
+      description: "**Machine (mTLS).** Det nuværende certifikat autoriserer det nye og forbliver gyldigt, til det nye bruges første gang; da revokeres ældre certifikater som `superseded`."
       security: [{ clientCertificate: [] }]
       servers:
         - url: https://localhost:8443/api

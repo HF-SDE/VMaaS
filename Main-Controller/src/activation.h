@@ -95,10 +95,24 @@ namespace activation
      * reports something that looks nothing like a clock problem, so this runs
      * first and its failure is reported as itself.
      *
+     * Safe to call from several tasks at once: each waits on the clock
+     * itself, so all of them return as soon as it is set.
+     *
      * @param timeout_ms How long to wait for the first SNTP answer.
      * @return ESP_OK once the system clock is past 2020.
      */
     esp_err_t sync_time(uint32_t timeout_ms);
+
+    /**
+     * @brief Start SNTP without waiting for an answer.
+     *
+     * For the event-loop task, which must not block: the clock gets set in
+     * the background and sync_time() callers see it. Starts SNTP once per
+     * boot; later calls do nothing.
+     *
+     * @return ESP_OK once SNTP is running.
+     */
+    esp_err_t start_time_sync();
 
     /**
      * @brief Generate a key if needed, request a certificate, store the answer.
@@ -120,6 +134,49 @@ namespace activation
      * @return ESP_ERR_NVS_NOT_FOUND when this machine has never been activated.
      */
     esp_err_t load_identity(Identity& out);
+
+    /// What a renewal attempt did.
+    enum class RenewResult : uint8_t
+    {
+        /// A certificate for our key came back; store_renewed() puts it in NVS.
+        Ok,
+        /// The platform answered, but not with a certificate for our key.
+        Rejected,
+        /// Transport, TLS or a 5xx. Worth trying again later.
+        Unreachable,
+    };
+
+    /// Room for the PEMs renew() hands back.
+    constexpr size_t RENEWED_CERT_MAX = 2048;
+    constexpr size_t RENEWED_CA_MAX = 2560;
+
+    /**
+     * @brief The stored certificate's validity window, in UTC seconds.
+     * @return ESP_ERR_NVS_NOT_FOUND when there is no certificate,
+     *         ESP_ERR_INVALID_RESPONSE when it does not parse.
+     */
+    esp_err_t certificate_validity(int64_t& not_before, int64_t& not_after);
+
+    /**
+     * @brief Ask the platform for a new certificate for the existing key.
+     *
+     * Authenticates with the current certificate, so it has to run while that
+     * one is still valid. Never generates a key, and stores nothing: the
+     * certificate is checked against the key and handed back.
+     *
+     * Storing is left to the caller because device_api reads the certificate
+     * from NVS on every request. The platform revokes the old certificate the
+     * first time it sees the new one, so a new certificate in NVS would cut off
+     * the broker session and api_client, which still hold the old one, for as
+     * long as the machine waits to restart.
+     *
+     * @param cert_out Receives the certificate PEM, RENEWED_CERT_MAX bytes.
+     * @param ca_out   Receives the CA PEM, RENEWED_CA_MAX bytes.
+     */
+    RenewResult renew(char* cert_out, char* ca_out);
+
+    /// @brief Replace the stored certificate and CA with what renew() returned.
+    esp_err_t store_renewed(const char* cert, const char* ca);
 
     /**
      * @brief Read the stored device certificate, private key or broker CA.

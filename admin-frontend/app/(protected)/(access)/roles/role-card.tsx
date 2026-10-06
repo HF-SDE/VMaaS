@@ -145,6 +145,7 @@ export function RoleCard({
             </DialogDescription>
           </DialogHeader>
           <RoleForm
+            type="edit"
             defaultValues={{ name: role.name, permissions: role.permissions }}
             submitLabel="Save changes"
             onCancel={() => setEditOpen(false)}

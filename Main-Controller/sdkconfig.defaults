@@ -81,3 +81,9 @@ CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 # half of it is still several times what is needed, and it is the single
 # biggest per-session allocation.
 CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+
+# 240 MHz, not IDF's 160. The ESP32 has no ECC accelerator, so a TLS
+# handshake's ECDHE runs in software: about 6 s of CPU at 160 MHz, which kept
+# IDLE off its core past the 5 s task watchdog on every activation, config
+# fetch and broker connect. At 240 MHz it is about 4 s.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y

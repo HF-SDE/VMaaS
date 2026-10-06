@@ -64,6 +64,15 @@ namespace purchase_task
     /// True while a purchase owns the display, so the caller leaves it alone.
     bool active();
 
+    /// True while row 1 belongs to purchase_task: a notice such as "Sold out"
+    /// is being held, or a purchase is under way. The main loop's slot-entry
+    /// echo must not draw "> _" over it until the customer types again.
+    bool owns_display();
+
+    /// Forget what is on screen, so the next tick() redraws the purchase.
+    /// For the main loop, after it has written over row 1 mid-purchase.
+    void invalidate_display();
+
     /// True when no purchase is under way: nothing chosen, nothing paid,
     /// nothing dispensing. Always true with cash disabled, since no RUN is
     /// sent then. Gates the wiring transfer (wiring_sync).

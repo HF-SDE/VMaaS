@@ -31,7 +31,6 @@ export type DeviceDb = {
   };
   machineCertificate: {
     create(args: unknown): Promise<unknown>;
-    update(args: unknown): Promise<unknown>;
   };
   sale: { create(args: unknown): Promise<unknown> };
   inventoryMovement: { create(args: unknown): Promise<unknown> };
@@ -45,13 +44,6 @@ export type DeviceDb = {
 type CommandResultTx = {
   machineCommand: { update(args: unknown): Promise<unknown> };
   machineEvent: { create(args: unknown): Promise<unknown> };
-};
-
-type CertificateRotationTx = {
-  machineCertificate: {
-    create(args: unknown): Promise<unknown>;
-    update(args: unknown): Promise<unknown>;
-  };
 };
 
 /**
@@ -362,14 +354,18 @@ export async function recordDeviceEventsService(
   }
 }
 
-/** Rotate the device's certificate, replacing it with a new one signed by the CA.
- *  The old certificate is revoked. */
+/**
+ * Issue a new certificate for the device's existing key.
+ *
+ * The current certificate is deliberately left live: it is revoked by
+ * resolveMachineCertificate the first time the new one is used. Revoking it
+ * here would lock out a machine whose answer was lost before it reached flash.
+ */
 export async function renewCertificateService(
   db: DeviceDb,
   ca: CertificateAuthority,
   machine: MachineContext,
   csr: string,
-  now: Date = new Date(),
 ): Promise<Result<CsrRejected | UnknownDeviceError, { certificate: string; caCertificate: string }>> {
   let issued: Awaited<ReturnType<typeof signDeviceCsr>>;
   try {
@@ -382,31 +378,22 @@ export async function renewCertificateService(
   }
 
   try {
-    await db.$transaction(async (tx) => {
-      const t = tx as unknown as CertificateRotationTx;
-
-      await t.machineCertificate.create({
-        data: {
-          machineId: machine.id,
-          serial: issued.serial,
-          fingerprint: issued.fingerprint,
-          subject: issued.subject,
-          notBefore: issued.notBefore,
-          notAfter: issued.notAfter,
-        },
-      });
-
-      await t.machineCertificate.update({
-        where: { id: machine.certificateId },
-        data: { revokedAt: now, revokedReason: "rotated" },
-      });
+    await db.machineCertificate.create({
+      data: {
+        machineId: machine.id,
+        serial: issued.serial,
+        fingerprint: issued.fingerprint,
+        subject: issued.subject,
+        notBefore: issued.notBefore,
+        notAfter: issued.notAfter,
+      },
     });
   } catch (error) {
-    Sentry.captureException(error, { tags: { service: "device", action: "rotating the certificate" } });
+    Sentry.captureException(error, { tags: { service: "device", action: "storing the renewed certificate" } });
 
     return err({
       reason: "UNKNOWN_ERROR",
-      message: error instanceof Error ? error.message : "Unknown error while rotating the certificate.",
+      message: error instanceof Error ? error.message : "Unknown error while storing the renewed certificate.",
     });
   }
 

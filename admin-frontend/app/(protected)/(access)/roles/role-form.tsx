@@ -36,6 +36,7 @@ type RoleFormProps = {
   onCancel: () => void
   /** Resolves to an error message to show, or null when the write succeeded. */
   onSubmit: (values: RoleFormValues) => Promise<string | null>
+  type?: "create" | "edit"
 }
 
 export function RoleForm({
@@ -43,6 +44,7 @@ export function RoleForm({
   submitLabel,
   onCancel,
   onSubmit,
+  type = "create",
 }: RoleFormProps) {
   const tenant_roles = useTenantRoles()
 
@@ -75,7 +77,19 @@ export function RoleForm({
       return
     }
 
-    if (tenant_roles.some((role) => role.name === data.name)) {
+    if (
+      type === "create" &&
+      tenant_roles.some((role) => role.name === data.name)
+    ) {
+      setError("A role with this name already exists.")
+      return
+    }
+
+    if (
+      type === "edit" &&
+      defaultValues.name !== data.name &&
+      tenant_roles.some((role) => role.name === data.name)
+    ) {
       setError("A role with this name already exists.")
       return
     }

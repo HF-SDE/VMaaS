@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronsUpDown, Plus } from "lucide-react"
+import { ChevronsUpDown } from "lucide-react"
 import { FallbackAvatar } from "./fallback-avatar"
 
 import {
@@ -9,8 +9,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -67,13 +65,13 @@ export function TeamSwitcher() {
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Teams
+                Teneants
               </DropdownMenuLabel>
-              {tenants.map((tenant, index) => (
+              {tenants.map((tenant) => (
                 <DropdownMenuItem
                   key={tenant.name}
                   onClick={async () => {
-                    const [error, result] = await switchTenant(tenant.id)
+                    const [error] = await switchTenant(tenant.id)
                     if (error) {
                       toast.error(
                         "Failed to switch tenant - status: " + error.status
@@ -89,15 +87,6 @@ export function TeamSwitcher() {
                   {tenant.name}
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 p-2">
-                <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                  <Plus className="size-4" />
-                </div>
-                <div className="font-medium text-muted-foreground">
-                  Add team
-                </div>
-              </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

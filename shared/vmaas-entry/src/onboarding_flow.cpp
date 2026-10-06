@@ -39,7 +39,17 @@ namespace vmaas
     {
         char digits[9] = {};
         copy_bounded(digits, pin, sizeof(digits));
+        if (digits[0] == '\0')
+        {
+            pin_row_[0] = '\0';
+            return;
+        }
         std::snprintf(pin_row_, sizeof(pin_row_), "PIN %.4s %.4s", digits, digits + 4);
+    }
+
+    void OnboardingFlow::set_retrying_stored_wifi(bool retrying)
+    {
+        retrying_stored_wifi_ = retrying;
     }
 
     void OnboardingFlow::set_networks(const char* const* ssids, size_t count)
@@ -68,6 +78,28 @@ namespace vmaas
     void OnboardingFlow::set_connected_ssid(const char* ssid)
     {
         copy_bounded(chosen_ssid_, ssid, sizeof(chosen_ssid_));
+    }
+
+    void OnboardingFlow::on_remote_connecting(const char* ssid)
+    {
+        // A keypad attempt owns the radio until it is answered.
+        if (connect_pending_) return;
+
+        switch (screen_)
+        {
+            case OnboardingScreen::BleWaiting:
+            case OnboardingScreen::NetworkList:
+            case OnboardingScreen::SsidEntry:
+            case OnboardingScreen::PasswordEntry:
+            case OnboardingScreen::Connecting:
+            case OnboardingScreen::WrongPassword:
+                copy_bounded(chosen_ssid_, ssid, sizeof(chosen_ssid_));
+                go(OnboardingScreen::Connecting, now_ms_);
+                break;
+            default:
+                // Connected and everything after it: Wi-Fi is already done.
+                break;
+        }
     }
 
     void OnboardingFlow::on_connect_result(bool ok)
@@ -105,7 +137,7 @@ namespace vmaas
         switch (screen_)
         {
         case OnboardingScreen::BleWaiting:
-            if (pressed && ev.key == '*') {
+            if (pressed && ev.key == '*' && !retrying_stored_wifi_) {
                 go(OnboardingScreen::NetworkList, ev.at_ms);
             }
             break;
@@ -368,9 +400,17 @@ namespace vmaas
         {
             case OnboardingScreen::BleWaiting:
             {
+                if (retrying_stored_wifi_)
+                {
+                    copy_row(out.row0, "Connecting...");
+                    copy_row(out.row1, "");
+                    out.r = 255; out.g = 200; out.b = 0;
+                    break;
+                }
                 copy_row(out.row0, name_);
                 const uint32_t cycle = (now_ms_ - screen_since_ms_) % (ONBOARDING_PIN_MS + ONBOARDING_HINT_MS);
-                copy_row(out.row1, (cycle < ONBOARDING_PIN_MS) ? pin_row_ : "* = manual setup");
+                const bool show_pin = pin_row_[0] != '\0' && cycle < ONBOARDING_PIN_MS;
+                copy_row(out.row1, show_pin ? pin_row_ : "* = manual setup");
                 out.r = 0; out.g = 80; out.b = 255;
                 break;
             }
@@ -396,7 +436,7 @@ namespace vmaas
         
             case OnboardingScreen::Connecting:
                 copy_row(out.row0, "Connecting...");
-                copy_row(out.row1, chosen_ssid_);
+                copy_row(out.row1, "");
                 out.r = 255; out.g = 200; out.b = 0;
                 break;
         

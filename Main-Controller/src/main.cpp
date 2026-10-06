@@ -1,5 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_bt.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include <cstdio>
 #include <cstring>
@@ -18,6 +20,7 @@
 #include "activation.h"
 #include "onboarding.h"
 #include "broker_client.h"
+#include "cert_renewal.h"
 #include "device_api.h"
 #include "purchase_task.h"
 #include "service_code.h"
@@ -31,7 +34,9 @@ namespace
     constexpr const char *TAG = "MainController";
     constexpr TickType_t STATUS_INTERVAL = pdMS_TO_TICKS(2000);
 
-    constexpr const char *PROMPT_ROW0 = "VMaaS: pick slot";   // exactly 16
+    constexpr const char *PROMPT_ROW0 = "VMaaS: Pick Slot";   // exactly 16
+    constexpr const char *BOOT_ROW0 = "Starting up...";
+    constexpr const char *BOOT_ROW1 = "Please wait";
     constexpr const char *ERROR_ROW0 = "MOTOR CONFIG ERR";
     constexpr const char *ERROR_ROW1 = "check slot config on Motorcontrol";
 
@@ -51,6 +56,9 @@ namespace
     bool backlight_ok = false;
     bool motor_error_shown = false;
     char last_row1[17] = {};
+    /// Row 1 was last written here while purchase_task owned it, so its own
+    /// text is gone from the screen though its cache says otherwise.
+    bool row1_over_purchase = false;
     uint32_t result_hold_until_ms = 0; // see render()
     uint32_t result_hold_ms = 0;       // from config.json, set in app_main()
 
@@ -83,6 +91,7 @@ namespace
         std::snprintf(last_row1, sizeof(last_row1), "%s", text);
         log_lcd("clear row 1", lcd.clear_row(1));
         log_lcd("row 1", lcd.print_at(0, 1, text));
+        row1_over_purchase = purchase_task::owns_display();
     }
 
     void show_prompt()
@@ -178,45 +187,61 @@ namespace
         char line[17];
         switch (st.status)
         {
-        case vmaas::EntryStatus::Confirmed:
-        {
-            uint8_t slot = 0;
-            if (vmaas::slot_number(st, slot))
+            case vmaas::EntryStatus::Confirmed:
             {
-                std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
-                ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
-
-                if (purchase_task::active())
+                // The braces scope slot to this case; without them the
+                // later case labels jump past its initialisation.
+                uint8_t slot = 0;
+                if (vmaas::slot_number(st, slot))
                 {
-                    purchase_task::on_slot_confirmed(slot);
-                    return;
+                    std::snprintf(line, sizeof(line), "Slot %u chosen", (unsigned)slot);
+                    ESP_LOGI(TAG, "slot %u selected", (unsigned)slot);
+
+                    if (purchase_task::active())
+                    {
+                        purchase_task::on_slot_confirmed(slot);
+                        return;
+                    }
                 }
+                else
+                {
+                    std::snprintf(line, sizeof(line), "Unknown slot");
+                }
+                show_row1(line);
+                result_hold_until_ms = now_ms() + result_hold_ms;
+                break;
             }
-            else
-            {
-                std::snprintf(line, sizeof(line), "Unknown slot");
-            }
-            show_row1(line);
-            result_hold_until_ms = now_ms() + result_hold_ms;
-            break;
-        }
-        case vmaas::EntryStatus::Cancelled:
-            ESP_LOGI(TAG, "entry cancelled");
-            show_row1("Cancelled");
-            result_hold_until_ms = now_ms() + result_hold_ms;
-            break;
-        case vmaas::EntryStatus::TimedOut:
-            ESP_LOGI(TAG, "entry timed out, clearing");
-            result_hold_until_ms = 0;
-            show_row1("> _");
-            break;
-        case vmaas::EntryStatus::Editing:
-            if (st.buffer[0] == '\0' && now_ms() < result_hold_until_ms)
-                return;
-            result_hold_until_ms = 0;
-            std::snprintf(line, sizeof(line), "> %s_", st.buffer);
-            show_row1(line);
-            break;
+            case vmaas::EntryStatus::Cancelled:
+                ESP_LOGI(TAG, "entry cancelled");
+                show_row1("Cancelled");
+                result_hold_until_ms = now_ms() + result_hold_ms;
+                break;
+            case vmaas::EntryStatus::TimedOut:
+                ESP_LOGI(TAG, "entry timed out, clearing");
+                result_hold_until_ms = 0;
+                show_row1("> _");
+                break;
+            case vmaas::EntryStatus::Editing:
+                if (st.buffer[0] == '\0')
+                {
+                    if (now_ms() < result_hold_until_ms) return;
+
+                    if (purchase_task::owns_display())
+                    {
+                        result_hold_until_ms = 0;
+                        if (row1_over_purchase)
+                        {
+                            row1_over_purchase = false;
+                            last_row1[0] = '\0';
+                            purchase_task::invalidate_display();
+                        }
+                        return;
+                    }
+                }
+                result_hold_until_ms = 0;
+                std::snprintf(line, sizeof(line), "> %s_", st.buffer);
+                show_row1(line);
+                break;
         }
     }
 }
@@ -237,6 +262,25 @@ extern "C" void app_main()
     if (door_err != ESP_OK) {
         ESP_LOGE(TAG, "door lock init failed: %s, the door stays locked", esp_err_to_name(door_err));
     }
+
+    // Second, so the screen says the machine is starting instead of staying
+    // dark through the seconds below. The display depends on nothing that
+    // follows. This screen stays until onboarding or show_prompt() replaces
+    // it, i.e. until the machine can actually be used.
+    i2c.begin();
+    const vmaas::LcdError lcd_err = lcd.begin();
+    display_ok = lcd.ready();
+    backlight_ok = (lcd_err == vmaas::LcdError::None);
+    if (!display_ok) {
+        ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
+    }
+    else if (!backlight_ok) {
+        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
+    }
+    if (backlight_ok) {
+        log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
+    }
+    show_rows(BOOT_ROW0, BOOT_ROW1);
 
     // Mounts LittleFS, so it runs before anything else touches storage.
     const vmaas::DeviceConfig cfg = config_store::load();
@@ -269,17 +313,6 @@ extern "C" void app_main()
     // No command to ask Motorcontrol which table it runs, so send ours once
     // per boot: this is what repairs a board flashed with another config.json.
     wiring_sync::request(wiring_sync::Source::Boot);
-
-    i2c.begin();
-    const vmaas::LcdError lcd_err = lcd.begin();
-    display_ok = lcd.ready();
-    backlight_ok = (lcd_err == vmaas::LcdError::None);
-    if (!display_ok) {
-        ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
-    }
-    else if (!backlight_ok) {
-        ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
-    }
 
     const vmaas::KeypadError kp_err = keypad.begin(Pins::KEYPAD_ROWS, 4, Pins::KEYPAD_COLS, 3);
     if (kp_err != vmaas::KeypadError::None) {
@@ -316,6 +349,19 @@ extern "C" void app_main()
         ESP_LOGE(TAG, "wifi init failed, skipping onboarding to avoid an unrecoverable hang");
     }
 
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE)
+    {
+        const size_t before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+        const esp_err_t bt_err = esp_bt_mem_release(ESP_BT_MODE_BTDM);
+        if (bt_err != ESP_OK) {
+            ESP_LOGW(TAG, "releasing Bluetooth memory failed: %s", esp_err_to_name(bt_err));
+        }
+        else {
+            ESP_LOGI(TAG, "Bluetooth memory released: heap %u -> %u bytes free",
+                     static_cast<unsigned>(before), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT)));
+        }
+    }
+
     broker_client::start(cfg);
 
     const bool cash_ok = purchase_task::begin(lcd, display_ok, motor, cfg.dispense_timeout_ms);
@@ -326,6 +372,10 @@ extern "C" void app_main()
 
     if (config_sync::begin() != ESP_OK) {
         ESP_LOGW(TAG, "configuration sync did not start; the machine keeps the configuration on flash");
+    }
+
+    if (cert_renewal::start() != ESP_OK) {
+        ESP_LOGW(TAG, "certificate renewal did not start; the certificate will not be renewed this boot");
     }
 
     show_prompt();

@@ -34,8 +34,7 @@ namespace vmaas
 
         ESP_ERROR_CHECK(uart_driver_install(port_, RX_BUFFER_BYTES, 0, 0, nullptr, 0));
         ESP_ERROR_CHECK(uart_param_config(port_, &config));
-        ESP_ERROR_CHECK(uart_set_pin(port_, tx_pin_, rx_pin_,
-                                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+        ESP_ERROR_CHECK(uart_set_pin(port_, tx_pin_, rx_pin_, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
         ESP_LOGI(TAG, "UART%d ready, TX=%d RX=%d, %d baud", (int)port_, tx_pin_, rx_pin_, baud_rate_);
     }
 

@@ -20,10 +20,12 @@ function fakeDb(found = true) {
           ? {
               id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
               notAfter: new Date(Date.now() + 86_400_000),
+              createdAt: new Date("2026-09-01T00:00:00Z"),
               machine: { id: MACHINE, tenantId: TENANT, siteId: SITE, disabledAt: null },
             }
           : null,
       ),
+      updateMany: vi.fn(async () => ({ count: 0 })),
     },
   };
   return db as unknown as MachineLookupDb & typeof db;
@@ -200,5 +202,19 @@ describe("requireInternalSecret", () => {
     requireInternalSecret(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
+  });
+});
+
+describe("superseding older certificates", () => {
+  it("happens when a machine connects", async () => {
+    const db = fakeDb();
+    await decideAuthn(db, { clientid: MACHINE, cert_subject: subject });
+    expect(db.machineCertificate.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not happen on every publish or subscribe check", async () => {
+    const db = fakeDb();
+    await decideAuthz(db, { clientid: MACHINE, cert_subject: subject, action: "publish", topic: `${PREFIX}/events` });
+    expect(db.machineCertificate.updateMany).not.toHaveBeenCalled();
   });
 });
