@@ -80,10 +80,8 @@ describe("generateOneTimeCode", () => {
   });
 
   it("uses every digit", () => {
-    // A weak check, and deliberately so: it catches an alphabet or a masking
-    // mistake that locks digits out entirely. It does NOT prove the sampling is
-    // unbiased - the modulo bias this replaced was only a few per cent, which
-    // no non-flaky test of this shape can see. See generateOneTimeCode.
+    // A weak check, and deliberately so: it catches an alphabet mistake that
+    // locks digits out entirely. It does not prove the digits are uniform.
     const seen = new Set(Array.from({ length: 400 }, generateOneTimeCode).join(""));
     expect(seen.size).toBe(10);
   });
