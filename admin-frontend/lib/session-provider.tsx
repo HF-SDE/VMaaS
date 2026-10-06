@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react"
 import type { PermissionKey } from "../../shared/types/permissions"
 
 import { hasPermission } from "./permissions"
-import type { Session, SessionSubscription } from "./session"
+import type { Session } from "./session"
 import { subscription_status } from "@prisma"
 
 type SessionContextValue = {

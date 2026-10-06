@@ -1,4 +1,6 @@
 import { Suspense } from "react"
+import { SessionProvider } from "@/lib/session-provider"
+import { requireUser } from "@/lib/dal"
 
 import { AppSidebar, AppSidebarSkeleton } from "@/components/app-sidebar"
 import { PriceSyncListener } from "@/components/price-sync-listener"
@@ -8,7 +10,11 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 
-export default function AuthShell({ children }: { children: React.ReactNode }) {
+export default async function AuthShell({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <TooltipProvider>
       <SidebarProvider
@@ -20,17 +26,25 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
         }
       >
         <Suspense fallback={<AppSidebarSkeleton />}>
-          <SidebarSession>
-            <AppSidebar variant="inset" />
-            <PriceSyncListener />
-          </SidebarSession>
+          <GetUserWrapper>
+            <SidebarSession>
+              <AppSidebar variant="inset" />
+              <PriceSyncListener />
+            </SidebarSession>
+            <SidebarInset className="min-w-0 overflow-x-hidden">
+              <SiteHeader />
+              <main className="p-4 lg:px-8">{children}</main>
+              <Toaster />
+            </SidebarInset>
+          </GetUserWrapper>
         </Suspense>
-        <SidebarInset className="min-w-0 overflow-x-hidden">
-          <SiteHeader />
-          <main className="p-4 lg:px-8">{children}</main>
-          <Toaster />
-        </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
   )
+}
+
+async function GetUserWrapper({ children }: { children: React.ReactNode }) {
+  const session = await requireUser()
+
+  return <SessionProvider session={session}>{children}</SessionProvider>
 }

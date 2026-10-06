@@ -59,16 +59,11 @@ function isTransient(status: number): boolean {
   return status === 429 || status >= 500
 }
 
-function getSessionResponse(cookieHeader: string): Promise<Response> {
-  return fetch(`${config.BACKEND_INTERNAL_URL}/api/auth/get-session`, {
-    headers: { cookie: cookieHeader },
-    cache: "no-store",
-  })
-}
-
-async function requestSession(cookieHeader: string): Promise<Response> {
+async function retryOnce(
+  request: () => Promise<Response>
+): Promise<Response> {
   try {
-    const response = await getSessionResponse(cookieHeader)
+    const response = await request()
     if (!isTransient(response.status)) return response
   } catch {
     // Swallow the error: it will be retried after the delay.
@@ -76,7 +71,7 @@ async function requestSession(cookieHeader: string): Promise<Response> {
 
   await sleep(RETRY_DELAY_MS)
 
-  return getSessionResponse(cookieHeader)
+  return request()
 }
 
 /** Pure over its input so it is unit-testable: the caller supplies the cookie header. */
@@ -85,7 +80,12 @@ export async function fetchSession(
 ): Promise<Session | null> {
   if (!cookieHeader) return null
 
-  const response = await requestSession(cookieHeader)
+  const response = await retryOnce(() =>
+    fetch(`${config.BACKEND_INTERNAL_URL}/api/auth/get-session`, {
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+    })
+  )
 
   if (response.status === 401) return null
 

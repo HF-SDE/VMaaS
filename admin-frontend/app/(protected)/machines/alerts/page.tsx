@@ -35,9 +35,7 @@ export default async function AlertLogsPage() {
         </Suspense>
       </div>
       <Suspense fallback={<Loader />}>
-        <ProvideSession>
-          <MachineAlertLogs />
-        </ProvideSession>
+        <MachineAlertLogs />
       </Suspense>
     </div>
   )

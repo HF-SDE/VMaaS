@@ -36,22 +36,12 @@ export async function getSession(
   return session
 }
 
-/**
- * The session as the backend has it *right now*, going around the cache above.
- *
- * Only for polling a change that happens without the user acting — the wait for
- * Stripe's webhook after checkout — where the cached entry being still fresh is
- * exactly the problem. Everything else wants `getSession`.
- */
 export async function getFreshSession(): Promise<Session | null> {
   const store = await cookies()
 
   return fetchSession(getAuthCookie(store.getAll()))
 }
 
-/** The session and where it leaves the user. `resolveUserAccess` reads the
- *  clock (trial expiry), which Next forbids during prerender outside a cache
- *  scope — so it is resolved here, under the same private cache as the session. */
 export async function getAccess() {
   "use cache: private"
   cacheLife({ stale: 60 })
@@ -68,17 +58,6 @@ export async function requireUser(): Promise<Session> {
   return session
 }
 
-/**
- * The gate for every protected page: signed in, in an organization, and that
- * organization paid up.
- *
- * All three are one decision, taken by `resolveUserAccess`, so a page cannot
- * accidentally check two of the three. `requirePermission` chains through here,
- * which is why the existing pages need no change to be behind the paywall.
- *
- * The backend enforces the same three independently — this only decides where
- * to send the browser.
- */
 export async function requireAccess(): Promise<
   Session & { activeTenantId: string }
 > {
@@ -91,23 +70,6 @@ export async function requireAccess(): Promise<
   return session as Session & { activeTenantId: string }
 }
 
-/** @deprecated Prefer `requireAccess()`, which also enforces billing. Kept so
- *  callers that genuinely only need a tenant — the billing pages themselves —
- *  do not have to fight the paywall they exist to resolve. */
-export async function requireTenant(): Promise<
-  Session & { activeTenantId: string }
-> {
-  return requireAccess()
-}
-
-/**
- * Sends a denied user to /forbidden, the same place <RoleGate> sends them, so
- * a page-level and a component-level denial look alike. `reason` is plain
- * English copy for that page; omit it for the generic wording.
- *
- * Use hasPermission() instead for conditional UI, where hiding one control
- * should not take the whole page away.
- */
 export async function requirePermission(
   key: PermissionKey,
   reason?: string
