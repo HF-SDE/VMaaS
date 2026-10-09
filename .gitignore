@@ -41,11 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 /generated/prisma
-.agents/**/*
-.claude/**/*
-skills-lock.json
-docs/superpowers/**/*
-CLAUDE.md
 
 config/environment-variables/.env.*.dev*
 config/environment-variables/.env.*.prod*
@@ -59,9 +54,6 @@ config/nginx/acme/
 
 # doxygen output
 /docs/api/
-
-# Subagent-driven-development scratch (ledger, briefs, review packages)
-.superpowers/
 
 # Local CA material exported for the fake-machine smoke test
 backend/ca.crt
