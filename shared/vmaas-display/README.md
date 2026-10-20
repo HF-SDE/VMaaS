@@ -5,6 +5,8 @@ at boot by `detect_lcd()`:
 
 - Seeed **Grove-LCD RGB Backlight** (`GroveLcdRgb`): LCD + RGB backlight.
 - **1602A behind a PCF8574 I2C backpack** (`Pcf8574Lcd`): backlight on/off only.
+  Any HD44780-compatible 16x2 module works; tested on the bench with a
+  generic blue 1602A and a Tinsharp TC1602A-21T(R)(3) (ST7066U controller).
 
 Both share `CharLcd`, which owns the cursor, overflow and marquee logic, so
 text looks the same on either. Pure C++17 core with host tests.
