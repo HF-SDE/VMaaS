@@ -11,7 +11,7 @@
  */
 #include <cstdint>
 
-#include "grove_lcd_rgb.h"
+#include "char_lcd.h"
 #include "motor_client.h"
 #include "prices.h"
 
@@ -22,7 +22,7 @@ namespace purchase_task
     ///        how long a paid vend waits for DONE before it is booked Failed. 0 disables.
     /// @return False when there are no prices, in which case cash is disabled
     ///         and the firmware behaves as it did before this feature.
-    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms);
+    bool begin(vmaas::CharLcd &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms);
 
     /**
      * @brief Swap in a freshly fetched price table.

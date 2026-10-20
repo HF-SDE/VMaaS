@@ -61,7 +61,7 @@ namespace
     vmaas::Purchase *machine = nullptr;
     vmaas::EspCoinPort port;
 
-    vmaas::GroveLcdRgb *lcd_ = nullptr;
+    vmaas::CharLcd *lcd_ = nullptr;
     bool display_ok_ = false;
     MotorClient *motor_ = nullptr;
     bool cash_enabled = false;
@@ -374,7 +374,7 @@ namespace
 
 namespace purchase_task
 {
-    bool begin(vmaas::GroveLcdRgb &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms)
+    bool begin(vmaas::CharLcd &lcd, bool display_ok, MotorClient &motor, uint32_t dispense_timeout_ms)
     {
         lcd_ = &lcd;
         display_ok_ = display_ok;

@@ -8,6 +8,8 @@
  * Failure injection: nak(addr) makes an address never acknowledge (like a
  * missing chip), fail_next(n) fails the next n calls, fail_write_at(i) fails
  * the i-th acknowledged write (0-based). Failed writes are not recorded.
+ * probe() follows nak() only (every other address is present), is logged in
+ * `probes` and never appears in `events`.
  */
 #include <cstdint>
 #include <initializer_list>
@@ -31,21 +33,25 @@ public:
     int fail_next_count = 0;       // fail this many upcoming writes, then succeed
     int fail_write_index = -1;     // fail the Nth non-NAK write (0-based), then succeed
     int attempted_write_count = 0; // count of write() calls that got past the NAK check
+    std::vector<uint8_t> probes;   // every probe() address, in call order
 
     bool write(uint8_t addr, const uint8_t* data, size_t len) override
     {
-        if (nak_addrs.count(addr) != 0)
-            return false;
+        if (nak_addrs.count(addr) != 0) return false;
         const int index = attempted_write_count++;
-        if (fail_next_count > 0)
-        {
+        if (fail_next_count > 0) {
             --fail_next_count;
             return false;
         }
-        if (index == fail_write_index)
-            return false;
+        if (index == fail_write_index) return false;
         events.push_back(Event{Event::Write, addr, std::vector<uint8_t>(data, data + len), 0});
         return true;
+    }
+
+    bool probe(uint8_t addr) override
+    {
+        probes.push_back(addr);
+        return nak_addrs.count(addr) == 0;
     }
 
     void delay_ms(uint32_t ms) override
@@ -61,17 +67,22 @@ public:
     std::vector<std::vector<uint8_t>> writes_to(uint8_t addr) const
     {
         std::vector<std::vector<uint8_t>> out;
-        for (const Event& e : events)
-            if (e.kind == Event::Write && e.addr == addr)
+        for (const Event& e : events) {
+            if (e.kind == Event::Write && e.addr == addr) {
                 out.push_back(e.bytes);
+            }
+        }
         return out;
     }
 
     size_t write_count() const
     {
         size_t n = 0;
-        for (const Event& e : events)
-            if (e.kind == Event::Write) ++n;
+        for (const Event& e : events) {
+            if (e.kind == Event::Write) {
+                ++n;
+            }
+        }
         return n;
     }
 };

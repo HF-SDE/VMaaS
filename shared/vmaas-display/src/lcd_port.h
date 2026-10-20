@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file lcd_port.h
- * @brief Hardware seam between GroveLcdRgb and the I2C bus.
+ * @brief Hardware seam between the display drivers and the I2C bus.
  *
  * The driver never touches I2C directly. It writes through this interface,
  * which also provides the blocking delays the LCD init sequence needs.
@@ -12,7 +12,7 @@
 
 namespace vmaas
 {
-    /// Minimal I2C master + delay abstraction used by GroveLcdRgb.
+    /// Minimal I2C master + delay abstraction used by the display drivers and detect_lcd().
     class LcdPort
     {
     public:
@@ -26,6 +26,13 @@ namespace vmaas
          * @return false if the device did not acknowledge or the transfer timed out.
          */
         virtual bool write(uint8_t addr, const uint8_t* data, size_t len) = 0;
+
+        /**
+         * @brief Check whether a device acknowledges its address, sending no data.
+         * @param addr 7-bit device address.
+         * @return true if something answered at @p addr.
+         */
+        virtual bool probe(uint8_t addr) = 0;
 
         /**
          * @brief Block the caller for @p ms milliseconds.

@@ -17,7 +17,7 @@ namespace vmaas
     /**
      * @brief One I2C master bus with lazily created device handles.
      *
-     * The Grove display uses at most three addresses (LCD, v4 RGB, v5 RGB),
+     * A display uses at most three addresses (LCD, Grove v4 RGB, Grove v5 RGB),
      * so a small fixed table of device handles is enough. Failed transfers
      * return false instead of aborting, so an unplugged display never
      * resets the board.
@@ -30,20 +30,24 @@ namespace vmaas
          * @param port I2C controller number, normally I2C_NUM_0.
          * @param sda_pin GPIO for SDA.
          * @param scl_pin GPIO for SCL.
-         * @param clock_hz SCL frequency. 100000 (standard mode) for the Grove display.
+         * @param clock_hz SCL frequency. 100000 (standard mode) for both displays.
          */
         EspI2cPort(i2c_port_num_t port, int sda_pin, int scl_pin, uint32_t clock_hz = 100000);
 
         /**
          * @brief Create the master bus with internal pull-ups enabled.
          *
-         * Call once from app_main, before GroveLcdRgb::begin().
+         * Call once from app_main, before detect_lcd() and the driver's begin().
          * @warning Uses ESP_ERROR_CHECK, so a misconfigured bus aborts the board.
          */
         void begin();
 
         /// @copydoc LcdPort::write
         bool write(uint8_t addr, const uint8_t* data, size_t len) override;
+
+        /// @copydoc LcdPort::probe
+        /// @note Does not take a slot in the device table.
+        bool probe(uint8_t addr) override;
 
         /// @copydoc LcdPort::delay_ms
         /// @note Blocks for at least @p ms; with a 10 ms FreeRTOS tick this means up to ms + 20 ms.

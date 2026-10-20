@@ -42,13 +42,9 @@ namespace vmaas
     i2c_master_dev_handle_t EspI2cPort::device_for(uint8_t addr)
     {
         for (size_t i = 0; i < device_count_; ++i) {
-            if (addrs_[i] == addr)
-            {
-                return devices_[i];
-            }
+            if (addrs_[i] == addr) return devices_[i];
         }
-        if (device_count_ >= MAX_DEVICES)
-        {
+        if (device_count_ >= MAX_DEVICES) {
             ESP_LOGE(TAG, "device table full, cannot add 0x%02X", addr);
             return nullptr;
         }
@@ -60,8 +56,7 @@ namespace vmaas
 
         i2c_master_dev_handle_t handle = nullptr;
         const esp_err_t err = i2c_master_bus_add_device(bus_, &dev, &handle);
-        if (err != ESP_OK)
-        {
+        if (err != ESP_OK) {
             ESP_LOGE(TAG, "add device 0x%02X failed: %s", addr, esp_err_to_name(err));
             return nullptr;
         }
@@ -77,12 +72,17 @@ namespace vmaas
         i2c_master_dev_handle_t dev = device_for(addr);
         if (dev == nullptr) return false;
         const esp_err_t err = i2c_master_transmit(dev, data, len, XFER_TIMEOUT_MS);
-        if (err != ESP_OK)
-        {
+        if (err != ESP_OK) {
             ESP_LOGD(TAG, "write to 0x%02X (%u bytes) failed: %s", addr, (unsigned)len, esp_err_to_name(err));
             return false;
         }
         return true;
+    }
+
+    bool EspI2cPort::probe(uint8_t addr)
+    {
+        if (bus_ == nullptr) return false;
+        return i2c_master_probe(bus_, addr, XFER_TIMEOUT_MS) == ESP_OK;
     }
 
     void EspI2cPort::delay_ms(uint32_t ms)

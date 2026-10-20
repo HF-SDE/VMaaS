@@ -11,6 +11,8 @@
 #include "uart_bus.h"
 #include "esp_i2c_port.h"
 #include "grove_lcd_rgb.h"
+#include "pcf8574_lcd.h"
+#include "lcd_detect.h"
 #include "esp_keypad_port.h"
 #include "keypad.h"
 #include "keypad_task.h"
@@ -44,7 +46,9 @@ namespace
     MotorClient motor(bus);
 
     vmaas::EspI2cPort i2c(I2C_NUM_0, Pins::I2C_SDA, Pins::I2C_SCL, Config::i2c_clock_hz);
-    vmaas::GroveLcdRgb lcd(i2c);
+    vmaas::GroveLcdRgb grove_lcd(i2c);
+    vmaas::Pcf8574Lcd pcf_lcd(i2c);
+    vmaas::CharLcd *lcd = &grove_lcd;
 
     vmaas::EspKeypadPort keypad_port;
     vmaas::Keypad keypad(keypad_port);
@@ -77,9 +81,9 @@ namespace
     {
         if (!display_ok)
             return;
-        log_lcd("clear", lcd.clear());
-        log_lcd("row 0", lcd.print_at(0, 0, row0));
-        log_lcd("row 1", lcd.print_at(0, 1, row1, vmaas::Overflow::Scroll));
+        log_lcd("clear", lcd->clear());
+        log_lcd("row 0", lcd->print_at(0, 0, row0));
+        log_lcd("row 1", lcd->print_at(0, 1, row1, vmaas::Overflow::Scroll));
     }
 
     void show_row1(const char *text)
@@ -89,8 +93,8 @@ namespace
         if (std::strncmp(text, last_row1, sizeof(last_row1)) == 0) return;
 
         std::snprintf(last_row1, sizeof(last_row1), "%s", text);
-        log_lcd("clear row 1", lcd.clear_row(1));
-        log_lcd("row 1", lcd.print_at(0, 1, text));
+        log_lcd("clear row 1", lcd->clear_row(1));
+        log_lcd("row 1", lcd->print_at(0, 1, text));
         row1_over_purchase = purchase_task::owns_display();
     }
 
@@ -156,7 +160,7 @@ namespace
         ESP_LOGE(TAG, "Motorcontrol has no valid slot configuration, showing error screen");
         show_rows(ERROR_ROW0, ERROR_ROW1);
         if (backlight_ok) {
-            log_lcd("set_rgb", lcd.set_rgb(255, 0, 0));
+            log_lcd("set_rgb", lcd->set_rgb(255, 0, 0));
         }
     }
 
@@ -170,7 +174,7 @@ namespace
         purchase_task::set_motor_fault(false);
         ESP_LOGI(TAG, "Motorcontrol back to normal, restoring display");
         if (backlight_ok) {
-            log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
+            log_lcd("set_rgb", lcd->set_rgb(255, 255, 255));
         }
         show_prompt();
     }
@@ -277,8 +281,22 @@ extern "C" void app_main()
     // follows. This screen stays until onboarding or show_prompt() replaces
     // it, i.e. until the machine can actually be used.
     i2c.begin();
-    const vmaas::LcdError lcd_err = lcd.begin();
-    display_ok = lcd.ready();
+    const vmaas::DetectedLcd found = vmaas::detect_lcd(i2c);
+    ESP_LOGI(TAG, "display: %s at 0x%02X", vmaas::to_string(found.kind), found.addr);
+    vmaas::LcdError lcd_err = vmaas::LcdError::NotInitialized; // stays so when nothing answered
+    switch (found.kind)
+    {
+        case vmaas::LcdKind::Grove:
+            lcd_err = grove_lcd.begin();
+            break;
+        case vmaas::LcdKind::Pcf8574:
+            lcd = &pcf_lcd;
+            lcd_err = pcf_lcd.begin(found.addr);
+            break;
+        case vmaas::LcdKind::None:
+            break;
+    }
+    display_ok = lcd->ready();
     backlight_ok = (lcd_err == vmaas::LcdError::None);
     if (!display_ok) {
         ESP_LOGE(TAG, "display init failed: %s, continuing without display", vmaas::to_string(lcd_err));
@@ -287,7 +305,7 @@ extern "C" void app_main()
         ESP_LOGW(TAG, "display: backlight unavailable (%s), text only", vmaas::to_string(lcd_err));
     }
     if (backlight_ok) {
-        log_lcd("set_rgb", lcd.set_rgb(255, 255, 255));
+        log_lcd("set_rgb", lcd->set_rgb(255, 255, 255));
     }
     show_rows(BOOT_ROW0, BOOT_ROW1);
 
@@ -351,7 +369,7 @@ extern "C" void app_main()
         {
             ESP_LOGE(TAG, "no display: onboarding is BLE-only, pin logged separately");
         }
-        onboarding::run(cfg, lcd, backlight_ok);
+        onboarding::run(cfg, *lcd, backlight_ok);
     }
     else if (wifi_err != ESP_OK)
     {
@@ -373,7 +391,7 @@ extern "C" void app_main()
 
     broker_client::start(cfg);
 
-    const bool cash_ok = purchase_task::begin(lcd, display_ok, motor, cfg.dispense_timeout_ms);
+    const bool cash_ok = purchase_task::begin(*lcd, display_ok, motor, cfg.dispense_timeout_ms);
     if (!cash_ok) {
         ESP_LOGW(TAG, "cash disabled; slot entry logs only, as before");
     }
@@ -490,7 +508,7 @@ extern "C" void app_main()
             
 
         if (display_ok) {
-            lcd.tick(now_ms());
+            lcd->tick(now_ms());
         }
 
         const TickType_t now = xTaskGetTickCount();

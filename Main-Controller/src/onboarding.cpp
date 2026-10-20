@@ -95,7 +95,7 @@ namespace
 
 namespace onboarding
 {
-    void run(const vmaas::DeviceConfig& cfg, vmaas::GroveLcdRgb& lcd, bool backlight_ok)
+    void run(const vmaas::DeviceConfig& cfg, vmaas::CharLcd& lcd, bool backlight_ok)
     {
         const bool have_wifi = wifi_sta::has_credentials();
         if (!have_wifi)

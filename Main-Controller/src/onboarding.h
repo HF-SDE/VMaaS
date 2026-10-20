@@ -8,7 +8,7 @@
  * never leave the machine holding credentials that do not work.
  */
 #include "device_config.h"
-#include "grove_lcd_rgb.h"
+#include "char_lcd.h"
 
 /// Wi-Fi onboarding for the Main-Controller.
 namespace onboarding
@@ -19,5 +19,5 @@ namespace onboarding
      * @param lcd Display. Must already be begun.
      * @param backlight_ok false when the RGB probe failed; colour calls are skipped.
      */
-    void run(const vmaas::DeviceConfig& cfg, vmaas::GroveLcdRgb& lcd, bool backlight_ok);
+    void run(const vmaas::DeviceConfig& cfg, vmaas::CharLcd& lcd, bool backlight_ok);
 }
